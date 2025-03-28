@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { Optimizer } from '../utils/Optimizer.js';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export async function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x223344); //wahats white -- 
-  scene.fog = new THREE.Fog(0xffffff, 2, 25);
+  scene.background = new THREE.Color(0x223344);
+  scene.fog = new THREE.Fog(0x223344, 10, 50);
 
   const camera = new THREE.PerspectiveCamera(
     75,
@@ -13,7 +14,7 @@ export async function createScene() {
     0.1,
     1000
   );
-  camera.position.z = 13;
+  camera.position.z = 20;
 
   // ✅ Load, scale, and center embedding data
   const raw = await fetch('/embedding.json').then(r => r.json());
@@ -34,14 +35,14 @@ export async function createScene() {
 
   const optimizer = new ViscoElasticOptimizer(raw, {
     learningRate: 0.001,
-    viscosity: 0.9,
-    springiness: 0.1,
-    damping: 0.2,
-    mass: 10.0,
+    viscosity: 0.2,
+    springiness: 0.01,
+    damping: 0.1,
+    mass: 6.0,
     weights: {
-      semanticAttraction: 2.9,
-      repulsion: 2,
-      boundary: 3
+      semanticAttraction: 1.9,
+      repulsion: 0.6,
+      boundary: 30000
     }
   });
 
@@ -73,11 +74,11 @@ export async function createScene() {
   scene.add(instancedMesh);
 
   // 🧫 Add gel shell around the point cloud
-  const gelGeometry = new THREE.SphereGeometry(4.5, 64, 64);
+  const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);
   const gelMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xff6677,
-    transmission: 0.25,
-    opacity: 0.25,
+    transmission: 0.85,
+    opacity: 0.95,
     transparent: true,
     roughness: 0.4,
     metalness: 0.05,
@@ -93,11 +94,11 @@ export async function createScene() {
   gel.renderOrder = 1;
 
   // Debug origin marker
-  //const wire = new THREE.Mesh(
-  //  new THREE.SphereGeometry(0.1, 12, 12),
-  //  new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true })
-  //);
-  //scene.add(wire);
+  const wire = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true })
+  );
+  scene.add(wire);
 
   // Filaments
   const lineGeometry = new THREE.BufferGeometry();
@@ -116,20 +117,28 @@ export async function createScene() {
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
   dirLight.position.set(2, 2, 5);
   scene.add(dirLight);
-  const pointLight = new THREE.PointLight(0xffffff, 4.2, 15, 2);
-  pointLight.position.set(0, 0, 1);
+  const pointLight = new THREE.PointLight(0xffffff, 1.2, 15, 2);
+  pointLight.position.set(0, 0, 5);
   scene.add(pointLight);
 
+  // Add to scene
   scene.add(lineSegments);
   scene.add(gel);
+
+  // Controls (optional external access)
+  const controls = new OrbitControls(camera, document.body);
+  controls.target.set(0, 0, 0);
+  controls.update();
 
   return {
     scene,
     camera,
+    controls,
     mesh: instancedMesh,
     optimizer,
     dummy,
     numPoints,
-    lineSegments
+    lineSegments,
+    controls
   };
 }

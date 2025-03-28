@@ -13,7 +13,7 @@ if (window.__ANIMATING__) {
 }
 window.__ANIMATING__ = true;
 
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls }) => {
   const renderer = createRenderer();
   const getSpeed = setupTouchRotation(mesh);
 
@@ -31,7 +31,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   rgbShiftPass.uniforms['amount'].value = 0.01; // Adjust the value as needed
   function animate(t) {
     requestAnimationFrame(animate);
-  
+    controls.update(); // 👈 this is what you were missing
     optimizer.step();
     const updatedPositions = optimizer.getPositions();
   
@@ -75,8 +75,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
     // 🌀 Camera touch/drag
     const { speed, offsetX, offsetY } = getSpeed();
-    camera.position.x = offsetX * 4.5;
-    camera.position.y = -offsetY * 1.5;
+    //camera.position.x = offsetX * 4.5;
+    //camera.position.y = -offsetY * 1.5;
     camera.lookAt(0, 0, 0);
   
     rgbShiftPass.uniforms['amount'].value = speed * 0.001;
