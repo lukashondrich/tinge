@@ -22,7 +22,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.7, 0.5, 0.5
+    0.9, 0.9, 0.7
   );
   composer.addPass(bloomPass);
 
@@ -30,24 +30,29 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   composer.addPass(rgbShiftPass);
   rgbShiftPass.uniforms['amount'].value = 0.01; // Adjust the value as needed
   function animate(t) {
-    //console.log('🌀 animate() running...');
     requestAnimationFrame(animate);
   
-    // 👉 Update positions via gradient descent
-    optimizer.step(); // perform 1 gradient descent step
+    optimizer.step();
     const updatedPositions = optimizer.getPositions();
   
     for (let i = 0; i < numPoints; i++) {
-      dummy.position.copy(updatedPositions[i]).multiplyScalar(4); // ✅ scale for rendering
+      const pos = updatedPositions[i].clone().multiplyScalar(4);
+      dummy.position.copy(pos);
+  
+      // 🔁 Depth-based point scale (this was missing before)
+      const distToCam = camera.position.distanceTo(pos);
+      const scale = 3 * (1 / (1 + distToCam * 0.3));
+      dummy.scale.setScalar(scale);
+  
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
-
-    const maxDistSq = 0.25 * 0.25;
-
+  
+    // 🔁 Rebuild filaments
+    const maxDistSq = 0.55 * 0.35;
     const linePositions = [];
-
+  
     for (let i = 0; i < numPoints; i++) {
       for (let j = i + 1; j < numPoints; j++) {
         const a = updatedPositions[i];
@@ -60,30 +65,25 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         }
       }
     }
-
-    // Update line geometry
+  
     lineSegments.geometry.dispose();
     lineSegments.geometry = new THREE.BufferGeometry();
     lineSegments.geometry.setAttribute(
       'position',
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
-    
-
   
-    // 👉 Touch interaction + camera control
+    // 🌀 Camera touch/drag
     const { speed, offsetX, offsetY } = getSpeed();
-    camera.position.x = offsetX * 2.5;
+    camera.position.x = offsetX * 4.5;
     camera.position.y = -offsetY * 1.5;
     camera.lookAt(0, 0, 0);
   
-    // 👉 Update postprocessing
     rgbShiftPass.uniforms['amount'].value = speed * 0.001;
-
   
-    // 👉 Render
     composer.render();
   }
+  
   
 
   animate();

@@ -63,8 +63,8 @@ export class ViscoElasticOptimizer {
     for (let i = 0; i < this.positions.length; i++) {
       const p = this.positions[i];
       const radius = p.length();
-      if (radius > 2) {
-      p.normalize().multiplyScalar(2);
+      if (radius > 1) {
+      p.normalize().multiplyScalar(1);
       }
     }
 
