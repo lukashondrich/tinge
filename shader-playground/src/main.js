@@ -22,13 +22,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.5, 0.3, 0.4
+    0.7, 0.5, 0.5
   );
   composer.addPass(bloomPass);
 
   const rgbShiftPass = createRGBShiftPass();
   composer.addPass(rgbShiftPass);
-
+  rgbShiftPass.uniforms['amount'].value = 0.01; // Adjust the value as needed
   function animate(t) {
     //console.log('🌀 animate() running...');
     requestAnimationFrame(animate);
@@ -44,7 +44,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
     mesh.instanceMatrix.needsUpdate = true;
 
-    const maxDistSq = 0.5 * 0.5;
+    const maxDistSq = 0.25 * 0.25;
 
     const linePositions = [];
 
@@ -78,7 +78,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     camera.lookAt(0, 0, 0);
   
     // 👉 Update postprocessing
-    rgbShiftPass.uniforms['amount'].value = speed * 0.002;
+    rgbShiftPass.uniforms['amount'].value = speed * 0.001;
+
   
     // 👉 Render
     composer.render();
