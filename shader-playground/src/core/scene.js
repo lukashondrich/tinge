@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { Optimizer } from '../utils/Optimizer.js';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-
+export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
 
 export async function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x223344);
+  scene.background = new THREE.Color(0x112233); 
   scene.fog = new THREE.Fog(0x223344, 10, 50);
 
   const camera = new THREE.PerspectiveCamera(
@@ -16,11 +16,13 @@ export async function createScene() {
     0.1,
     1000
   );
-  camera.position.z = 20;
+  camera.position.z = 15;
 
   // ✅ Load, scale, and center embedding data
   const raw = await fetch('/embedding.json').then(r => r.json());
-  const scale = 4;
+  const scale = SCALE;
+
+
   raw.forEach(p => {
     p.x *= scale;
     p.y *= scale;

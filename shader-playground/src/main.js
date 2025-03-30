@@ -6,12 +6,15 @@ import { createRenderer } from './core/renderer.js';
 import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { SCALE } from './core/scene.js';
 
 if (window.__ANIMATING__) {
   console.warn('🔥 animate() already running — skipping');
   throw new Error('animate() already running');
 }
 window.__ANIMATING__ = true;
+
+
 
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
   const renderer = createRenderer();
@@ -29,14 +32,59 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   const rgbShiftPass = createRGBShiftPass();
   composer.addPass(rgbShiftPass);
   
+  // 🧪 Fake "speech" stream for testing
+  const mockWords = ["banana", "is", "a", "fruit", "that", "grows", "in", "clusters"];
+  let mockIndex = 0;
+
+  setInterval(() => {
+    if (mockIndex < mockWords.length) {
+      const word = mockWords[mockIndex++];
+      addMockWord(word);
+    }
+  }, 800);
+
+  function addMockWord(word) {
+    const newPoint = { x: 0, y: 0, z: 0 }; // 🔥 Always center
+    optimizer.addPoint(newPoint);
+  
+    const id = optimizer.getPositions().length - 1;
+    recentlyAdded.set(id, performance.now());
+    showWordLabel(word);
+    console.log('🆕 Mock word added:', word);
+  }
+
+  function showWordLabel(word) {
+    const label = document.createElement('div');
+    label.innerText = word;
+    label.style.position = 'absolute';
+    label.style.left = '50px';       // 👈 left side
+    label.style.top = '100px';
+    label.style.color = '#222';
+    label.style.fontSize = '34px';
+    label.style.fontFamily = 'monospace';
+    label.style.opacity = '1';
+    label.style.transition = 'opacity 2s ease-out';
+    label.style.top = `${60 + 28 * mockIndex}px`;
+
+    document.body.appendChild(label);
+  
+    setTimeout(() => {
+      label.style.opacity = '0';
+      setTimeout(() => label.remove(), 2000);
+    }, 1000);
+  }
+  
+  
+  
+
+
   function animate(t) {
     requestAnimationFrame(animate);
     optimizer.step();
   
     const updatedPositions = optimizer.getPositions();
     const now = performance.now();
-    const scale = 4; // ⚠️ match your scene.js scale
-  
+    const scale = SCALE;  
     for (let i = 0; i < updatedPositions.length; i++) {
       const pos = updatedPositions[i].clone().multiplyScalar(scale);
       dummy.position.copy(pos);
@@ -61,7 +109,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
   
     mesh.instanceMatrix.needsUpdate = true;
-  
+    mesh.count = updatedPositions.length; 
     // 🔁 Rebuild filaments (also scale-aligned)
     const maxDistSq = 0.45 * 0.45;
     const linePositions = [];
