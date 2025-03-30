@@ -7,8 +7,8 @@ const recentlyAdded = new Map();
 
 export async function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x223344);
-  scene.fog = new THREE.Fog(0x223344, 10, 50);
+  scene.background = new THREE.Color(0x000000); // black would be? 0x000000
+  scene.fog = new THREE.Fog(0x000000, 10, 50);
 
   const camera = new THREE.PerspectiveCamera(
     75,
@@ -18,7 +18,6 @@ export async function createScene() {
   );
   camera.position.z = 20;
 
-  // ✅ Load, scale, and center embedding data
   const raw = await fetch('/embedding.json').then(r => r.json());
   const scale = 4;
   raw.forEach(p => {
@@ -49,7 +48,7 @@ export async function createScene() {
   });
 
   const numPoints = raw.length;
-  const geometry = new THREE.SphereGeometry(1, 12, 12);
+  const geometry = new THREE.SphereGeometry(0.05, 12, 12);
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0x223344,
@@ -61,7 +60,7 @@ export async function createScene() {
     fog: true
   });
 
-  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
+  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100);
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
   for (let i = 0; i < numPoints; i++) {
@@ -73,37 +72,36 @@ export async function createScene() {
     instancedMesh.setMatrixAt(i, dummy.matrix);
   }
   instancedMesh.instanceMatrix.needsUpdate = true;
-  instancedMesh.count = numPoints; // ✅ hides unused instances
+  instancedMesh.count = numPoints;
   scene.add(instancedMesh);
 
-  // 🧫 Add gel shell around the point cloud
-  const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);
+  // 🧫 Updated Gel
+  const gelGeometry = new THREE.SphereGeometry(5, 64, 64);
   const gelMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xff6677,
-    transmission: 0.25,
-    opacity: 0.45,
-    transparent: true,
-    roughness: 0.4,
+    color: 0xfff1f1,
+    transmission: 0.92,
+    ior: 1.35,
+    thickness: 4.0,
+    attenuationColor: 0xffcccc,
+    attenuationDistance: 0.8,
+    roughness: 0.25,
     metalness: 0.05,
-    thickness: 5.0,
-    clearcoat: 0.8,
+    clearcoat: 0.6,
     clearcoatRoughness: 0.2,
-    sheen: 1.0, 
-    sheenColor: new THREE.Color(0xffcccc)
+    transparent: true,
+    opacity: 1.0
   });
   gelMaterial.depthWrite = false;
   const gel = new THREE.Mesh(gelGeometry, gelMaterial);
   gel.position.set(0, 0, 0);
   gel.renderOrder = 1;
 
-  // Debug origin marker
   const wire = new THREE.Mesh(
     new THREE.SphereGeometry(0.1, 12, 12),
     new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true })
   );
   scene.add(wire);
 
-  // Filaments
   const lineGeometry = new THREE.BufferGeometry();
   const lineMaterial = new THREE.LineBasicMaterial({
     color: 0x88bbff,
@@ -115,25 +113,71 @@ export async function createScene() {
   const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
   lineSegments.renderOrder = 0;
 
-  // Lighting
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-  dirLight.position.set(2, 2, 5);
-  scene.add(dirLight);
-  const pointLight = new THREE.PointLight(0xffffff, 1.2, 15, 2);
-  pointLight.position.set(0, 0, 5);
-  scene.add(pointLight);
+  // 🌅 Gradient Dome Backdrop
+  const skyGeo = new THREE.SphereGeometry(500, 32, 32);
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: {
+      topColor: { value: new THREE.Color(0x000000) },
+      bottomColor: { value: new THREE.Color(0x4b0082) }, // whats the color? -- purple: 0x4b0082
+      offset: { value: 33 },
+      exponent: { value: 0.6 }
+    },
+    vertexShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      uniform float offset;
+      uniform float exponent;
+      varying vec3 vWorldPosition;
+      void main() {
+        float h = normalize(vWorldPosition + offset).y;
+        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  const sky = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(sky);
 
-  // Add to scene
+  scene.add(new THREE.AmbientLight(0xffffff, 0.03));
+  const dirLight = new THREE.DirectionalLight(0xfff0e5, 0.25);
+  dirLight.position.set(4, 2, 4);
+  scene.add(dirLight);
+  const pointLight = new THREE.PointLight(0xffeedd, 0.6, 15, 2);
+  pointLight.position.set(-2, 2, 4);
+  scene.add(pointLight);
+  const backlight = new THREE.PointLight(0xffcccc, 0.3, 20);
+  backlight.position.set(0, 0, -10);
+  scene.add(backlight);
+
+  // 🧱 Soft matte floor
+  const floorGeo = new THREE.PlaneGeometry(200, 200);
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: 0xf0f0f0,
+    roughness: 1.0,
+    metalness: 0.0
+  });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -10;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
   scene.add(lineSegments);
   scene.add(gel);
 
-  // Controls
   const controls = new OrbitControls(camera, document.body);
   controls.target.set(0, 0, 0);
   controls.update();
 
-  // 🌟 Add test button for new word
   const button = document.createElement('button');
   button.innerText = 'Add “banana”';
   button.style.position = 'absolute';
@@ -147,7 +191,7 @@ export async function createScene() {
       y: (Math.random() * 2 - 1) * scale,
       z: (Math.random() * 2 - 1) * scale
     };
-    optimizer.addPoint(newWord); 
+    optimizer.addPoint(newWord);
     const id = optimizer.getPositions().length - 1;
     recentlyAdded.set(id, performance.now());
     console.log('✨ Added new point:', newWord);
