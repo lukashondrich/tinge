@@ -3,6 +3,8 @@ import { Optimizer } from '../utils/Optimizer.js';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+const recentlyAdded = new Map();
+
 export async function createScene() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x223344);
@@ -47,7 +49,7 @@ export async function createScene() {
   });
 
   const numPoints = raw.length;
-  const geometry = new THREE.SphereGeometry(0.05, 12, 12);
+  const geometry = new THREE.SphereGeometry(1, 12, 12);
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0x223344,
@@ -59,7 +61,7 @@ export async function createScene() {
     fog: true
   });
 
-  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints);
+  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
   for (let i = 0; i < numPoints; i++) {
@@ -71,21 +73,22 @@ export async function createScene() {
     instancedMesh.setMatrixAt(i, dummy.matrix);
   }
   instancedMesh.instanceMatrix.needsUpdate = true;
+  instancedMesh.count = numPoints; // ✅ hides unused instances
   scene.add(instancedMesh);
 
   // 🧫 Add gel shell around the point cloud
   const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);
   const gelMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xff6677,
-    transmission: 0.85,
-    opacity: 0.95,
+    transmission: 0.25,
+    opacity: 0.45,
     transparent: true,
     roughness: 0.4,
     metalness: 0.05,
     thickness: 5.0,
     clearcoat: 0.8,
     clearcoatRoughness: 0.2,
-    sheen: 1.0,
+    sheen: 1.0, 
     sheenColor: new THREE.Color(0xffcccc)
   });
   gelMaterial.depthWrite = false;
@@ -125,10 +128,30 @@ export async function createScene() {
   scene.add(lineSegments);
   scene.add(gel);
 
-  // Controls (optional external access)
+  // Controls
   const controls = new OrbitControls(camera, document.body);
   controls.target.set(0, 0, 0);
   controls.update();
+
+  // 🌟 Add test button for new word
+  const button = document.createElement('button');
+  button.innerText = 'Add “banana”';
+  button.style.position = 'absolute';
+  button.style.top = '10px';
+  button.style.left = '10px';
+  document.body.appendChild(button);
+
+  button.onclick = () => {
+    const newWord = {
+      x: (Math.random() * 2 - 1) * scale,
+      y: (Math.random() * 2 - 1) * scale,
+      z: (Math.random() * 2 - 1) * scale
+    };
+    optimizer.addPoint(newWord); 
+    const id = optimizer.getPositions().length - 1;
+    recentlyAdded.set(id, performance.now());
+    console.log('✨ Added new point:', newWord);
+  };
 
   return {
     scene,
@@ -139,6 +162,6 @@ export async function createScene() {
     dummy,
     numPoints,
     lineSegments,
-    controls
+    recentlyAdded
   };
 }

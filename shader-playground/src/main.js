@@ -13,7 +13,7 @@ if (window.__ANIMATING__) {
 }
 window.__ANIMATING__ = true;
 
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
   const renderer = createRenderer();
   const getSpeed = setupTouchRotation(mesh);
 
@@ -28,39 +28,51 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const rgbShiftPass = createRGBShiftPass();
   composer.addPass(rgbShiftPass);
-  rgbShiftPass.uniforms['amount'].value = 0.01; // Adjust the value as needed
+  
   function animate(t) {
     requestAnimationFrame(animate);
-    controls.update(); // 👈 this is what you were missing
     optimizer.step();
-    const updatedPositions = optimizer.getPositions();
   
-    for (let i = 0; i < numPoints; i++) {
-      const pos = updatedPositions[i].clone().multiplyScalar(4);
+    const updatedPositions = optimizer.getPositions();
+    const now = performance.now();
+    const scale = 4; // ⚠️ match your scene.js scale
+  
+    for (let i = 0; i < updatedPositions.length; i++) {
+      const pos = updatedPositions[i].clone().multiplyScalar(scale);
       dummy.position.copy(pos);
   
-      // 🔁 Depth-based point scale (this was missing before)
       const distToCam = camera.position.distanceTo(pos);
-      const scale = 3 * (1 / (1 + distToCam * 0.3));
-      dummy.scale.setScalar(scale);
+      let pointScale = 0.03 * (1 / (1 + distToCam * 0.3));
   
+      // 🌟 Apply glow effect to newly added points
+      if (recentlyAdded.has(i)) {
+        const age = (now - recentlyAdded.get(i)) / 1000; // in seconds
+        if (age < 20) {
+          const pulse = 1 + Math.sin(age * Math.PI) * 4;
+          pointScale *= pulse;
+        } else {
+          recentlyAdded.delete(i);
+        }
+      }
+  
+      dummy.scale.setScalar(pointScale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
+  
     mesh.instanceMatrix.needsUpdate = true;
   
-    // 🔁 Rebuild filaments
-    const maxDistSq = 0.55 * 0.35;
+    // 🔁 Rebuild filaments (also scale-aligned)
+    const maxDistSq = 0.45 * 0.45;
     const linePositions = [];
   
-    for (let i = 0; i < numPoints; i++) {
-      for (let j = i + 1; j < numPoints; j++) {
+    for (let i = 0; i < updatedPositions.length; i++) {
+      for (let j = i + 1; j < updatedPositions.length; j++) {
         const a = updatedPositions[i];
         const b = updatedPositions[j];
-        const distSq = a.distanceToSquared(b);
-        if (distSq < maxDistSq) {
-          const pa = a.clone().multiplyScalar(4);
-          const pb = b.clone().multiplyScalar(4);
+        if (a.distanceToSquared(b) < maxDistSq) {
+          const pa = a.clone().multiplyScalar(scale);
+          const pb = b.clone().multiplyScalar(scale);
           linePositions.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
         }
       }
@@ -72,17 +84,18 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       'position',
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
-  
-    // 🌀 Camera touch/drag
+    
+    controls.update();
+
     const { speed, offsetX, offsetY } = getSpeed();
-    //camera.position.x = offsetX * 4.5;
-    //camera.position.y = -offsetY * 1.5;
     camera.lookAt(0, 0, 0);
-  
-    rgbShiftPass.uniforms['amount'].value = speed * 0.001;
-  
+
+    // ✨ Apply RGB shift only when user is dragging
+    rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;
     composer.render();
   }
+  
+  
   
   
 
