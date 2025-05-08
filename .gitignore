@@ -2,3 +2,17 @@ embeddings_env/
 *.pyc
 __pycache__/
 .ipynb_checkpoints/
+
+# dependencies
+node_modules/
+
+# environment files
+.env
+
+# build / cache
+dist/
+.vite/
+*.log
+
+# OS files
+.DS_Store

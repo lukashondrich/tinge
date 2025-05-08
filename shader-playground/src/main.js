@@ -1,3 +1,6 @@
+// main.js
+import { initOpenAIRealtime } from "./openaiRealtime";
+
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -8,24 +11,55 @@ import { setupTouchRotation } from './utils/touchInput.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SCALE } from './core/scene.js';
 
+console.log('🚀 main.js loaded');
+
+// Check if animation is already running
 if (window.__ANIMATING__) {
   console.warn('🔥 animate() already running — skipping');
   throw new Error('animate() already running');
 }
 window.__ANIMATING__ = true;
 
-
-
+// Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
+  console.log('📊 Scene created');
   const renderer = createRenderer();
+
+  // Initialize OpenAI Realtime with a callback to handle the remote audio stream
+  console.log('🔄 Initializing OpenAI Realtime...');
+  initOpenAIRealtime(
+    (remoteStream) => {
+      console.log("🔊 Received remote audio stream");
+      const audio = new Audio();
+      audio.srcObject = remoteStream;
+      audio.autoplay = true;
+      audio.play().catch(err => console.error("Audio play error:", err));
+    },
+    (event) => {
+      // guard for the exact event that carries the transcript delta
+      if (
+        event.type === "response.audio_transcript.delta" &&
+        event.response &&
+        event.response.audio_transcript &&
+        event.response.audio_transcript.delta &&
+        typeof event.response.audio_transcript.delta.text === "string"
+      ) {
+        const text = event.response.audio_transcript.delta.text;
+        addMockWord(text);
+      }
+      // else ignore everything else
+    }
+  )
+  .catch(err => console.error("⚠️ Realtime init error:", err));
   const getSpeed = setupTouchRotation(mesh);
 
+  // Set up post-processing
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.9, 0.9, 0.7
+    1.5, 0.9, 0.7
   );
   composer.addPass(bloomPass);
 
@@ -57,7 +91,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     const label = document.createElement('div');
     label.innerText = word;
     label.style.position = 'absolute';
-    label.style.left = '50px';       // 👈 left side
+    label.style.left = '50px';
     label.style.top = '100px';
     label.style.color = '#222';
     label.style.fontSize = '34px';
@@ -73,11 +107,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       setTimeout(() => label.remove(), 2000);
     }, 1000);
   }
-  
-  
-  
 
-
+  // Animation loop
   function animate(t) {
     requestAnimationFrame(animate);
     optimizer.step();
@@ -110,6 +141,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
     mesh.instanceMatrix.needsUpdate = true;
     mesh.count = updatedPositions.length; 
+
     // 🔁 Rebuild filaments (also scale-aligned)
     const maxDistSq = 0.45 * 0.45;
     const linePositions = [];
@@ -142,12 +174,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;
     composer.render();
   }
-  
-  
-  
-  
 
   animate();
+  
+  // Handle cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (typeof cleanup === 'function') {
+      cleanup();
+    }
+  });
 });
-
-
