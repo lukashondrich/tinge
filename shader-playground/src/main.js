@@ -36,18 +36,18 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
-      // guard for the exact event that carries the transcript delta
-      if (
-        event.type === "response.audio_transcript.delta" &&
-        event.response &&
-        event.response.audio_transcript &&
-        event.response.audio_transcript.delta &&
-        typeof event.response.audio_transcript.delta.text === "string"
-      ) {
-        const text = event.response.audio_transcript.delta.text;
-        addMockWord(text);
+      console.log("💬 eventCallback got event:", event.type, event);
+  
+      if (event.type === "response.audio_transcript.delta" && typeof event.delta === "string") {
+        console.log("👉 transcript delta:", event.delta);
+        addMockWord(event.delta);
       }
-      // else ignore everything else
+  
+      // (Optionally you can also handle the final transcript:)
+      if (event.type === "response.audio_transcript.done" && typeof event.transcript === "string") {
+        console.log("✅ final transcript:", event.transcript);
+        // maybe show the final phrase somewhere in your UI
+      }
     }
   )
   .catch(err => console.error("⚠️ Realtime init error:", err));

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { Optimizer } from '../utils/Optimizer.js';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 export const SCALE = 4; // 🔁 central scale value
@@ -38,14 +37,14 @@ export async function createScene() {
   });
 
   const optimizer = new ViscoElasticOptimizer(raw, {
-    learningRate: 0.001,
-    viscosity: 0.2,
+    learningRate: 0.005,
+    viscosity: 0.1,
     springiness: 0.01,
     damping: 0.1,
     mass: 6.0,
     weights: {
-      semanticAttraction: 1.9,
-      repulsion: 0.6,
+      semanticAttraction: 10.9,
+      repulsion: 20.9,
       boundary: 30000
     }
   });

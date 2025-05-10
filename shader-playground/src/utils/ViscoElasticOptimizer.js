@@ -52,7 +52,7 @@ export class ViscoElasticOptimizer {
         const pj = this.positions[j];
         const dir = new THREE.Vector3().subVectors(pi, pj);
         const distSq = dir.lengthSq() + 0.0001;
-        const strength = Math.min(this.weights.repulsion / distSq, 1.5);
+        const strength = Math.min(this.weights.repulsion / distSq, 8.5);
         dir.normalize().multiplyScalar(strength);
         grads[i].add(dir);
         grads[j].sub(dir);
