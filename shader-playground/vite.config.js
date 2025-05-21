@@ -16,11 +16,14 @@ export default defineConfig({
     esbuildOptions: { sourcemap: false }
   },
   server: {
+    allowedHosts: true,
+    host: true,
     port: 5173,
     proxy: {
       // REST: fetch('/token') → http://localhost:3000/token
       '/token': 'http://localhost:3000'
       // Remove the WebSocket proxy since we're using WebRTC, not WebSockets
     }
-  }
+  },
 });
+
