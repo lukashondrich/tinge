@@ -106,3 +106,9 @@ export class ViscoElasticOptimizer {
     return this.positions;
   }
 }
+
+// ─── helper factory + default export ──────────────────────────────
+export function createOptimizer(points = [], opts = {}) {
+  return new ViscoElasticOptimizer(points, opts);
+}
+export default ViscoElasticOptimizer;

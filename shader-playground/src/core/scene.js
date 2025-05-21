@@ -1,168 +1,159 @@
-import * as THREE from 'three';
-import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-export const SCALE = 4; // 🔁 central scale value
-const recentlyAdded = new Map();
+/*  scene.js  ───────────────────────────────────────────────────────────── */
 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { LineMaterial        } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2       } from 'three/examples/jsm/lines/LineSegments2.js';
+
+import { thetaGraph }      from '../utils/ThetaGraphSpanner.js';
+import { createOptimizer } from '../utils/ViscoElasticOptimizer.js';
+
+/* ─── tunables ──────────────────────────────────────────────── */
+export const SCALE           = 4;      // central scale for embedding cloud
+const BASE_LINE_WIDTH        = 0.6;
+const MAX_LINE_WIDTH         = 0.9;
+const GLOW_BOOST             = 3.5;    // filament glow strength
+
+/* ─── module-scope state ───────────────────────────────────── */
+const edgeUsage = new Map();           // "i_j" → count
+let   lineMesh  = null;                // LineSegments2 instance
+
+/* ───────────────────────────────────────────────────────────── */
 export async function createScene() {
+
+  /* Scene, camera, controls */
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x112233); 
-  scene.fog = new THREE.Fog(0x223344, 10, 50);
+  scene.background = new THREE.Color(0x112233);
+  scene.fog        = new THREE.Fog(0x223344, 10, 50);
 
   const camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000
+    75, window.innerWidth / window.innerHeight, 0.1, 1000
   );
-  camera.position.z = 15;
+  camera.position.z = 4;
 
-  // ✅ Load, scale, and center embedding data
-  const raw = await fetch('/embedding.json').then(r => r.json());
-  const scale = SCALE;
-
-
-  raw.forEach(p => {
-    p.x *= scale;
-    p.y *= scale;
-    p.z *= scale;
-  });
-  const center = new THREE.Vector3();
-  raw.forEach(p => center.add(new THREE.Vector3(p.x, p.y, p.z)));
-  center.divideScalar(raw.length);
-  raw.forEach(p => {
-    p.x -= center.x;
-    p.y -= center.y;
-    p.z -= center.z;
-  });
-
-  const optimizer = new ViscoElasticOptimizer(raw, {
-    learningRate: 0.005,
-    viscosity: 0.1,
-    springiness: 0.01,
-    damping: 0.1,
-    mass: 6.0,
-    weights: {
-      semanticAttraction: 10.9,
-      repulsion: 20.9,
-      boundary: 30000
-    }
-  });
-
-  const numPoints = raw.length;
-  const geometry = new THREE.SphereGeometry(1, 12, 12);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0x223344,
-    emissiveIntensity: 0.4,
-    roughness: 0.5,
-    metalness: 0.1,
-    transparent: false,
-    opacity: 1.0,
-    fog: true
-  });
-
-  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
-  const dummy = new THREE.Object3D();
-  const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
-  for (let i = 0; i < numPoints; i++) {
-    dummy.position.copy(positions[i]);
-    const distToCam = camera.position.distanceTo(positions[i]);
-    const scaleFactor = 0.03 * (1 / (1 + distToCam * 0.3));
-    dummy.scale.setScalar(scaleFactor);
-    dummy.updateMatrix();
-    instancedMesh.setMatrixAt(i, dummy.matrix);
-  }
-  instancedMesh.instanceMatrix.needsUpdate = true;
-  instancedMesh.count = numPoints; // ✅ hides unused instances
-  scene.add(instancedMesh);
-
-  // 🧫 Add gel shell around the point cloud
-  const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);
-  const gelMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0xff6677,
-    transmission: 0.25,
-    opacity: 0.45,
-    transparent: true,
-    roughness: 0.4,
-    metalness: 0.05,
-    thickness: 5.0,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.2,
-    sheen: 1.0, 
-    sheenColor: new THREE.Color(0xffcccc)
-  });
-  gelMaterial.depthWrite = false;
-  const gel = new THREE.Mesh(gelGeometry, gelMaterial);
-  gel.position.set(0, 0, 0);
-  gel.renderOrder = 1;
-
-  // Debug origin marker
-  const wire = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true })
-  );
-  scene.add(wire);
-
-  // Filaments
-  const lineGeometry = new THREE.BufferGeometry();
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: 0x88bbff,
-    transparent: true,
-    opacity: 0.12,
-    depthWrite: false,
-    fog: true
-  });
-  const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
-  lineSegments.renderOrder = 0;
-
-  // Lighting
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-  dirLight.position.set(2, 2, 5);
-  scene.add(dirLight);
-  const pointLight = new THREE.PointLight(0xffffff, 1.2, 15, 2);
-  pointLight.position.set(0, 0, 5);
-  scene.add(pointLight);
-
-  // Add to scene
-  scene.add(lineSegments);
-  scene.add(gel);
-
-  // Controls
   const controls = new OrbitControls(camera, document.body);
+  controls.enableDamping = true;
   controls.target.set(0, 0, 0);
   controls.update();
 
-  // 🌟 Add test button for new word
-  const button = document.createElement('button');
-  button.innerText = 'Add “banana”';
-  button.style.position = 'absolute';
-  button.style.top = '10px';
-  button.style.left = '10px';
-  document.body.appendChild(button);
+  /* ── load & centre embedding --- */
+  const raw = await fetch('/embedding.json').then(r => r.json());
+  raw.forEach(p => { p.x *= SCALE; p.y *= SCALE; p.z *= SCALE; });
 
-  button.onclick = () => {
-    const newWord = {
-      x: (Math.random() * 2 - 1) * scale,
-      y: (Math.random() * 2 - 1) * scale,
-      z: (Math.random() * 2 - 1) * scale
-    };
-    optimizer.addPoint(newWord); 
-    const id = optimizer.getPositions().length - 1;
-    recentlyAdded.set(id, performance.now());
-    console.log('✨ Added new point:', newWord);
-  };
+  const center = raw.reduce(
+    (acc,p)=>acc.add(new THREE.Vector3(p.x,p.y,p.z)),
+    new THREE.Vector3()
+  ).divideScalar(raw.length);
 
+  raw.forEach(p => { p.x -= center.x; p.y -= center.y; p.z -= center.z; });
+
+  /* ── optimizer --- */
+  const optimizer = createOptimizer(raw, {
+    learningRate : 0.005,
+    viscosity    : 0.1,
+    springiness  : 0.01,
+    damping      : 0.1,
+    mass         : 6,
+    weights : { semanticAttraction:10.9, repulsion:20.9, boundary:3e4 }
+  });
+
+  /* ── instanced point mesh --- */
+  const numPoints = raw.length;
+  const sphereGeom = new THREE.SphereGeometry(0.3,12,12);
+  const sphereMat  = new THREE.MeshStandardMaterial({
+    color:0xffffff, emissive:0x223344, emissiveIntensity:0.5,
+    roughness:0.5,  metalness:0.1
+  });
+  let mesh  = new THREE.InstancedMesh(sphereGeom,sphereMat,numPoints+100);
+  const dummy = new THREE.Object3D();
+  const positions = optimizer.getPositions();
+
+  for (let i=0; i<numPoints; i++){
+    dummy.position.copy(positions[i]);
+    const dist = camera.position.distanceTo(positions[i]);
+    dummy.scale.setScalar(0.03/(1+dist*0.3));
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i,dummy.matrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.count = numPoints;
+  scene.add(mesh);
+
+  /* ── gel shell --- */
+  const gel = new THREE.Mesh(
+    new THREE.SphereGeometry(1.3,64,64),
+    new THREE.MeshPhysicalMaterial({
+      color:0xff6677, transmission:0.25, opacity:0.45, transparent:true,
+      roughness:0.4, metalness:0.05, thickness:5,
+      clearcoat:0.8, clearcoatRoughness:0.2,
+      sheen:1, sheenColor:new THREE.Color(0xffcccc)
+    })
+  );
+  gel.material.depthWrite = false;
+  scene.add(gel);
+
+  const lineGeom = new LineSegmentsGeometry();
+  const lineMat  = new LineMaterial({
+    color: 0x88bbff,
+    linewidth: 0.8,                       // visible thickness
+    transparent: false,
+    opacity: 0.6,
+    dashed: false,
+    resolution: new THREE.Vector2()        // we fill it next line
+  });
+  lineMat.resolution.set(window.innerWidth, window.innerHeight);
+  window.addEventListener('resize', () =>
+    lineMat.resolution.set(window.innerWidth, window.innerHeight));
+  
+  const lineMesh = new LineSegments2(lineGeom, lineMat);
+  scene.add(lineMesh);
+  
+
+  /* lights */
+  scene.add(new THREE.AmbientLight(0xffffff,0.5));
+  const dir = new THREE.DirectionalLight(0xffffff,0.6); dir.position.set(2,2,5); scene.add(dir);
+  const pt  = new THREE.PointLight(0xffffff,1.2,15,2);  pt.position.set(0,0,5); scene.add(pt);
+
+  /* recently-added map for glow pulses (used by main.js) */
+  const recentlyAdded = new Map();
+
+  /* === helper to rebuild the geometry =================================== */
+  function updateLineSegments() {
+    //console.info('[Θ] rebuild', performance.now().toFixed(0));
+    const pts   = optimizer.getPositions();
+    const edges = thetaGraph(pts, { k: 8}); 
+
+    const verts = [];
+    edges.forEach(([a, b]) => {
+      const pa = pts[a], pb = pts[b];
+      verts.push(
+         pa.x, pa.y, pa.z,
+         pb.x, pb.y, pb.z
+      );
+    });
+
+    //console.info('segments built', edges.length);   // should be > 0
+
+    lineMesh.geometry.dispose();
+
+    const g = new LineSegmentsGeometry();
+    g.setPositions(new Float32Array(verts));         // MUST be typed array
+    lineMesh.geometry = g;
+  }
+  updateLineSegments();  
+  /* ─── public API for main.js ─────────────────────────────── */
   return {
     scene,
     camera,
     controls,
-    mesh: instancedMesh,
+    mesh,
     optimizer,
     dummy,
     numPoints,
-    lineSegments,
-    recentlyAdded
+    lineSegments : lineMesh,
+    recentlyAdded,
+    updateLineSegments
   };
 }
