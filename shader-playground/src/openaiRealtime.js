@@ -230,6 +230,24 @@ async function connect() {
       isConnected = true;
       pttButton.innerText = 'Push to Talk';
       pttButton.style.backgroundColor = '#44f';
+
+    // ————————— Enable Whisper transcription + VAD chunks —————————
+     const sessionUpdate = {
+     type: 'session.update',
+     session: {
+       input_audio_transcription: { model: 'whisper-1' },
+       turn_detection: {          // chunk on short silences
+         type: 'server_vad',
+         threshold: 0.5,
+         prefix_padding_ms: 300,
+         silence_duration_ms: 200
+       }
+     }
+     };
+     dataChannel.send(JSON.stringify(sessionUpdate));
+     debugLog('Sent session.update ▶︎ enable audio transcription');
+     // :contentReference[oaicite:0]{index=0}
+
     };
     
     dataChannel.onclose = () => {
@@ -253,6 +271,22 @@ async function connect() {
         if (onEventCallback) {
           onEventCallback(event);
         }
+        if (event.type === 'conversation.item.input_audio_transcription.completed') {
+            const t = (event.transcript || '').trim();
+            if (t) {
+              // push each word into your visualiser
+              for (const w of t.split(/\s+/)) {
+                // assuming you passed `onEventCallback` that in turn calls main.addWord:
+                onEventCallback({ type: 'transcript.word', word: w });
+                // — or, if you want to call main.addWord directly:
+                // import main from './main.js';
+                // main.addWord(w, { speaker: 'user' });
+              }
+            }
+            // don’t fall through to other handlers for this event
+            return;
+          }
+
       });
       
     

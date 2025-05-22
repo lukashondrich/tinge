@@ -27,6 +27,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
   console.log('🔄 Initializing OpenAI Realtime...');
+  
   initOpenAIRealtime(
     (remoteStream) => {
       console.log("🔊 Received remote audio stream");
@@ -37,16 +38,23 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     },
     (event) => {
       console.log("💬 eventCallback got event:", event.type, event);
-  
+      
+      // ① our per-word transcript hook
+      if (event.type === 'transcript.word' && typeof event.word === 'string') {
+        console.log('🗣️ user spoke word:', event.word);
+        addWord(event.word);
+        return;  // don’t fall through
+      }
+      
+      // ② (optional) keep your old delta transcript support
       if (event.type === "response.audio_transcript.delta" && typeof event.delta === "string") {
         console.log("👉 transcript delta:", event.delta);
-        addMockWord(event.delta);
+        addWord(event.delta);
       }
-  
-      // (Optionally you can also handle the final transcript:)
+      
+      // ③ (optional) final phrase
       if (event.type === "response.audio_transcript.done" && typeof event.transcript === "string") {
         console.log("✅ final transcript:", event.transcript);
-        // maybe show the final phrase somewhere in your UI
       }
     }
   )
@@ -59,7 +67,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    1.5, 0.9, 0.7
+    0.3, 0.9, 0.1
   );
   composer.addPass(bloomPass);
 
@@ -73,11 +81,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   setInterval(() => {
     if (mockIndex < mockWords.length) {
       const word = mockWords[mockIndex++];
-      addMockWord(word);
+      addWord(word);
     }
   }, 800);
 
-  function addMockWord(word) {
+  function addWord(word) {
     const newPoint = { x: 0, y: 0, z: 0 }; // 🔥 Always center
     optimizer.addPoint(newPoint);
   
