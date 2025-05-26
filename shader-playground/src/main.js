@@ -67,7 +67,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.3, 0.9, 0.1
+    0.9, 0.9, 0.1
   );
   composer.addPass(bloomPass);
 
@@ -85,7 +85,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
   }, 800);
 
-  function addWord(word) {
+  function addWord(word, speaker = "ai") {
     const newPoint = { x: 0, y: 0, z: 0 }; // 🔥 Always center
     optimizer.addPoint(newPoint);
   
@@ -106,7 +106,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     label.style.fontFamily = 'monospace';
     label.style.opacity = '1';
     label.style.transition = 'opacity 2s ease-out';
-    label.style.top = `${60 + 28 * mockIndex}px`;
+    label.style.top = `${60 + 48 * mockIndex}px`;
 
     document.body.appendChild(label);
   
