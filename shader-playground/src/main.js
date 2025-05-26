@@ -92,7 +92,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     const id = optimizer.getPositions().length - 1;
     recentlyAdded.set(id, performance.now());
     showWordLabel(word);
-    console.log('🆕 Mock word added:', word);
+    console.log('🆕 word added:', word);
   }
 
   function showWordLabel(word) {
