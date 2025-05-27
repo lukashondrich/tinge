@@ -10,6 +10,8 @@ import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SCALE } from './core/scene.js';
+import { DialoguePanel } from './ui/dialoguePanel.js';
+
 
 console.log('🚀 main.js loaded');
 
@@ -19,6 +21,8 @@ if (window.__ANIMATING__) {
   throw new Error('animate() already running');
 }
 window.__ANIMATING__ = true;
+
+DialoguePanel.init();
 
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
@@ -55,6 +59,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ③ (optional) final phrase
       if (event.type === "response.audio_transcript.done" && typeof event.transcript === "string") {
         console.log("✅ final transcript:", event.transcript);
+      }
+      if (event.type === 'utterance.added' && event.record) {
+        DialoguePanel.add(event.record);
       }
     }
   )

@@ -1,6 +1,9 @@
 // openaiRealtime.js - DEBUG VERSION
 // This module handles WebRTC connections to OpenAI's Realtime API
 
+
+import { AudioManager } from './audio/audioManager';
+
 let peerConnection = null;
 let dataChannel = null;
 let audioTrack = null;
@@ -9,6 +12,8 @@ let isConnected = false;
 let pttButton = null;
 let onRemoteStreamCallback = null;
 let onEventCallback = null;
+let aiTranscript = '';
+
 
 // Debug logging function
 function debugLog(message, error = false) {
@@ -45,6 +50,10 @@ function createDebugContainer() {
   return container;
 }
 
+// our recorder for “utterance” blobs
+const userAudioMgr = new AudioManager({ speaker: 'user' });
+const aiAudioMgr = new AudioManager({ speaker: 'ai' });
+
 export async function initOpenAIRealtime(streamCallback, eventCallback) {
   
   // Store the callback for later use
@@ -52,6 +61,9 @@ export async function initOpenAIRealtime(streamCallback, eventCallback) {
   onEventCallback = eventCallback;
   debugLog("Initializing OpenAI Realtime...");
 
+  // Prepare MediaRecorder
+  await userAudioMgr.init();
+  await aiAudioMgr.init();
   // Create PTT button
   createPTTButton();
   
@@ -136,6 +148,8 @@ async function handlePTTPress(e) {
     }
   }
   
+  // start capturing user audio
+  userAudioMgr.startRecording();
   enableMicrophone();
 }
 
@@ -144,151 +158,147 @@ function handlePTTRelease(e) {
   disableMicrophone();
 }
 
-async function connect() {
-  try {
+export async function connect() {
+    try {
     debugLog('Connecting to OpenAI Realtime API...');
     pttButton.innerText = 'Connecting...';
     pttButton.style.backgroundColor = '#666';
-    
-    // Get token from server
+
+    // Get token
     debugLog('Requesting token from server...');
     const tokenResponse = await fetch('/token');
-    
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      debugLog(`Failed to get token: ${tokenResponse.status} ${tokenResponse.statusText}`, true);
-      debugLog(`Error details: ${errorText}`, true);
-      throw new Error(`Failed to get token: ${tokenResponse.status} ${tokenResponse.statusText}`);
-    }
-    
+    if (!tokenResponse.ok) throw new Error(`Failed to get token: ${tokenResponse.status}`);
     const data = await tokenResponse.json();
-    if (!data.client_secret || !data.client_secret.value) {
-      debugLog('Invalid token response from server - missing client_secret', true);
-      debugLog(`Response data: ${JSON.stringify(data)}`, true);
-      throw new Error('Invalid token response from server');
-    }
-    
-    debugLog('Token received successfully');
     const EPHEMERAL_KEY = data.client_secret.value;
-    
-    // Create WebRTC peer connection
-    // configure STUN/ICE and log states
-    peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-    });
-    
-    // make sure we negotiate both sending and receiving audio
+
+    // Create PeerConnection
+    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    
-    // debug ICE progress
-    peerConnection.onicecandidate = (e) => {
-        debugLog("ICE candidate: " + JSON.stringify(e.candidate));
-    };
-    peerConnection.oniceconnectionstatechange = () => {
-        debugLog("ICE connection state: " + peerConnection.iceConnectionState);
-    };
-    peerConnection.onconnectionstatechange = () => {
-        debugLog("Overall connection state: " + peerConnection.connectionState);
-    };
-    
-    // ensure we catch the remote track when it arrives
-    peerConnection.ontrack = (event) => {
-        debugLog("✅ Remote track received from OpenAI");
-        if (onRemoteStreamCallback) onRemoteStreamCallback(event.streams[0]);
-    };
-  
-    debugLog('WebRTC peer connection created');
-    
-    // Request microphone access
-    debugLog('Requesting microphone access...');
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
-      
-      debugLog('Microphone access granted');
-      
-      // Store audio track and disable it initially
-      audioTrack = mediaStream.getTracks()[0];
-      audioTrack.enabled = false; // Start with microphone disabled
-      debugLog('Audio track obtained and initially disabled');
-      
-      // Add the track to peer connection
-      peerConnection.addTrack(audioTrack);
-      debugLog('Audio track added to peer connection');
-    } catch (micError) {
-      debugLog(`Microphone access error: ${micError.message}`, true);
-      throw new Error(`Microphone access denied: ${micError.message}`);
-    }
-    
-    // Set up data channel
+    peerConnection.onicecandidate = e => debugLog("ICE candidate: " + JSON.stringify(e.candidate));
+    peerConnection.oniceconnectionstatechange = () => debugLog("ICE state: " + peerConnection.iceConnectionState);
+    peerConnection.onconnectionstatechange = () => debugLog("Connection state: " + peerConnection.connectionState);
+
+    // Media and DataChannel
+    const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioTrack = mediaStream.getTracks()[0];
+    audioTrack.enabled = false;
+    peerConnection.addTrack(audioTrack);
     dataChannel = peerConnection.createDataChannel('oai-events');
-    debugLog('Data channel created');
-    
+
+    // Set up Whisper+VAD on open
     dataChannel.onopen = () => {
-      debugLog('Data channel opened');
-      isConnected = true;
-      pttButton.innerText = 'Push to Talk';
-      pttButton.style.backgroundColor = '#44f';
+        debugLog('Data channel opened');
+        isConnected = true;
+        pttButton.innerText = 'Push to Talk';
+        pttButton.style.backgroundColor = '#44f';
 
-    // ————————— Enable Whisper transcription + VAD chunks —————————
-     const sessionUpdate = {
-     type: 'session.update',
-     session: {
-       input_audio_transcription: { model: 'whisper-1' },
-       turn_detection: {          // chunk on short silences
-         type: 'server_vad',
-         threshold: 0.5,
-         prefix_padding_ms: 300,
-         silence_duration_ms: 200
-       }
-     }
-     };
-     dataChannel.send(JSON.stringify(sessionUpdate));
-     debugLog('Sent session.update ▶︎ enable audio transcription');
-     // :contentReference[oaicite:0]{index=0}
+        const sessionUpdate = {
+        type: 'session.update',
+        session: {
+            input_audio_transcription: { model: 'whisper-1' },
+            turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 200
+            }
+        }
+        };
+        dataChannel.send(JSON.stringify(sessionUpdate));
+        debugLog('Sent session.update ▶︎ enable audio transcription');
+    };
 
+    // —————————————————————————————————————————
+    // NEW: Buffer for assembling the AI turn
+    let aiTranscript = '';
+
+    // 1) Catch remote audio and wire up AI recorder
+    peerConnection.ontrack = async (event) => {
+        debugLog("✅ Remote track received from OpenAI");
+        const remoteStream = event.streams[0];
+
+        // Pass to UI
+        if (onRemoteStreamCallback) {
+        onRemoteStreamCallback(remoteStream);
+        } else {
+        const remoteAudio = document.createElement('audio');
+        remoteAudio.srcObject = remoteStream;
+        remoteAudio.autoplay = true;
+        document.body.appendChild(remoteAudio);
+        }
+
+        // Re-init AI AudioManager on that stream
+        aiAudioMgr.stream = remoteStream;
+        try {
+        await aiAudioMgr.init();
+        debugLog("✅ AI AudioManager initialized with remote stream");
+        } catch (err) {
+        debugLog(`❌ AI AudioManager init error: ${err}`, true);
+        }
     };
-    
-    dataChannel.onclose = () => {
-      debugLog('Data channel closed');
-      isConnected = false;
-      pttButton.innerText = 'Reconnect';
-      pttButton.style.backgroundColor = '#888';
-    };
-    
-    dataChannel.onerror = (error) => {
-      debugLog(`Data channel error: ${error}`, true);
-    };
-    
-    
+
+    // 2) Handle all incoming events
     dataChannel.addEventListener("message", (e) => {
         const event = JSON.parse(e.data);
         debugLog(`Received event: ${event.type}`);
         if (!event.timestamp) event.timestamp = new Date().toLocaleTimeString();
       
-        // And forward to your external callback, if provided:
-        if (onEventCallback) {
-          onEventCallback(event);
-        }
-        if (event.type === 'conversation.item.input_audio_transcription.completed') {
-            const t = (event.transcript || '').trim();
-            if (t) {
-              // push each word into your visualiser
-              for (const w of t.split(/\s+/)) {
-                // assuming you passed `onEventCallback` that in turn calls main.addWord:
-                onEventCallback({ type: 'transcript.word', word: w });
-                // — or, if you want to call main.addWord directly:
-                // import main from './main.js';
-                // main.addWord(w, { speaker: 'user' });
-              }
-            }
-            // don’t fall through to other handlers for this event
-            return;
+        // Relay raw events
+        if (onEventCallback) onEventCallback(event);
+      
+        // — AI interim speech (start recorder + accumulate text) —
+        if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
+          if (!aiAudioMgr.isRecording) {
+            debugLog("▶️ [AI] startRecording()");
+            aiAudioMgr.startRecording();
           }
-
+          aiTranscript += event.delta;
+          onEventCallback({ type: 'transcript.word', word: event.delta, speaker: 'ai' });
+        }
+      
+        // — stop recording exactly once, at the end of the audio buffer —
+        if (event.type === 'output_audio_buffer.stopped') {
+          if (aiAudioMgr.isRecording) {
+            debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
+            aiAudioMgr.stopRecording(aiTranscript.trim())
+              .then(record => {
+                debugLog(`✅ [AI] stopRecording: id=${record.id}, blobSize=${record.audioBlob.size}`);
+                onEventCallback({ type: 'utterance.added', record });
+                aiTranscript = '';  // reset for next turn
+              })
+              .catch(err => debugLog(`❌ [AI] stopRecording error: ${err}`, true));
+          } else {
+            debugLog("⚠️ [AI] got buffer-stopped but was not recording, skipping");
+          }
+        }
+      
+        // — user speech done (server-VAD) — (unchanged)
+        if (event.type === 'conversation.item.input_audio_transcription.completed') {
+          const t = (event.transcript || '').trim();
+          if (t) {
+            userAudioMgr.stopRecording(t)
+              .then(record => {
+                onEventCallback({ type: 'utterance.added', record });
+                for (const w of t.split(/\s+/)) {
+                  onEventCallback({
+                    type: 'transcript.word',
+                    word: w,
+                    utteranceId: record.id,
+                    speaker: 'user'
+                  });
+                }
+              })
+              .catch(err => debugLog(`User audio stop error: ${err}`, true));
+          }
+          return; // swallow
+        }
+      
+        // — drop the old “response.done” or “response.audio_transcript.done” blocks entirely —
       });
       
+  
+
+    
     
     // Create and set local description
     debugLog('Creating offer...');
@@ -338,23 +348,6 @@ async function connect() {
       throw new Error(`SDP exchange failed: ${fetchError.message}`);
     }
     
-    // Set up audio from OpenAI
-    peerConnection.ontrack = (event) => {
-      debugLog('Remote track received from OpenAI');
-      
-      // If there's a callback, use it
-      if (onRemoteStreamCallback) {
-        debugLog('Calling stream callback with remote stream');
-        onRemoteStreamCallback(event.streams[0]);
-      } else {
-        // Default handling - create an audio element
-        debugLog('No callback provided, creating audio element');
-        const remoteAudio = document.createElement('audio');
-        remoteAudio.srcObject = event.streams[0];
-        remoteAudio.autoplay = true;
-        document.body.appendChild(remoteAudio);
-      }
-    };
     
     debugLog('Connection established successfully');
     isConnected = true;
@@ -373,6 +366,8 @@ async function connect() {
     throw error;
   }
 }
+
+
 
 function enableMicrophone() {
   if (audioTrack && isConnected) {
