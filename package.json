@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "js-yaml": "^4.1.0",
     "simple-peer": "^9.11.1"
   }
 }

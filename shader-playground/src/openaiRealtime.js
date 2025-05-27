@@ -3,6 +3,7 @@
 
 
 import { AudioManager } from './audio/audioManager';
+import jsyaml from 'js-yaml';
 
 let peerConnection = null;
 let dataChannel = null;
@@ -175,8 +176,23 @@ export async function connect() {
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
     peerConnection.onicecandidate = e => debugLog("ICE candidate: " + JSON.stringify(e.candidate));
-    peerConnection.oniceconnectionstatechange = () => debugLog("ICE state: " + peerConnection.iceConnectionState);
     peerConnection.onconnectionstatechange = () => debugLog("Connection state: " + peerConnection.connectionState);
+
+    peerConnection.oniceconnectionstatechange = () => {
+        const state = peerConnection.iceConnectionState;
+        debugLog("ICE state: " + state);
+        if (state === "disconnected") {
+          // Optional: try to recover without user action:
+          debugLog("🌀 ICE disconnected — restarting ICE");
+          peerConnection.restartIce();
+        }
+        if (state === "failed") {
+          debugLog("⚠️ ICE truly failed — marking disconnected");
+          isConnected = false;
+          pttButton.innerText = "Reconnect";
+          pttButton.style.backgroundColor = "#888";
+        }
+      };
 
     // Media and DataChannel
     const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -184,13 +200,50 @@ export async function connect() {
     audioTrack.enabled = false;
     peerConnection.addTrack(audioTrack);
     dataChannel = peerConnection.createDataChannel('oai-events');
+    
+    dataChannel.onclose = () => {
+        debugLog('🔌 Data channel closed — marking disconnected');
+        isConnected = false;
+        if (pttButton) {
+          pttButton.innerText = 'Reconnect';
+          pttButton.style.backgroundColor = '#888';
+        }
+      };
 
     // Set up Whisper+VAD on open
-    dataChannel.onopen = () => {
+    dataChannel.onopen = async () => {
         debugLog('Data channel opened');
         isConnected = true;
         pttButton.innerText = 'Push to Talk';
         pttButton.style.backgroundColor = '#44f';
+
+
+        // ─── load & send system prompt from YAML ───
+        try {
+            const res = await fetch('/prompts/systemPrompt.yaml');
+            if (!res.ok) throw new Error(`YAML load failed: ${res.status}`);
+            const yamlText = await res.text();
+            const obj = jsyaml.load(yamlText);
+            const sysText = obj.prompt;
+
+            const sysEvent = {
+            type: 'conversation.item.create',
+            event_id: crypto.randomUUID(),
+            item: {
+                type: 'message',
+                role: 'system',
+                content: [
+                { type: 'input_text', text: sysText }
+                ]
+            }
+            };
+            dataChannel.send(JSON.stringify(sysEvent));
+            debugLog('Sent system prompt from YAML');
+        } catch (err) {
+            debugLog(`Failed to load system prompt YAML: ${err.message}`, true);
+        }
+
+        // ─── enable audio transcription and VAD ───
 
         const sessionUpdate = {
         type: 'session.update',
