@@ -22,7 +22,8 @@ if (window.__ANIMATING__) {
 }
 window.__ANIMATING__ = true;
 
-DialoguePanel.init();
+//DialoguePanel.init();
+const panel = new DialoguePanel('#transcriptContainer');
 
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
@@ -46,14 +47,14 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ① our per-word transcript hook
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         console.log('🗣️ user spoke word:', event.word);
-        addWord(event.word);
-        return;  // don’t fall through
+        addWord(event.word, 'user');
+        //return;  // don’t fall through
       }
       
       // ② (optional) keep your old delta transcript support
       if (event.type === "response.audio_transcript.delta" && typeof event.delta === "string") {
         console.log("👉 transcript delta:", event.delta);
-        addWord(event.delta);
+        addWord(event.delta, 'ai');
       }
       
       // ③ (optional) final phrase
@@ -61,7 +62,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         console.log("✅ final transcript:", event.transcript);
       }
       if (event.type === 'utterance.added' && event.record) {
-        DialoguePanel.add(event.record);
+        panel.add(event.record);
       }
     }
   )
@@ -94,6 +95,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   function addWord(word, speaker = "ai") {
     const newPoint = { x: 0, y: 0, z: 0 }; // 🔥 Always center
+
+
     optimizer.addPoint(newPoint);
   
     const id = optimizer.getPositions().length - 1;

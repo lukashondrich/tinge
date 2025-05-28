@@ -21,7 +21,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // REST: fetch('/token') → http://localhost:3000/token
-      '/token': 'http://localhost:3000'
+      '/token': 'http://localhost:3000',
+      '/transcribe': 'http://localhost:3000'
       // Remove the WebSocket proxy since we're using WebRTC, not WebSockets
     }
   },

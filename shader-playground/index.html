@@ -3,12 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <title>Shader Playground</title>
+    <!-- link your style.css so .dialogue-panel and .bubble styles apply -->
+    <link rel="stylesheet" href="/src/style.css" />
     <style>
-      body { margin: 0; overflow: hidden; }
+      body { margin: 0; overflow: hidden; position: relative; }
       canvas { display: block; }
+      /* ensure the panel floats over the top half */
+      #transcriptContainer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-height: 50vh;
+        overflow-y: auto;
+        pointer-events: auto;
+      }
     </style>
   </head>
   <body>
+    <!-- Transcript panel for DialoguePanel -->
+    <aside id="transcriptContainer" class="dialogue-panel"></aside>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

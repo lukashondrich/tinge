@@ -5,6 +5,7 @@
 import { AudioManager } from './audio/audioManager';
 import jsyaml from 'js-yaml';
 
+
 let peerConnection = null;
 let dataChannel = null;
 let audioTrack = null;
@@ -13,8 +14,36 @@ let isConnected = false;
 let pttButton = null;
 let onRemoteStreamCallback = null;
 let onEventCallback = null;
-let aiTranscript = '';
+let aiRecordingStartTime = null;
+let aiWordOffsets = [];
 
+
+// Send a Blob to /transcribe and return Whisper’s word timestamps
+async function fetchWordTimings(blob) {
+    const fd = new FormData();
+    fd.append('file', blob, 'utterance.webm');
+    const res = await fetch('/transcribe', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(`Transcription API error ${res.status}`);
+    const { words, fullText } = await res.json();
+    return { words, fullText };
+  }
+
+// Stop recording, fetch timestamps, attach to record, then return it
+function stopAndTranscribe(audioMgr, transcriptText) {
+    return audioMgr.stopRecording(transcriptText)
+      .then(async record => {
+        if (!record) return null;
+        try {
+          const { words, fullText } = await fetchWordTimings(record.audioBlob);
+          record.wordTimings = words;
+          record.fullText    = fullText;
+        } catch {
+          record.wordTimings = [];
+          record.fullText    = record.text; // fallback to original
+        }
+        return record;
+      });
+  }
 
 // Debug logging function
 function debugLog(message, error = false) {
@@ -36,7 +65,7 @@ function createDebugContainer() {
   container.id = 'debug-container';
   container.style.position = 'fixed';
   container.style.left = '10px';
-  container.style.top = '10px';
+  container.style.top = '500px';
   container.style.width = '300px';
   container.style.height = '200px';
   container.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
@@ -299,38 +328,54 @@ export async function connect() {
         // Relay raw events
         if (onEventCallback) onEventCallback(event);
       
-        // — AI interim speech (start recorder + accumulate text) —
+
+        // — AI interim speech (start recorder + accumulate text + offsets) —
         if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
-          if (!aiAudioMgr.isRecording) {
+            if (!aiAudioMgr.isRecording) {
             debugLog("▶️ [AI] startRecording()");
+            aiRecordingStartTime = performance.now();
+            aiWordOffsets = [];
             aiAudioMgr.startRecording();
-          }
-          aiTranscript += event.delta;
-          onEventCallback({ type: 'transcript.word', word: event.delta, speaker: 'ai' });
+            }
+            // capture offset
+            const offsetMs = performance.now() - aiRecordingStartTime;
+            aiWordOffsets.push({ word: event.delta, offsetMs });
+
+            aiTranscript += event.delta;
+            onEventCallback({
+            type: 'transcript.word',
+            word: event.delta,
+            speaker: 'ai',
+            offsetMs
+            });
         }
       
+
         // — stop recording exactly once, at the end of the audio buffer —
         if (event.type === 'output_audio_buffer.stopped') {
-          if (aiAudioMgr.isRecording) {
-            debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
-            aiAudioMgr.stopRecording(aiTranscript.trim())
-              .then(record => {
-                debugLog(`✅ [AI] stopRecording: id=${record.id}, blobSize=${record.audioBlob.size}`);
-                onEventCallback({ type: 'utterance.added', record });
-                aiTranscript = '';  // reset for next turn
-              })
-              .catch(err => debugLog(`❌ [AI] stopRecording error: ${err}`, true));
-          } else {
+            if (aiAudioMgr.isRecording) {
+                debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
+                stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
+                    if (!record) return;
+                    onEventCallback({ type: 'utterance.added', record });
+
+                // reset for next turn
+                aiTranscript = '';
+                aiWordOffsets = [];
+                aiRecordingStartTime = null;
+                })
+                .catch(err => debugLog(`AI transcription error: ${err}`, true));
+            } else {
             debugLog("⚠️ [AI] got buffer-stopped but was not recording, skipping");
-          }
+            }
         }
       
         // — user speech done (server-VAD) — (unchanged)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const t = (event.transcript || '').trim();
           if (t) {
-            userAudioMgr.stopRecording(t)
-              .then(record => {
+            stopAndTranscribe(userAudioMgr, t).then(record => {
+                if (!record) return;
                 onEventCallback({ type: 'utterance.added', record });
                 for (const w of t.split(/\s+/)) {
                   onEventCallback({
@@ -341,8 +386,7 @@ export async function connect() {
                   });
                 }
               })
-              .catch(err => debugLog(`User audio stop error: ${err}`, true));
-          }
+              .catch(err => debugLog(`User transcription error: ${err}`, true));          }
           return; // swallow
         }
       
