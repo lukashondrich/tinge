@@ -51,14 +51,11 @@ export async function createScene() {
 
   const numPoints = raw.length;
   const geometry = new THREE.SphereGeometry(1, 12, 12);
-  const material = new THREE.MeshStandardMaterial({
+  //
+  // Use an unlit material so per-instance vertex colors display correctly
+  // without relying on scene lighting.
+  const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    emissive: 0x223344,
-    emissiveIntensity: 0.4,
-    roughness: 0.5,
-    metalness: 0.1,
-    transparent: false,
-    opacity: 1.0,
     fog: true,
     vertexColors: true // allow per-instance colors
   });
