@@ -59,7 +59,8 @@ export async function createScene() {
     metalness: 0.1,
     transparent: false,
     opacity: 1.0,
-    fog: true
+    fog: true,
+    vertexColors: true // allow per-instance colors
   });
 
   const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
@@ -72,7 +73,10 @@ export async function createScene() {
     dummy.scale.setScalar(scaleFactor);
     dummy.updateMatrix();
     instancedMesh.setMatrixAt(i, dummy.matrix);
+    // initialize colors for existing points
+    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
   }
+  instancedMesh.instanceColor.needsUpdate = true;
   instancedMesh.instanceMatrix.needsUpdate = true;
   instancedMesh.count = numPoints; // ✅ hides unused instances
   scene.add(instancedMesh);
