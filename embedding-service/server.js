@@ -42,6 +42,7 @@ app.get('/embed-word', (req, res) => {
   });
 });
 
-app.listen(3000, () => {
-  console.log('Embedding service listening on port 3000');
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Embedding service listening on port ${PORT}`);
 });
