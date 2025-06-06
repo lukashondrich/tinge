@@ -98,7 +98,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   async function addWord(word, speaker = "ai") {
     let newPoint = { x: 0, y: 0, z: 0 };
     try {
-      const res = await fetch(`/embed?word=${encodeURIComponent(word)}`);
+      const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
       if (res.ok) {
         const data = await res.json();
         newPoint = { x: data.x, y: data.y, z: data.z };

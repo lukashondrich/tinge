@@ -12,7 +12,7 @@ try {
   console.warn('Embedding file not found, starting with empty set');
 }
 
-app.get('/embed', (req, res) => {
+app.get('/embed-word', (req, res) => {
   const word = req.query.word;
   if (!word) return res.status(400).json({ error: 'Missing word parameter' });
 
