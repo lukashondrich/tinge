@@ -95,8 +95,17 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
   }, 800);
 
-  function addWord(word, speaker = "ai") {
-    const newPoint = { x: 0, y: 0, z: 0 };
+  async function addWord(word, speaker = "ai") {
+    let newPoint = { x: 0, y: 0, z: 0 };
+    try {
+      const res = await fetch(`/embed?word=${encodeURIComponent(word)}`);
+      if (res.ok) {
+        const data = await res.json();
+        newPoint = { x: data.x, y: data.y, z: data.z };
+      }
+    } catch (err) {
+      console.error('Embedding fetch failed', err);
+    }
     optimizer.addPoint(newPoint);
   
     // --- make room first ---
