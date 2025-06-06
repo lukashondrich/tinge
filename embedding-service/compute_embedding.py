@@ -1,12 +1,16 @@
 import sys
 import json
+import os
 import numpy as np
 import gensim.downloader as api
 from sklearn.decomposition import PCA
 
 
-def load_words(path="words.txt"):
-    with open(path, 'r') as f:
+def load_words(path=None):
+    if path is None:
+        script_dir = os.path.dirname(__file__)
+        path = os.path.join(script_dir, "..", "words.txt")
+    with open(path, "r") as f:
         return [w.strip() for w in f if w.strip()]
 
 
