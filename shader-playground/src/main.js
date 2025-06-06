@@ -46,15 +46,17 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       
       // ① our per-word transcript hook
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
-        console.log('🗣️ user spoke word:', event.word);
-        addWord(event.word, 'user');
+        const speaker = event.speaker || 'ai';
+        console.log('🗣️ word:', event.word, 'speaker:', speaker);
+        addWord(event.word, speaker);
         //return;  // don’t fall through
       }
       
       // ② (optional) keep your old delta transcript support
       if (event.type === "response.audio_transcript.delta" && typeof event.delta === "string") {
+        const speaker = event.speaker || 'ai';
         console.log("👉 transcript delta:", event.delta);
-        addWord(event.delta, 'ai');
+        addWord(event.delta, speaker);
       }
       
       // ③ (optional) final phrase
@@ -98,20 +100,27 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
 
     optimizer.addPoint(newPoint);
-  
+
     const id = optimizer.getPositions().length - 1;
     recentlyAdded.set(id, performance.now());
-    showWordLabel(word);
+
+    const color = speaker === 'user'
+      ? new THREE.Color('#69ea4f')
+      : new THREE.Color('rgb(90,0,90)');
+    mesh.setColorAt(id, color);
+    mesh.instanceColor.needsUpdate = true;
+
+    showWordLabel(word, speaker);
     console.log('🆕 word added:', word);
   }
 
-  function showWordLabel(word) {
+  function showWordLabel(word, speaker) {
     const label = document.createElement('div');
     label.innerText = word;
     label.style.position = 'absolute';
     label.style.left = '50px';
     label.style.top = '100px';
-    label.style.color = '#222';
+    label.style.color = speaker === 'user' ? '#69ea4f' : 'purple';
     label.style.fontSize = '34px';
     label.style.fontFamily = 'monospace';
     label.style.opacity = '1';
