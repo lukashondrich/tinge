@@ -67,7 +67,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
   )
   .catch(err => console.error("⚠️ Realtime init error:", err));
-  const getSpeed = setupTouchRotation(mesh);
+  const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
   // Set up post-processing
   const composer = new EffectComposer(renderer);
@@ -199,6 +199,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   window.addEventListener('beforeunload', () => {
     if (typeof cleanup === 'function') {
       cleanup();
+    }
+    if (typeof disposeTouch === 'function') {
+      disposeTouch();
     }
   });
 });
