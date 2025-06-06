@@ -51,16 +51,20 @@ export async function createScene() {
 
   const numPoints = raw.length;
   const geometry = new THREE.SphereGeometry(1, 12, 12);
-  //
+  // --- NEW: give every vertex a white colour so the shader’s vertexColor
+  // component is (1,1,1) instead of the default (0,0,0) ---
+  const nVerts = geometry.attributes.position.count;   // # of vertices
+  const white   = new Float32Array(nVerts * 3).fill(1); // 1,1,1 for each
+  geometry.setAttribute('color', new THREE.BufferAttribute(white, 3));
+
   // Use an unlit material so per-instance vertex colors display correctly
-  // without relying on scene lighting.
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    fog: true,
-    vertexColors: THREE.VertexColors // allow per-instance colors
+    fog:   true,
+    vertexColors: true          // keep this boolean flag for r174
   });
 
-  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
+  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 2000); // reserve extra space
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
   for (let i = 0; i < numPoints; i++) {
@@ -75,6 +79,7 @@ export async function createScene() {
   }
   instancedMesh.count = numPoints; // ✅ hides unused instances
   instancedMesh.instanceColor.needsUpdate = true;
+
   instancedMesh.instanceMatrix.needsUpdate = true;
   
   scene.add(instancedMesh);
