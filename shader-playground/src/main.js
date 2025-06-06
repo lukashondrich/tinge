@@ -96,22 +96,23 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   }, 800);
 
   function addWord(word, speaker = "ai") {
-    const newPoint = { x: 0, y: 0, z: 0 }; // 🔥 Always center
-
-
+    const newPoint = { x: 0, y: 0, z: 0 };
     optimizer.addPoint(newPoint);
-
+  
+    // --- make room first ---
     const id = optimizer.getPositions().length - 1;
-    recentlyAdded.set(id, performance.now());
-
-    const color = speaker === 'user'
-      ? new THREE.Color('#69ea4f')
-      : new THREE.Color('rgb(90,0,90)');
-    mesh.setColorAt(id, color);
+    mesh.count = id + 1;                // ensure the new slot exists
+  
+    // pick the colour
+    const colour = speaker === 'user'
+      ? new THREE.Color('#69ea4f')       // green
+      : new THREE.Color(0x5a005a);       // purple
+  
+    mesh.setColorAt(id, colour);
     mesh.instanceColor.needsUpdate = true;
-
+  
+    recentlyAdded.set(id, performance.now());
     showWordLabel(word, speaker);
-    console.log('🆕 word added:', word);
   }
 
   function showWordLabel(word, speaker) {

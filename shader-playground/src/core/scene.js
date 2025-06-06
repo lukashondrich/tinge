@@ -57,7 +57,7 @@ export async function createScene() {
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     fog: true,
-    vertexColors: true // allow per-instance colors
+    vertexColors: THREE.VertexColors // allow per-instance colors
   });
 
   const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
@@ -73,9 +73,10 @@ export async function createScene() {
     // initialize colors for existing points
     instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
   }
+  instancedMesh.count = numPoints; // ✅ hides unused instances
   instancedMesh.instanceColor.needsUpdate = true;
   instancedMesh.instanceMatrix.needsUpdate = true;
-  instancedMesh.count = numPoints; // ✅ hides unused instances
+  
   scene.add(instancedMesh);
 
   // 🧫 Add gel shell around the point cloud
