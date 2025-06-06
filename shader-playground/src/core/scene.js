@@ -63,6 +63,10 @@ export async function createScene() {
   });
 
   const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 100); // reserve extra space
+  const colorBuffer = new THREE.InstancedBufferAttribute(
+    new Float32Array((numPoints + 100) * 3), 3
+  );
+  instancedMesh.instanceColor = colorBuffer;
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
   for (let i = 0; i < numPoints; i++) {
@@ -72,8 +76,10 @@ export async function createScene() {
     dummy.scale.setScalar(scaleFactor);
     dummy.updateMatrix();
     instancedMesh.setMatrixAt(i, dummy.matrix);
+    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
   }
   instancedMesh.instanceMatrix.needsUpdate = true;
+  instancedMesh.instanceColor.needsUpdate = true;
   instancedMesh.count = numPoints; // ✅ hides unused instances
   scene.add(instancedMesh);
 

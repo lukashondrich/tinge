@@ -98,9 +98,12 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
 
     optimizer.addPoint(newPoint);
-  
+
     const id = optimizer.getPositions().length - 1;
     recentlyAdded.set(id, performance.now());
+    const color = speaker === 'user' ? new THREE.Color(0x00ff00) : new THREE.Color(0x8000ff);
+    mesh.setColorAt(id, color);
+    mesh.instanceColor.needsUpdate = true;
     showWordLabel(word);
     console.log('🆕 word added:', word);
   }
