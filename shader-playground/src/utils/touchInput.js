@@ -33,15 +33,26 @@ export function setupTouchRotation(mesh) {
     window.addEventListener('touchstart', onPointerDown);
     window.addEventListener('touchmove', onPointerMove);
     window.addEventListener('touchend', onPointerUp);
-  
-    return () => {
+
+    const getSpeed = () => {
       const speed = dragSpeed;
       dragSpeed *= 0.9;
-  
+
       const normalizedX = (lastX / window.innerWidth) * 2 - 1;
       const normalizedY = (lastY / window.innerHeight) * 2 - 1;
-  
+
       return { speed, offsetX: normalizedX, offsetY: normalizedY };
     };
+
+    const dispose = () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+      window.removeEventListener('touchstart', onPointerDown);
+      window.removeEventListener('touchmove', onPointerMove);
+      window.removeEventListener('touchend', onPointerUp);
+    };
+
+    return { getSpeed, dispose };
   }
   
