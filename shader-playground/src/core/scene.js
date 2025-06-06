@@ -37,14 +37,14 @@ export async function createScene() {
   });
 
   const optimizer = new ViscoElasticOptimizer(raw, {
-    learningRate: 0.005,
-    viscosity: 0.01,
+    learningRate: 0.002,
+    viscosity: 0.1,
     springiness: 0.01,
     damping: 0.1,
     mass: 5.0,
     weights: {
       semanticAttraction: 15.9,
-      repulsion: 10.9,
+      repulsion: 5.9,
       boundary: 30000
     }
   });

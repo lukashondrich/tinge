@@ -122,13 +122,13 @@ button:focus-visible {
 
 /* AI vs User alignment & colors */
 .bubble.ai {
-  background: purple;
-  color: #fff;
+  background: rgb(90, 0, 90);
+  color: #ffffff;
   float: left;
 }
 
 .bubble.user {
-  background: #aaffaa;
+  background: #69ea4f;
   color: #000;
   float: right;
 }

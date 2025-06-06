@@ -98,7 +98,7 @@ export class ViscoElasticOptimizer {
   addPoint(point) {
     const p = new THREE.Vector3(point.x, point.y, point.z);
     this.positions.push(p);
-    this.original.push(p.clone());
+    this.original.push(p.clone()); 
     this.velocities.push(new THREE.Vector3());
   }
   
