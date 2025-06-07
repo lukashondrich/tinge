@@ -68,8 +68,6 @@ def main():
     model = load_model()
     pca, max_abs = compute_pca(model, base_words)
     result = embed_word(word, model, pca, max_abs)
-
-    
     print(json.dumps(result))
 
 
