@@ -77,7 +77,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.9, 0.9, 0.1
+    0.9, 0.8, 0.2
   );
   composer.addPass(bloomPass);
 
@@ -91,7 +91,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   setInterval(() => {
     if (mockIndex < mockWords.length) {
       const word = mockWords[mockIndex++];
-      addWord(word);
+      addWord(word, "user");
     }
   }, 800);
 
@@ -101,7 +101,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
       if (res.ok) {
         const data = await res.json();
-        newPoint = { x: data.x, y: data.y, z: data.z };
+        newPoint = { x: data.x, y: data.y, z: data.z }; 
       }
     } catch (err) {
       console.error('Embedding fetch failed', err);

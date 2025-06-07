@@ -36,6 +36,7 @@ def compute_pca(model, base_words):
 
 
 def embed_word(word, model, pca, max_abs):
+    scale = 8
     vec = None
     for key in (word, word.lower()):
         if key in model:
@@ -49,7 +50,7 @@ def embed_word(word, model, pca, max_abs):
             "z": round((hash(word + word) % 1000) / 1000 - 0.5, 2)
         }
     reduced = pca.transform([vec])[0]
-    reduced = reduced / max_abs * 0.5
+    reduced = reduced / max_abs * 0.5 *scale
     return {
         "label": word,
         "x": round(float(reduced[0]), 2),
