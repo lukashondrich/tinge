@@ -374,19 +374,22 @@ export async function connect() {
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const t = (event.transcript || '').trim();
           if (t) {
-            stopAndTranscribe(userAudioMgr, t).then(record => {
+            for (const w of t.split(/\s+/)) {
+              onEventCallback({
+                type: 'transcript.word',
+                word: w,
+                speaker: 'user'
+              });
+            }
+
+            stopAndTranscribe(userAudioMgr, t)
+              .then(record => {
                 if (!record) return;
                 onEventCallback({ type: 'utterance.added', record });
-                for (const w of t.split(/\s+/)) {
-                  onEventCallback({
-                    type: 'transcript.word',
-                    word: w,
-                    utteranceId: record.id,
-                    speaker: 'user'
-                  });
-                }
               })
-              .catch(err => debugLog(`User transcription error: ${err}`, true));          }
+              .catch(err => debugLog(`User transcription error: ${err}`, true));
+          }
+
           return; // swallow
         }
       
