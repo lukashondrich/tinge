@@ -3,6 +3,7 @@
 
 
 import { AudioManager } from './audio/audioManager';
+import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
 
 
@@ -16,6 +17,8 @@ let onRemoteStreamCallback = null;
 let onEventCallback = null;
 let aiRecordingStartTime = null;
 let aiWordOffsets = [];
+let pendingUserRecordPromise = null;
+let pendingUserRecord = null;
 
 
 // Send a Blob to /transcribe and return Whisper’s word timestamps
@@ -161,6 +164,9 @@ function createPTTButton() {
 
 async function handlePTTPress(e) {
   debugLog('PTT button pressed handler called');
+
+  pendingUserRecordPromise = null;
+  pendingUserRecord = null;
   
   // Connect if not already connected
   if (!isConnected) {
@@ -186,6 +192,20 @@ async function handlePTTPress(e) {
 function handlePTTRelease(e) {
   debugLog('PTT button released handler called');
   disableMicrophone();
+
+  if (userAudioMgr.isRecording) {
+      pendingUserRecordPromise = userAudioMgr
+        .stopRecording('...')
+      .then(record => {
+        if (!record) return null;
+        pendingUserRecord = record;
+        if (onEventCallback) {
+          onEventCallback({ type: 'utterance.added', record });
+        }
+        return record;
+      })
+      .catch(err => debugLog(`User stop error: ${err}`, true));
+  }
 }
 
 export async function connect() {
@@ -382,12 +402,30 @@ export async function connect() {
               });
             }
 
-            stopAndTranscribe(userAudioMgr, t)
-              .then(record => {
-                if (!record) return;
-                onEventCallback({ type: 'utterance.added', record });
-              })
-              .catch(err => debugLog(`User transcription error: ${err}`, true));
+            if (pendingUserRecord) {
+              pendingUserRecord.text = t;
+              fetchWordTimings(pendingUserRecord.audioBlob)
+                .then(({ words, fullText }) => {
+                  pendingUserRecord.wordTimings = words;
+                  pendingUserRecord.fullText = fullText;
+                })
+                .catch(() => {
+                  pendingUserRecord.wordTimings = [];
+                  pendingUserRecord.fullText = t;
+                })
+                .finally(() => {
+                  StorageService.addUtterance(pendingUserRecord);
+                  onEventCallback({ type: 'utterance.added', record: pendingUserRecord });
+                  pendingUserRecord = null;
+                });
+            } else {
+              stopAndTranscribe(userAudioMgr, t)
+                .then(record => {
+                  if (!record) return;
+                  onEventCallback({ type: 'utterance.added', record });
+                })
+                .catch(err => debugLog(`User transcription error: ${err}`, true));
+            }
           }
 
           return; // swallow
