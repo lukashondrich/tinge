@@ -403,20 +403,25 @@ export async function connect() {
             }
 
             if (pendingUserRecord) {
-              pendingUserRecord.text = t;
-              fetchWordTimings(pendingUserRecord.audioBlob)
+              const record = pendingUserRecord;
+              record.text = t;
+              fetchWordTimings(record.audioBlob)
                 .then(({ words, fullText }) => {
-                  pendingUserRecord.wordTimings = words;
-                  pendingUserRecord.fullText = fullText;
+                  record.wordTimings = words;
+                  record.fullText = fullText;
                 })
                 .catch(() => {
-                  pendingUserRecord.wordTimings = [];
-                  pendingUserRecord.fullText = t;
+                  if (pendingUserRecord) {
+                    record.wordTimings = [];
+                    record.fullText = t;
+                  }
                 })
                 .finally(() => {
-                  StorageService.addUtterance(pendingUserRecord);
-                  onEventCallback({ type: 'utterance.added', record: pendingUserRecord });
-                  pendingUserRecord = null;
+                  if (pendingUserRecord) {
+                    StorageService.addUtterance(record);
+                    onEventCallback({ type: 'utterance.added', record });
+                    pendingUserRecord = null;
+                  }
                 });
             } else {
               stopAndTranscribe(userAudioMgr, t)
