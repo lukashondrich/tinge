@@ -60,9 +60,22 @@ def embed_word(word, model, pca, max_abs):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--server":
+        base_words = load_words()
+        model = load_model()
+        pca, max_abs = compute_pca(model, base_words)
+        for line in sys.stdin:
+            word = line.strip()
+            if not word:
+                continue
+            result = embed_word(word, model, pca, max_abs)
+            print(json.dumps(result), flush=True)
+        return
+
     if len(sys.argv) < 2:
         print(json.dumps({"error": "missing word"}))
         return
+
     word = sys.argv[1]
     base_words = load_words()
     model = load_model()

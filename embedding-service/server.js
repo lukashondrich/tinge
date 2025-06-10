@@ -12,6 +12,39 @@ try {
   console.warn('Embedding file not found, starting with empty set');
 }
 
+// Start a persistent Python process that keeps the model in memory
+const pythonScript = path.join(__dirname, 'compute_embedding.py');
+const python = spawn('python3', [pythonScript, '--server']);
+let pyBuffer = '';
+const pending = [];
+
+python.stdout.on('data', data => {
+  pyBuffer += data.toString();
+  const lines = pyBuffer.split('\n');
+  pyBuffer = lines.pop();
+  for (const line of lines) {
+    const req = pending.shift();
+    if (!req) continue;
+    try {
+      const result = JSON.parse(line);
+      req.resolve(result);
+    } catch (err) {
+      req.reject(err);
+    }
+  }
+});
+
+python.stderr.on('data', data => {
+  console.error('Embedding process error:', data.toString());
+});
+
+function embedWord(word) {
+  return new Promise((resolve, reject) => {
+    pending.push({ resolve, reject });
+    python.stdin.write(word + '\n');
+  });
+}
+
 app.get('/embed-word', (req, res) => {
   const word = req.query.word;
   if (!word) return res.status(400).json({ error: 'Missing word parameter' });
@@ -19,27 +52,16 @@ app.get('/embed-word', (req, res) => {
   const match = embeddings.find(e => e.label.toLowerCase() === word.toLowerCase());
   if (match) return res.json(match);
 
-  const script = path.join(__dirname, 'compute_embedding.py');
-  const child = spawn('python3', [script, word]);
-  let out = '';
-  child.stdout.on('data', d => out += d);
-  let err = '';
-  child.stderr.on('data', d => err += d);
-  child.on('close', code => {
-    if (code !== 0) {
-      console.error('Embedding script error:', err);
-      return res.status(500).json({ error: 'Embedding failed' });
-    }
-    try {
-      const data = JSON.parse(out);
+  embedWord(word)
+    .then(data => {
       embeddings.push(data);
       fs.writeFileSync(embeddingFile, JSON.stringify(embeddings, null, 2));
       res.json(data);
-    } catch (e) {
-      console.error('Failed to parse embedding output:', e);
-      res.status(500).json({ error: 'Invalid embedding data' });
-    }
-  });
+    })
+    .catch(err => {
+      console.error('Failed to embed word:', err);
+      res.status(500).json({ error: 'Embedding failed' });
+    });
 });
 
 const PORT = process.env.PORT || 3001;
