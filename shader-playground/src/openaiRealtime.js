@@ -194,8 +194,8 @@ function handlePTTRelease(e) {
   disableMicrophone();
 
   if (userAudioMgr.isRecording) {
-    pendingUserRecordPromise = userAudioMgr
-      .stopRecording('(processing...)')
+      pendingUserRecordPromise = userAudioMgr
+        .stopRecording('...')
       .then(record => {
         if (!record) return null;
         pendingUserRecord = record;

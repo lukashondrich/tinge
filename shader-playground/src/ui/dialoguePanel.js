@@ -22,7 +22,7 @@ export class DialoguePanel {
       const bubble = document.createElement('div');
       bubble.classList.add('bubble', record.speaker === 'ai' ? 'ai' : 'user');
       bubble.dataset.utteranceId = record.id;
-      if (record.text === '(processing...)') {
+      if (record.text === '...') {
         bubble.classList.add('placeholder');
       }
   
