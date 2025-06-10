@@ -141,26 +141,6 @@ export async function createScene() {
   controls.target.set(0, 0, 0);
   controls.update();
 
-  // 🌟 Add test button for new word
-  const button = document.createElement('button');
-  button.innerText = 'Add “banana”';
-  button.style.position = 'absolute';
-  button.style.top = '10px';
-  button.style.left = '10px';
-  document.body.appendChild(button);
-
-  button.onclick = () => {
-    const newWord = {
-      x: (Math.random() * 2 - 1) * scale,
-      y: (Math.random() * 2 - 1) * scale,
-      z: (Math.random() * 2 - 1) * scale
-    };
-    optimizer.addPoint(newWord); 
-    const id = optimizer.getPositions().length - 1;
-    recentlyAdded.set(id, performance.now());
-    console.log('✨ Added new point:', newWord);
-  };
-
   return {
     scene,
     camera,
