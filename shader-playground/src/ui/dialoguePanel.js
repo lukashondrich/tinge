@@ -21,6 +21,10 @@ export class DialoguePanel {
       // 1) Bubble wrapper
       const bubble = document.createElement('div');
       bubble.classList.add('bubble', record.speaker === 'ai' ? 'ai' : 'user');
+      bubble.dataset.utteranceId = record.id;
+      if (record.text === '(processing...)') {
+        bubble.classList.add('placeholder');
+      }
   
       // 2) Utterance-level play button
       const playBtn = document.createElement('button');
@@ -67,9 +71,14 @@ export class DialoguePanel {
         }
       }
   
-      // 5) Append bubble & auto-scroll
+      // 5) Append bubble & auto-scroll, updating if already exists
       bubble.appendChild(p);
-      this.container.appendChild(bubble);
-      this.container.scrollTop = this.container.scrollHeight;
+      const existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+      if (existing) {
+        this.container.replaceChild(bubble, existing);
+      } else {
+        this.container.appendChild(bubble);
+        this.container.scrollTop = this.container.scrollHeight;
+      }
     }
   }

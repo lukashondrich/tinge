@@ -133,6 +133,12 @@ button:focus-visible {
   float: right;
 }
 
+/* Placeholder bubbles */
+.bubble.placeholder {
+  opacity: 0.6;
+  font-style: italic;
+}
+
 /* Play-utterance button styling */
 .play-utterance {
   margin-right: 6px;
