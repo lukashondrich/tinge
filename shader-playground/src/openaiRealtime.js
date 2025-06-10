@@ -28,22 +28,22 @@ async function fetchWordTimings(blob) {
     return { words, fullText };
   }
 
-// Stop recording, fetch timestamps, attach to record, then return it
-function stopAndTranscribe(audioMgr, transcriptText) {
-    return audioMgr.stopRecording(transcriptText)
-      .then(async record => {
-        if (!record) return null;
-        try {
-          const { words, fullText } = await fetchWordTimings(record.audioBlob);
-          record.wordTimings = words;
-          record.fullText    = fullText;
-        } catch {
-          record.wordTimings = [];
-          record.fullText    = record.text; // fallback to original
-        }
-        return record;
-      });
+// Stop recording and persist the utterance. Returns the basic record
+function stopRecordingOnly(audioMgr, transcriptText) {
+  return audioMgr.stopRecording(transcriptText);
+}
+
+// Fetch timings for an existing record and emit an update event
+async function fetchTimingsAndUpdate(record) {
+  try {
+    const { words, fullText } = await fetchWordTimings(record.audioBlob);
+    record.wordTimings = words;
+    record.fullText    = fullText;
+    if (onEventCallback) onEventCallback({ type: 'utterance.updated', record });
+  } catch (err) {
+    debugLog(`Timing fetch error: ${err}`, true);
   }
+}
 
 // Debug logging function
 function debugLog(message, error = false) {
@@ -355,16 +355,18 @@ export async function connect() {
         if (event.type === 'output_audio_buffer.stopped') {
             if (aiAudioMgr.isRecording) {
                 debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
-                stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
+                stopRecordingOnly(aiAudioMgr, aiTranscript.trim())
+                  .then(record => {
                     if (!record) return;
                     onEventCallback({ type: 'utterance.added', record });
+                    fetchTimingsAndUpdate(record); // async
 
-                // reset for next turn
-                aiTranscript = '';
-                aiWordOffsets = [];
-                aiRecordingStartTime = null;
-                })
-                .catch(err => debugLog(`AI transcription error: ${err}`, true));
+                    // reset for next turn
+                    aiTranscript = '';
+                    aiWordOffsets = [];
+                    aiRecordingStartTime = null;
+                  })
+                  .catch(err => debugLog(`AI transcription error: ${err}`, true));
             } else {
             debugLog("⚠️ [AI] got buffer-stopped but was not recording, skipping");
             }
@@ -382,10 +384,11 @@ export async function connect() {
               });
             }
 
-            stopAndTranscribe(userAudioMgr, t)
+            stopRecordingOnly(userAudioMgr, t)
               .then(record => {
                 if (!record) return;
                 onEventCallback({ type: 'utterance.added', record });
+                fetchTimingsAndUpdate(record); // async
               })
               .catch(err => debugLog(`User transcription error: ${err}`, true));
           }

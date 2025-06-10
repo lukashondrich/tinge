@@ -66,6 +66,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       if (event.type === 'utterance.added' && event.record) {
         panel.add(event.record);
       }
+
+      if (event.type === 'utterance.updated' && event.record) {
+        panel.update(event.record);
+      }
     }
   )
   .catch(err => console.error("⚠️ Realtime init error:", err));
