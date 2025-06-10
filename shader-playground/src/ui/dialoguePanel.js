@@ -18,38 +18,55 @@ export class DialoguePanel {
      * record.wordTimings  // [{word, start, end}, …] from Whisper
      */
     async add(record) {
-      // 1) Bubble wrapper
       const bubble = document.createElement('div');
       bubble.classList.add('bubble', record.speaker === 'ai' ? 'ai' : 'user');
-  
-      // 2) Utterance-level play button
+      bubble.dataset.id = record.id;
+
+      await this.#renderContents(bubble, record);
+
+      this.container.appendChild(bubble);
+      this.container.scrollTop = this.container.scrollHeight;
+    }
+
+    async update(record) {
+      const bubble = this.container.querySelector(`.bubble[data-id="${record.id}"]`);
+      if (!bubble) {
+        console.warn(`DialoguePanel: update missing bubble ${record.id}`);
+        return this.add(record);
+      }
+      bubble.innerHTML = '';
+      bubble.classList.remove('ai', 'user');
+      bubble.classList.add(record.speaker === 'ai' ? 'ai' : 'user');
+      await this.#renderContents(bubble, record);
+    }
+
+    async #renderContents(bubble, record) {
+      // 1) Utterance-level play button
       const playBtn = document.createElement('button');
       playBtn.className = 'play-utterance';
       playBtn.textContent = '▶️';
       playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
       bubble.appendChild(playBtn);
-  
-      // 3) Decode & cache AudioBuffer
+
+      // 2) Decode & cache AudioBuffer
       let audioBuffer = bufferCache.get(record.id);
       if (!audioBuffer) {
         const raw = await record.audioBlob.arrayBuffer();
         audioBuffer = await audioCtx.decodeAudioData(raw);
         bufferCache.set(record.id, audioBuffer);
       }
-  
-      // 4) Build the transcript <p>
+
+      // 3) Build the transcript <p>
       const p = document.createElement('p');
       p.className = 'transcript';
-  
-      // Split text into [non-word, word, non-word, word, …]
+
       const wordRe = /([\w’']+)/g;
       const parts = record.text.split(wordRe);
-  
-      let w = 0;  // index into record.wordTimings
+
+      let w = 0;
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         if (i % 2 === 1 && record.wordTimings && record.wordTimings[w]) {
-          // odd indexes are words
           const { start, end } = record.wordTimings[w++];
           const span = document.createElement('span');
           span.className = 'word';
@@ -62,14 +79,10 @@ export class DialoguePanel {
           });
           p.appendChild(span);
         } else {
-          // even indexes are the exact “glue” (spaces, punctuation)—just text
           p.appendChild(document.createTextNode(part));
         }
       }
-  
-      // 5) Append bubble & auto-scroll
+
       bubble.appendChild(p);
-      this.container.appendChild(bubble);
-      this.container.scrollTop = this.container.scrollHeight;
     }
   }
