@@ -28,6 +28,11 @@ const panel = new DialoguePanel('#transcriptContainer');
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
 
+// simple word playback helper (stubbed until audio timing is known)
+function playAudioFor(word) {
+  console.log('🔊 playAudioFor', word);
+}
+
 function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
   const panel = document.getElementById('transcriptContainer');
@@ -87,7 +92,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         }
 
         bubble.dataset.utteranceId = id;
-        panel.add(event.record);
+        panel.add(event.record).then(() => {
+          if (bubble.parentNode) bubble.remove();
+        });
         finalizeBubble(speaker);
         return;
       }
