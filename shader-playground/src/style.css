@@ -158,3 +158,63 @@ button:focus-visible {
   background: rgba(255, 255, 255, 0.3);
 }
 
+
+/* --- Berlin-slab chat UI upgrade ----------------------- */
+:root{
+  --canvas:#0f0f10;
+  --user-accent:#11FF6B;
+  --ai-accent:#A910E5;
+  --noise-alpha:.07;
+  --bubble-font:"Space Grotesk",system-ui,sans-serif;
+  --bubble-pad:10px 14px;
+}
+
+body{background:var(--canvas);}      /* or panel */
+
+#transcriptContainer{
+  display:flex;flex-direction:column;gap:6px;
+}
+
+.bubble{
+  position:relative;
+  padding:var(--bubble-pad);
+  font-family:var(--bubble-font);
+  font-size:clamp(.9rem,1.6vw,1.1rem);
+  clip-path:polygon(0 0,100% 0,97% 100%,3% 100%);
+  border:1px solid currentColor;
+  background-color:color-mix(in srgb,currentColor 5%,transparent);
+  background-image:radial-gradient(circle at 30% 30%,
+                   rgba(255,255,255,var(--noise-alpha)) 0%,
+                   transparent 70%);
+  animation:bubbleIn .4s cubic-bezier(.22,.61,.36,1);
+}
+
+/* sticker */
+.bubble::before{
+  content:"▸";
+  position:absolute;
+  top:2px;left:2px;
+  font-size:.75rem;line-height:1;
+  transform:rotate(-20deg);
+}
+
+.bubble.ai  {color:var(--ai-accent);align-self:flex-start;}
+.bubble.user{color:var(--user-accent);align-self:flex-end;}
+
+/* interactive token */
+.bubble span.word{position:relative;cursor:pointer;}
+.bubble span.word::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;
+  height:1px;background:currentColor;opacity:.35;transition:opacity .2s;
+}
+.bubble span.word:hover::after{opacity:0;}
+
+@keyframes bubbleIn{
+  from{transform:translateY(12px) scale(.97);opacity:0;}
+  to  {transform:translateY(0) scale(1);opacity:1;}
+}
+
+@media(prefers-color-scheme:light){
+  :root{--canvas:#ffffff;--user-accent:#0baf50;--ai-accent:#8425e5;}
+}
+

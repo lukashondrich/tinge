@@ -121,7 +121,19 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     mesh.instanceColor.needsUpdate = true;
   
     recentlyAdded.set(id, performance.now());
-    showWordLabel(word, speaker);
+
+    const bubble = document.createElement('div');
+    bubble.classList.add('bubble', speaker);
+    word.split(/\s+/).forEach(tok => {
+      const span = document.createElement('span');
+      span.className = 'word';
+      span.textContent = tok + ' ';
+      span.onclick = () => playAudioFor(tok);
+      bubble.appendChild(span);
+    });
+    const panel = document.getElementById('transcriptContainer');
+    panel.appendChild(bubble);
+    bubble.scrollIntoView({behavior:'smooth', block:'end'});
   }
 
   function showWordLabel(word, speaker) {
