@@ -27,6 +27,8 @@ const panel = new DialoguePanel('#transcriptContainer');
 
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
+// Ignore stray transcript words that may arrive after an utterance is finalized
+const ignoreWords = { user: false, ai: false };
 
 const panelEl = document.getElementById('transcriptContainer');
 
@@ -45,6 +47,7 @@ function startBubble(speaker) {
   bubble.classList.add('bubble', speaker);
   panelEl.appendChild(bubble);
   activeBubbles[speaker] = bubble;
+  ignoreWords[speaker] = false;
   scrollToBottom();
 }
 
@@ -132,6 +135,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
 
   async function addWord(word, speaker = "ai") {
+    if (ignoreWords[speaker]) {
+      console.log('🚫 Ignoring word after finalize:', word);
+      return;
+    }
     let newPoint = { x: 0, y: 0, z: 0 };
     try {
       const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
@@ -178,6 +185,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   function finalizeBubble(speaker) {
     activeBubbles[speaker] = null;
+    ignoreWords[speaker] = true;
   }
 
 
