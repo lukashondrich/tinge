@@ -180,7 +180,7 @@ body{background:var(--canvas);}      /* or panel */
   padding:var(--bubble-pad);
   font-family:var(--bubble-font);
   font-size:clamp(.9rem,1.6vw,1.1rem);
-  clip-path:polygon(0 0,100% 0,97% 100%,3% 100%);
+  /* rectangular bottom to avoid awkward cut-off */
   border:1px solid currentColor;
   background-color:color-mix(in srgb,currentColor 5%,transparent);
   background-image:radial-gradient(circle at 30% 30%,
