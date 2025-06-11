@@ -25,6 +25,29 @@ window.__ANIMATING__ = true;
 //DialoguePanel.init();
 const panel = new DialoguePanel('#transcriptContainer');
 
+// Track the currently active chat bubble for each speaker
+const activeBubbles = { user: null, ai: null };
+
+const panelEl = document.getElementById('transcriptContainer');
+
+function scrollToBottom() {
+  panelEl.scrollTop = panelEl.scrollHeight;
+}
+
+// simple word playback helper (stubbed until audio timing is known)
+function playAudioFor(word) {
+  console.log('🔊 playAudioFor', word);
+}
+
+function startBubble(speaker) {
+  if (activeBubbles[speaker]) return;
+  const bubble = document.createElement('div');
+  bubble.classList.add('bubble', speaker);
+  panelEl.appendChild(bubble);
+  activeBubbles[speaker] = bubble;
+  scrollToBottom();
+}
+
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
   console.log('📊 Scene created');
@@ -43,28 +66,51 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     },
     (event) => {
       console.log("💬 eventCallback got event:", event.type, event);
+
+      if (event.type === 'input_audio_buffer.speech_started') {
+        startBubble('user');
+      }
       
-      // ① our per-word transcript hook
+      // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
         console.log('🗣️ word:', event.word, 'speaker:', speaker);
         addWord(event.word, speaker);
-        //return;  // don’t fall through
       }
-      
-      // ② (optional) keep your old delta transcript support
-      if (event.type === "response.audio_transcript.delta" && typeof event.delta === "string") {
-        const speaker = event.speaker || 'ai';
-        console.log("👉 transcript delta:", event.delta);
-        addWord(event.delta, speaker);
+
+      // ② ignore delta events to prevent duplicates
+      if (
+        event.type === 'response.audio_transcript.delta' &&
+        typeof event.delta === 'string'
+      ) {
+        console.log('👉 transcript delta ignored');
       }
-      
-      // ③ (optional) final phrase
-      if (event.type === "response.audio_transcript.done" && typeof event.transcript === "string") {
-        console.log("✅ final transcript:", event.transcript);
-      }
+
+      // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
-        panel.add(event.record);
+        const { speaker = 'ai', id, text, wordTimings } = event.record;
+        const bubble = activeBubbles[speaker];
+
+        // Skip placeholder records with no timing info
+        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+          return;
+        }
+
+        bubble.dataset.utteranceId = id;
+        panel.add(event.record); // DialoguePanel will replace the bubble
+        scrollToBottom();
+        finalizeBubble(speaker);
+        return;
+      }
+
+      // ④ mark end of the current utterance (handled when record arrives)
+      if (
+        event.type === 'response.audio_transcript.done' &&
+        typeof event.transcript === 'string'
+      ) {
+        const speaker = event.speaker || 'ai';
+        console.log('✅ final transcript:', event.transcript);
+        // wait for utterance.added to finalize
       }
     }
   )
@@ -121,7 +167,27 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     mesh.instanceColor.needsUpdate = true;
   
     recentlyAdded.set(id, performance.now());
-    showWordLabel(word, speaker);
+
+    let bubble = activeBubbles[speaker];
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.classList.add('bubble', speaker);
+      panelEl.appendChild(bubble);
+      activeBubbles[speaker] = bubble;
+    }
+    word.split(/\s+/).forEach(tok => {
+      if (!tok) return;
+      const span = document.createElement('span');
+      span.className = 'word';
+      span.textContent = tok + ' ';
+      span.onclick = () => playAudioFor(tok);
+      bubble.appendChild(span);
+    });
+    scrollToBottom();
+  }
+
+  function finalizeBubble(speaker) {
+    activeBubbles[speaker] = null;
   }
 
   function showWordLabel(word, speaker) {
