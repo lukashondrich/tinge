@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-export const SCALE = 4; // 🔁 central scale value
+export const SCALE = 2; // 🔁 central scale value
 const recentlyAdded = new Map();
 
 export async function createScene() {
@@ -45,7 +45,7 @@ export async function createScene() {
     weights: {
       semanticAttraction: 15.9,
       repulsion: 5.9,
-      boundary: 30000
+      boundary: 3000
     }
   });
 
@@ -89,7 +89,7 @@ export async function createScene() {
   const gelMaterial = new THREE.MeshPhysicalMaterial({
     color: 0xff6677,
     transmission: 0.25,
-    opacity: 0.45,
+    opacity: 0.15,
     transparent: true,
     roughness: 0.4,
     metalness: 0.05,
