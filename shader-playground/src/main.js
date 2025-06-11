@@ -28,6 +28,16 @@ const panel = new DialoguePanel('#transcriptContainer');
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
 
+function startBubble(speaker) {
+  if (activeBubbles[speaker]) return;
+  const panel = document.getElementById('transcriptContainer');
+  const bubble = document.createElement('div');
+  bubble.classList.add('bubble', speaker);
+  panel.appendChild(bubble);
+  activeBubbles[speaker] = bubble;
+  bubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
   console.log('📊 Scene created');
@@ -46,6 +56,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     },
     (event) => {
       console.log("💬 eventCallback got event:", event.type, event);
+
+      if (event.type === 'input_audio_buffer.speech_started') {
+        startBubble('user');
+      }
       
       // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
