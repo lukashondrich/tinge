@@ -62,17 +62,26 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         console.log('👉 transcript delta ignored');
       }
 
-      // ③ mark end of the current utterance
+      // ③ final utterance record with audio & timings
+      if (event.type === 'utterance.added' && event.record) {
+        const { speaker = 'ai', id } = event.record;
+        const bubble = activeBubbles[speaker];
+        if (bubble) {
+          bubble.dataset.utteranceId = id;
+        }
+        panel.add(event.record);
+        finalizeBubble(speaker);
+        return;
+      }
+
+      // ④ mark end of the current utterance (handled when record arrives)
       if (
         event.type === 'response.audio_transcript.done' &&
         typeof event.transcript === 'string'
       ) {
         const speaker = event.speaker || 'ai';
         console.log('✅ final transcript:', event.transcript);
-        finalizeBubble(speaker);
-      }
-      if (event.type === 'utterance.added' && event.record) {
-        panel.add(event.record);
+        // wait for utterance.added to finalize
       }
     }
   )
