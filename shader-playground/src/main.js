@@ -66,9 +66,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       if (event.type === 'utterance.added' && event.record) {
         const { speaker = 'ai', id } = event.record;
         const bubble = activeBubbles[speaker];
-        if (bubble) {
-          bubble.dataset.utteranceId = id;
+
+        // Ignore early placeholder events that fire before any words arrive
+        if (!bubble) {
+          return;
         }
+
+        bubble.dataset.utteranceId = id;
         panel.add(event.record);
         finalizeBubble(speaker);
         return;
