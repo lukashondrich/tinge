@@ -28,6 +28,12 @@ const panel = new DialoguePanel('#transcriptContainer');
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
 
+const panelEl = document.getElementById('transcriptContainer');
+
+function scrollToBottom() {
+  panelEl.scrollTop = panelEl.scrollHeight;
+}
+
 // simple word playback helper (stubbed until audio timing is known)
 function playAudioFor(word) {
   console.log('🔊 playAudioFor', word);
@@ -35,12 +41,11 @@ function playAudioFor(word) {
 
 function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
-  const panel = document.getElementById('transcriptContainer');
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
-  panel.appendChild(bubble);
+  panelEl.appendChild(bubble);
   activeBubbles[speaker] = bubble;
-  bubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  scrollToBottom();
 }
 
 // Initialize scene and OpenAI Realtime
@@ -93,6 +98,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
+        scrollToBottom();
         finalizeBubble(speaker);
         return;
       }
@@ -163,11 +169,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     recentlyAdded.set(id, performance.now());
 
     let bubble = activeBubbles[speaker];
-    const panel = document.getElementById('transcriptContainer');
     if (!bubble) {
       bubble = document.createElement('div');
       bubble.classList.add('bubble', speaker);
-      panel.appendChild(bubble);
+      panelEl.appendChild(bubble);
       activeBubbles[speaker] = bubble;
     }
     word.split(/\s+/).forEach(tok => {
@@ -178,7 +183,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       span.onclick = () => playAudioFor(tok);
       bubble.appendChild(span);
     });
-    bubble.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    scrollToBottom();
   }
 
   function finalizeBubble(speaker) {

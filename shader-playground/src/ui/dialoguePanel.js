@@ -78,7 +78,7 @@ export class DialoguePanel {
         this.container.replaceChild(bubble, existing);
       } else {
         this.container.appendChild(bubble);
-        this.container.scrollTop = this.container.scrollHeight;
       }
+      this.container.scrollTop = this.container.scrollHeight;
     }
   }
