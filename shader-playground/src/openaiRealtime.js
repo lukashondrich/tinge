@@ -297,7 +297,7 @@ export async function connect() {
         const sessionUpdate = {
         type: 'session.update',
         session: {
-            input_audio_transcription: { model: 'whisper-1' },
+            input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
             turn_detection: 
             {
               "type": "semantic_vad",
