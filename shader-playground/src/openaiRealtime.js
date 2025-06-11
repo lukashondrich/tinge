@@ -298,12 +298,19 @@ export async function connect() {
         type: 'session.update',
         session: {
             input_audio_transcription: { model: 'whisper-1' },
-            turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 200
+            turn_detection: 
+            {
+              "type": "semantic_vad",
+              "eagerness": "low", // optional
+              "create_response": true, // only in conversation mode
+              "interrupt_response": false, // only in conversation mode
             }
+            // {
+            // type: 'server_vad',
+            // threshold: 0.5,
+            // prefix_padding_ms: 300,
+            // silence_duration_ms: 200
+            // }
         }
         };
         dataChannel.send(JSON.stringify(sessionUpdate));

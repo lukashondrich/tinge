@@ -130,16 +130,6 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   const rgbShiftPass = createRGBShiftPass();
   composer.addPass(rgbShiftPass);
   
-  // 🧪 Fake "speech" stream for testing
-  const mockWords = ["banana", "is", "a", "fruit", "that", "grows", "in", "clusters"];
-  let mockIndex = 0;
-
-  setInterval(() => {
-    if (mockIndex < mockWords.length) {
-      const word = mockWords[mockIndex++];
-      addWord(word, "user");
-    }
-  }, 800);
 
   async function addWord(word, speaker = "ai") {
     let newPoint = { x: 0, y: 0, z: 0 };
@@ -190,26 +180,6 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     activeBubbles[speaker] = null;
   }
 
-  function showWordLabel(word, speaker) {
-    const label = document.createElement('div');
-    label.innerText = word;
-    label.style.position = 'absolute';
-    label.style.left = '50px';
-    label.style.top = '100px';
-    label.style.color = speaker === 'user' ? '#69ea4f' : 'purple';
-    label.style.fontSize = '34px';
-    label.style.fontFamily = 'monospace';
-    label.style.opacity = '1';
-    label.style.transition = 'opacity 2s ease-out';
-    label.style.top = `${60 + 48 * mockIndex}px`;
-
-    document.body.appendChild(label);
-  
-    setTimeout(() => {
-      label.style.opacity = '0';
-      setTimeout(() => label.remove(), 2000);
-    }, 1000);
-  }
 
   // Animation loop
   function animate(t) {
