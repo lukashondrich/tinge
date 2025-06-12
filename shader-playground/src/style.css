@@ -184,5 +184,11 @@ body{background:var(--canvas);}      /* or panel */
 /* Ensure clickable words inherit highlighting */
 .bubble .transcript .word {
   background: transparent;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.bubble .transcript .word:hover {
+  background: rgba(0, 0, 0, 0.1);
 }
 
