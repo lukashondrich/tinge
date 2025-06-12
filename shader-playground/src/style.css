@@ -114,7 +114,7 @@ button:focus-visible {
   margin: 4px;
   display: flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: 2px; /* tighter space between play button and text */
 }
 
 .bubble.placeholder {
@@ -125,7 +125,7 @@ button:focus-visible {
 
 /* Play-utterance button styling */
 .play-utterance {
-  margin-right: 2px;
+  margin-right: 0;
   background: transparent;
   border: none;
   cursor: pointer;

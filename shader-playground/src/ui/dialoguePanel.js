@@ -29,7 +29,7 @@ export class DialoguePanel {
       // 2) Utterance-level play button
       const playBtn = document.createElement('button');
       playBtn.className = 'play-utterance';
-      playBtn.textContent = '▶️';
+      playBtn.textContent = '⏵';
       playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
       bubble.appendChild(playBtn);
   
