@@ -132,6 +132,9 @@ button:focus-visible {
   border: none;
   cursor: pointer;
   font-size: 1em;
+  position: relative; /* Add this line */
+  right: -10px; /* Adjust this value to move it to the right */
+  top: -7px; /* Adjust this value to move it up */
 }
 
 .bubble .transcript {
@@ -168,7 +171,7 @@ body{background:var(--canvas);}      /* or panel */
 .bubble .transcript .highlighted-text {
   font-weight: 500;
   font-size: 0.875rem;
-  padding: 0.25rem;
+  padding: 0.15rem;
   color: black;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
