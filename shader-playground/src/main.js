@@ -101,12 +101,16 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const { speaker = 'ai', id, text, wordTimings } = event.record;
         const bubble = activeBubbles[speaker];
 
+        if (bubble) {
+          // Set ID so the DialoguePanel can replace this bubble later
+          bubble.dataset.utteranceId = id;
+        }
+
         // Skip placeholder records with no timing info
         if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
           return;
         }
 
-        bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
         finalizeBubble(speaker);
