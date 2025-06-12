@@ -115,6 +115,8 @@ button:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 0; /* play button flush with highlighted text */
+  max-width: 33%;
+  word-wrap: break-word;
 }
 
 .bubble.placeholder {
