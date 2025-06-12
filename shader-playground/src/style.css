@@ -109,31 +109,11 @@ button:focus-visible {
   z-index: 1000;
 }
 
-/* Individual utterance “bubbles” */
+/* Utterance container */
 .bubble {
-  display: inline-block;
   margin: 4px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  max-width: 80%;
-  word-wrap: break-word;
-  clear: both;
 }
 
-/* AI vs User alignment & colors */
-.bubble.ai {
-  background: rgb(90, 0, 90);
-  color: #ffffff;
-  float: left;
-}
-
-.bubble.user {
-  background: #69ea4f;
-  color: #000;
-  float: right;
-}
-
-/* Placeholder bubbles */
 .bubble.placeholder {
   opacity: 0.6;
   font-style: italic;
@@ -147,15 +127,6 @@ button:focus-visible {
   border: none;
   cursor: pointer;
   font-size: 1em;
-}
-
-/* clickable words */
-.transcript span.word {
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.transcript span.word:hover {
-  background: rgba(255, 255, 255, 0.3);
 }
 
 
@@ -172,49 +143,39 @@ button:focus-visible {
 body{background:var(--canvas);}      /* or panel */
 
 #transcriptContainer{
-  display:flex;flex-direction:column;gap:6px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
 }
 
-.bubble{
-  position:relative;
-  padding:var(--bubble-pad);
-  font-family:var(--bubble-font);
-  font-size:clamp(.9rem,1.6vw,1.1rem);
-  /* rectangular bottom to avoid awkward cut-off */
-  border:1px solid currentColor;
-  background-color:color-mix(in srgb,currentColor 5%,transparent);
-  background-image:radial-gradient(circle at 30% 30%,
-                   rgba(255,255,255,var(--noise-alpha)) 0%,
-                   transparent 70%);
-  animation:bubbleIn .4s cubic-bezier(.22,.61,.36,1);
-}
-
-/* sticker */
-.bubble::before{
-  content:"▸";
-  position:absolute;
-  top:2px;left:2px;
-  font-size:.75rem;line-height:1;
-  transform:rotate(-20deg);
-}
-
-.bubble.ai  {color:var(--ai-accent);align-self:flex-start;}
-.bubble.user{color:var(--user-accent);align-self:flex-end;}
-
-/* interactive token */
-.bubble span.word{position:relative;cursor:pointer;}
-.bubble span.word::after{
-  content:"";position:absolute;left:0;right:0;bottom:0;
-  height:1px;background:currentColor;opacity:.35;transition:opacity .2s;
-}
-.bubble span.word:hover::after{opacity:0;}
-
-@keyframes bubbleIn{
-  from{transform:translateY(12px) scale(.97);opacity:0;}
-  to  {transform:translateY(0) scale(1);opacity:1;}
-}
+.bubble.ai  {align-self:flex-start;}
+.bubble.user{align-self:flex-end;}
 
 @media(prefers-color-scheme:light){
   :root{--canvas:#ffffff;--user-accent:#0baf50;--ai-accent:#8425e5;}
+}
+
+/* Pastel highlight styles */
+.bubble .transcript .highlighted-text {
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.25rem;
+  color: black;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  line-height: 1.2;
+}
+
+.bubble.user .transcript .highlighted-text {
+  background-color: #fecdd3; /* rose-200 */
+}
+
+.bubble.ai .transcript .highlighted-text {
+  background-color: #a7f3d0; /* emerald-200 */
+}
+
+/* Ensure clickable words inherit highlighting */
+.bubble .transcript .word {
+  background: transparent;
 }
 

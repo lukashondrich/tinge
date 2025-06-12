@@ -41,14 +41,18 @@ export class DialoguePanel {
         bufferCache.set(record.id, audioBuffer);
       }
   
-      // 4) Build the transcript <p>
+      // 4) Build the transcript with pastel highlighting
       const p = document.createElement('p');
       p.className = 'transcript';
-  
+
+      // Create highlighted container span
+      const highlightedSpan = document.createElement('span');
+      highlightedSpan.className = 'highlighted-text';
+
       // Split text into [non-word, word, non-word, word, …]
       const wordRe = /([\w’']+)/g;
       const parts = record.text.split(wordRe);
-  
+
       let w = 0;  // index into record.wordTimings
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
@@ -64,12 +68,15 @@ export class DialoguePanel {
             src.connect(audioCtx.destination);
             src.start(0, start, end - start);
           });
-          p.appendChild(span);
+          highlightedSpan.appendChild(span);
         } else {
-          // even indexes are the exact “glue” (spaces, punctuation)—just text
-          p.appendChild(document.createTextNode(part));
+          // even indexes are the exact "glue" (spaces, punctuation)—just text
+          highlightedSpan.appendChild(document.createTextNode(part));
         }
       }
+
+      // Append the highlighted span to the paragraph
+      p.appendChild(highlightedSpan);
   
       // 5) Append bubble & auto-scroll, updating if already exists
       bubble.appendChild(p);
