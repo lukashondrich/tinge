@@ -109,6 +109,9 @@ export async function initOpenAIRealtime(streamCallback, eventCallback) {
   return true;
 }
 
+// Track if PTT is currently pressed
+let isPTTPressed = false;
+
 function createPTTButton() {
   // Create a floating PTT button
   pttButton = document.createElement('button');
@@ -135,31 +138,41 @@ function createPTTButton() {
     debugLog('Button clicked! Basic click functionality works.');
   };
   
-  // Add event listeners
+  // Add event listeners for PTT button
   pttButton.addEventListener('mousedown', (e) => {
     debugLog('mousedown event fired');
+    isPTTPressed = true;
     handlePTTPress(e);
   });
   
-  pttButton.addEventListener('mouseup', (e) => {
-    debugLog('mouseup event fired');
-    handlePTTRelease(e);
-  });
-  
-  pttButton.addEventListener('mouseleave', (e) => {
-    debugLog('mouseleave event fired');
-    handlePTTRelease(e);
+  // Listen for mouseup on the document to catch releases outside the button
+  document.addEventListener('mouseup', (e) => {
+    if (isPTTPressed) {
+      debugLog('document mouseup event fired - releasing PTT');
+      isPTTPressed = false;
+      handlePTTRelease(e);
+    }
   });
   
   pttButton.addEventListener('touchstart', (e) => {
     debugLog('touchstart event fired');
     e.preventDefault(); // Prevent default behavior for touch events
+    isPTTPressed = true;
     handlePTTPress(e);
   });
   
   pttButton.addEventListener('touchend', (e) => {
     debugLog('touchend event fired');
     e.preventDefault(); // Prevent default behavior for touch events
+    isPTTPressed = false;
+    handlePTTRelease(e);
+  });
+  
+  // Optional: Add touchcancel for better mobile support
+  pttButton.addEventListener('touchcancel', (e) => {
+    debugLog('touchcancel event fired');
+    e.preventDefault();
+    isPTTPressed = false;
     handlePTTRelease(e);
   });
   
