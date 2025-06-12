@@ -57,35 +57,6 @@ function stopAndTranscribe(audioMgr, transcriptText) {
 function debugLog(message, error = false) {
   const prefix = error ? '❌ ERROR:' : '🔍 DEBUG:';
   console.log(`${prefix} ${message}`);
-  
-  // Also display visual debug messages on the page
-  const debugContainer = document.getElementById('debug-container') || createDebugContainer();
-  const entry = document.createElement('div');
-  entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
-  if (error) entry.style.color = 'red';
-  debugContainer.appendChild(entry);
-  debugContainer.scrollTop = debugContainer.scrollHeight;
-}
-
-// Create a container for debug messages
-function createDebugContainer() {
-  const container = document.createElement('div');
-  container.id = 'debug-container';
-  container.style.position = 'fixed';
-  container.style.left = '10px';
-  container.style.top = '500px';
-  container.style.width = '300px';
-  container.style.height = '200px';
-  container.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-  container.style.color = 'white';
-  container.style.padding = '10px';
-  container.style.overflow = 'auto';
-  container.style.fontFamily = 'monospace';
-  container.style.fontSize = '12px';
-  container.style.zIndex = '1000';
-  container.style.borderRadius = '5px';
-  document.body.appendChild(container);
-  return container;
 }
 
 // our recorder for “utterance” blobs
