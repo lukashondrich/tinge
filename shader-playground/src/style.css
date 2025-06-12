@@ -218,3 +218,27 @@ body{background:var(--canvas);}      /* or panel */
   :root{--canvas:#ffffff;--user-accent:#0baf50;--ai-accent:#8425e5;}
 }
 
+/* Pastel highlight styles */
+.bubble .transcript .highlighted-text {
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.25rem;
+  color: black;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  line-height: 1.2;
+}
+
+.bubble.user .transcript .highlighted-text {
+  background-color: #fecdd3; /* rose-200 equivalent */
+}
+
+.bubble.ai .transcript .highlighted-text {
+  background-color: #a7f3d0; /* emerald-200 equivalent */
+}
+
+/* Ensure clickable words inherit highlighting */
+.bubble .transcript .word {
+  background: transparent;
+}
+
