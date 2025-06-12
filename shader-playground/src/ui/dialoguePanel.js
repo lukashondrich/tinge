@@ -80,9 +80,23 @@ export class DialoguePanel {
   
       // 5) Append bubble & auto-scroll, updating if already exists
       bubble.appendChild(p);
-      const existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
-      if (existing) {
-        this.container.replaceChild(bubble, existing);
+
+      // try replacing an existing bubble with the same id
+      let target = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+
+      // fallback: if this is a finalized utterance and we don't find a match,
+      // replace the most recent placeholder bubble for this speaker
+      if (!target && record.text !== '...') {
+        const placeholders = this.container.querySelectorAll(
+          `.bubble.${record.speaker === 'ai' ? 'ai' : 'user'}.placeholder`
+        );
+        if (placeholders.length > 0) {
+          target = placeholders[placeholders.length - 1];
+        }
+      }
+
+      if (target) {
+        this.container.replaceChild(bubble, target);
       } else {
         this.container.appendChild(bubble);
       }
