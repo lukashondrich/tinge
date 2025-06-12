@@ -27,6 +27,8 @@ const panel = new DialoguePanel('#transcriptContainer');
 
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
+// Keep finalized bubbles around until their final transcript arrives
+const pendingBubbles = { user: null, ai: null };
 
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
@@ -43,8 +45,8 @@ function playAudioFor(word) {
 }
 
 function startBubble(speaker) {
-  // If a bubble is still active for this speaker, finalize it so
-  // a new utterance can start without overwriting the previous one.
+  // If a bubble is still active for this speaker, move it to the
+  // pending state so its final transcript can replace it later.
   if (activeBubbles[speaker]) {
     finalizeBubble(speaker);
   }
@@ -103,7 +105,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
         const { speaker = 'ai', id, text, wordTimings } = event.record;
-        const bubble = activeBubbles[speaker];
+        const bubble = activeBubbles[speaker] || pendingBubbles[speaker];
 
         if (bubble) {
           // Set ID so the DialoguePanel can replace this bubble later
@@ -117,7 +119,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
-        finalizeBubble(speaker);
+        finalizeBubble(speaker, true);
         return;
       }
 
@@ -206,8 +208,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     scrollToBottom();
   }
 
-  function finalizeBubble(speaker) {
-    activeBubbles[speaker] = null;
+  function finalizeBubble(speaker, resolved = false) {
+    if (resolved) {
+      pendingBubbles[speaker] = null;
+    } else if (activeBubbles[speaker]) {
+      pendingBubbles[speaker] = activeBubbles[speaker];
+      activeBubbles[speaker] = null;
+    }
   }
 
 
