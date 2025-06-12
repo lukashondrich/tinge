@@ -45,7 +45,7 @@ function playAudioFor(word) {
 function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
   const bubble = document.createElement('div');
-  bubble.classList.add('bubble', speaker);
+  bubble.classList.add('bubble', speaker, 'placeholder');
   const p = document.createElement('p');
   p.className = 'transcript';
   const span = document.createElement('span');
@@ -101,8 +101,15 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const { speaker = 'ai', id, text, wordTimings } = event.record;
         const bubble = activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        // Mark active bubble as the placeholder for this record
+        if (bubble && text === '...') {
+          bubble.dataset.utteranceId = id;
+          bubble.classList.add('placeholder');
+          return; // wait for final timings
+        }
+
+        // Skip if we somehow lost the active bubble
+        if (!bubble || !wordTimings || !wordTimings.length) {
           return;
         }
 
