@@ -28,6 +28,9 @@ const panel = new DialoguePanel('#transcriptContainer');
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
 
+// Track words already visualized to avoid duplicates
+const usedWords = new Set();
+
 const panelEl = document.getElementById('transcriptContainer');
 
 function scrollToBottom() {
@@ -139,31 +142,35 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
 
   async function addWord(word, speaker = "ai") {
-    let newPoint = { x: 0, y: 0, z: 0 };
-    try {
-      const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
-      if (res.ok) {
-        const data = await res.json();
-        newPoint = { x: data.x, y: data.y, z: data.z }; 
+    const key = word.trim().toLowerCase();
+    if (!usedWords.has(key)) {
+      usedWords.add(key);
+      let newPoint = { x: 0, y: 0, z: 0 };
+      try {
+        const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
+        if (res.ok) {
+          const data = await res.json();
+          newPoint = { x: data.x, y: data.y, z: data.z };
+        }
+      } catch (err) {
+        console.error('Embedding fetch failed', err);
       }
-    } catch (err) {
-      console.error('Embedding fetch failed', err);
+      optimizer.addPoint(newPoint);
+
+      // --- make room first ---
+      const id = optimizer.getPositions().length - 1;
+      mesh.count = id + 1;                // ensure the new slot exists
+
+      // pick the colour
+      const colour = speaker === 'user'
+        ? new THREE.Color('#69ea4f')       // green
+        : new THREE.Color(0x5a005a);       // purple
+
+      mesh.setColorAt(id, colour);
+      mesh.instanceColor.needsUpdate = true;
+
+      recentlyAdded.set(id, performance.now());
     }
-    optimizer.addPoint(newPoint);
-  
-    // --- make room first ---
-    const id = optimizer.getPositions().length - 1;
-    mesh.count = id + 1;                // ensure the new slot exists
-  
-    // pick the colour
-    const colour = speaker === 'user'
-      ? new THREE.Color('#69ea4f')       // green
-      : new THREE.Color(0x5a005a);       // purple
-  
-    mesh.setColorAt(id, colour);
-    mesh.instanceColor.needsUpdate = true;
-  
-    recentlyAdded.set(id, performance.now());
 
     let bubble = activeBubbles[speaker];
     if (!bubble) {
