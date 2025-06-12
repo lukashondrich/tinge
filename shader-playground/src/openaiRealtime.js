@@ -432,8 +432,7 @@ export async function connect() {
               });
             }
 
-            if (pendingUserRecord) {
-              const record = pendingUserRecord;
+            const finalize = (record) => {
               record.text = t;
               fetchWordTimings(record.audioBlob)
                 .then(({ words, fullText }) => {
@@ -441,23 +440,29 @@ export async function connect() {
                   record.fullText = fullText;
                 })
                 .catch(() => {
-                  if (pendingUserRecord) {
-                    record.wordTimings = [];
-                    record.fullText = t;
-                  }
+                  record.wordTimings = [];
+                  record.fullText = t;
                 })
                 .finally(() => {
-                  if (pendingUserRecord) {
-                    StorageService.addUtterance(record);
-                    onEventCallback({ type: 'utterance.added', record });
-                    pendingUserRecord = null;
-                  }
+                  StorageService.addUtterance(record);
+                  onEventCallback({ type: 'utterance.added', record });
+                  if (pendingUserRecord === record) pendingUserRecord = null;
+                  pendingUserRecordPromise = null;
                 });
+            };
+
+            if (pendingUserRecord) {
+              finalize(pendingUserRecord);
+            } else if (pendingUserRecordPromise) {
+              pendingUserRecordPromise
+                .then(record => {
+                  if (record) finalize(record);
+                })
+                .catch(err => debugLog(`User transcription error: ${err}`, true));
             } else {
               stopAndTranscribe(userAudioMgr, t)
                 .then(record => {
-                  if (!record) return;
-                  onEventCallback({ type: 'utterance.added', record });
+                  if (record) finalize(record);
                 })
                 .catch(err => debugLog(`User transcription error: ${err}`, true));
             }
