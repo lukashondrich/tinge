@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-export const SCALE = 2; // 🔁 central scale value
+export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
 
 export async function createScene() {
