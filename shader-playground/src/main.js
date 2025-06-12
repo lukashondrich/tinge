@@ -43,7 +43,11 @@ function playAudioFor(word) {
 }
 
 function startBubble(speaker) {
-  if (activeBubbles[speaker]) return;
+  // If a bubble is still active for this speaker, finalize it so
+  // a new utterance can start without overwriting the previous one.
+  if (activeBubbles[speaker]) {
+    finalizeBubble(speaker);
+  }
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
   const p = document.createElement('p');
