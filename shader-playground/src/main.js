@@ -27,6 +27,8 @@ const panel = new DialoguePanel('#transcriptContainer');
 
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
+// Hold finalized bubbles awaiting their transcript
+const pendingBubbles = { user: null, ai: null };
 
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
@@ -43,7 +45,11 @@ function playAudioFor(word) {
 }
 
 function startBubble(speaker) {
-  if (activeBubbles[speaker]) return;
+  // Finalize any existing bubble for this speaker so its transcript can replace it later
+  if (activeBubbles[speaker]) {
+    pendingBubbles[speaker] = activeBubbles[speaker];
+    activeBubbles[speaker] = null;
+  }
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
   const p = document.createElement('p');
@@ -99,10 +105,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
         const { speaker = 'ai', id, text } = event.record;
-        const bubble = activeBubbles[speaker];
+        const bubble = pendingBubbles[speaker] || activeBubbles[speaker];
 
         if (bubble) {
-          // Set ID so the DialoguePanel can replace this bubble later
+          // Tag bubble so DialoguePanel can replace it with the final record
           bubble.dataset.utteranceId = id;
         }
 
@@ -112,7 +118,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
-        finalizeBubble(speaker);
+        if (bubble === pendingBubbles[speaker]) {
+          pendingBubbles[speaker] = null;
+        } else {
+          finalizeBubble(speaker);
+        }
         return;
       }
 
