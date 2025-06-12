@@ -112,6 +112,9 @@ button:focus-visible {
 /* Utterance container */
 .bubble {
   margin: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .bubble.placeholder {
@@ -122,11 +125,15 @@ button:focus-visible {
 
 /* Play-utterance button styling */
 .play-utterance {
-  margin-right: 6px;
+  margin-right: 2px;
   background: transparent;
   border: none;
   cursor: pointer;
   font-size: 1em;
+}
+
+.bubble .transcript {
+  margin: 0;
 }
 
 

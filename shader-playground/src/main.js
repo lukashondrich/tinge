@@ -43,7 +43,14 @@ function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
+  const p = document.createElement('p');
+  p.className = 'transcript';
+  const span = document.createElement('span');
+  span.className = 'highlighted-text';
+  p.appendChild(span);
+  bubble.appendChild(p);
   panelEl.appendChild(bubble);
+  bubble.__highlight = span;
   activeBubbles[speaker] = bubble;
   scrollToBottom();
 }
@@ -162,16 +169,24 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     if (!bubble) {
       bubble = document.createElement('div');
       bubble.classList.add('bubble', speaker);
+      const p = document.createElement('p');
+      p.className = 'transcript';
+      const span = document.createElement('span');
+      span.className = 'highlighted-text';
+      p.appendChild(span);
+      bubble.appendChild(p);
       panelEl.appendChild(bubble);
+      bubble.__highlight = span;
       activeBubbles[speaker] = bubble;
     }
+    const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
     word.split(/\s+/).forEach(tok => {
       if (!tok) return;
       const span = document.createElement('span');
       span.className = 'word';
       span.textContent = tok + ' ';
       span.onclick = () => playAudioFor(tok);
-      bubble.appendChild(span);
+      target.appendChild(span);
     });
     scrollToBottom();
   }
