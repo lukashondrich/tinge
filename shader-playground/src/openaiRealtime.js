@@ -20,6 +20,11 @@ let aiWordOffsets = [];
 let pendingUserRecordPromise = null;
 let pendingUserRecord = null;
 
+// Toggle to switch between semantic VAD and manual push‑to‑talk control.
+// When false, turn detection will be disabled and the client must
+// explicitly commit audio turns via the PTT button.
+const ENABLE_SEMANTIC_VAD = false;
+
 
 // Send a Blob to /transcribe and return Whisper’s word timestamps
 async function fetchWordTimings(blob) {
@@ -183,9 +188,25 @@ async function handlePTTPress(e) {
       return;
     }
   }
-  
+
   // start capturing user audio
+  if (!ENABLE_SEMANTIC_VAD) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+      dataChannel.send(JSON.stringify({
+        type: 'input_audio_buffer.clear',
+        event_id: crypto.randomUUID()
+      }));
+      debugLog('Sent input_audio_buffer.clear');
+    } else {
+      debugLog('Cannot clear buffer - data channel not open', true);
+    }
+  }
+
   userAudioMgr.startRecording();
+  // Mimic the server's speech_started event so the UI behaves the same
+  if (onEventCallback) {
+    onEventCallback({ type: 'input_audio_buffer.speech_started' });
+  }
   enableMicrophone();
 }
 
@@ -205,6 +226,31 @@ function handlePTTRelease(e) {
         return record;
       })
       .catch(err => debugLog(`User stop error: ${err}`, true));
+  }
+
+  // Signal to consumers that speech has ended
+  if (onEventCallback) {
+    onEventCallback({ type: 'input_audio_buffer.speech_stopped' });
+  }
+
+  // With turn detection disabled we must explicitly commit the audio
+  // buffer and request a response from the server.
+  if (!ENABLE_SEMANTIC_VAD) {
+    if (dataChannel && dataChannel.readyState === 'open') {
+      dataChannel.send(JSON.stringify({
+        type: 'input_audio_buffer.commit',
+        event_id: crypto.randomUUID()
+      }));
+      debugLog('Sent input_audio_buffer.commit');
+
+      dataChannel.send(JSON.stringify({
+        type: 'response.create',
+        event_id: crypto.randomUUID()
+      }));
+      debugLog('Sent response.create');
+    } else {
+      debugLog('Cannot commit audio - data channel not open', true);
+    }
   }
 }
 
@@ -298,19 +344,12 @@ export async function connect() {
         type: 'session.update',
         session: {
             input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
-            turn_detection: 
-            {
-              "type": "semantic_vad",
-              "eagerness": "low", // optional
-              "create_response": true, // only in conversation mode
-              "interrupt_response": false, // only in conversation mode
-            }
-            // {
-            // type: 'server_vad',
-            // threshold: 0.5,
-            // prefix_padding_ms: 300,
-            // silence_duration_ms: 200
-            // }
+            turn_detection: ENABLE_SEMANTIC_VAD ? {
+              type: 'semantic_vad',
+              eagerness: 'low', // optional
+              create_response: true,
+              interrupt_response: false,
+            } : null
         }
         };
         dataChannel.send(JSON.stringify(sessionUpdate));
