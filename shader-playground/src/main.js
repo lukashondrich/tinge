@@ -13,7 +13,6 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 
 
-console.log('🚀 main.js loaded');
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
@@ -39,13 +38,15 @@ function scrollToBottom() {
 
 // simple word playback helper (stubbed until audio timing is known)
 function playAudioFor(word) {
-  console.log('🔊 playAudioFor', word);
+  /* no-op */
 }
 
-function startBubble(speaker) {
+function startBubble(speaker, pressId) {
   if (activeBubbles[speaker]) return;
+  console.log(`🫧 start bubble for ${speaker}`);
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
+  if (pressId) bubble.dataset.pressId = pressId;
   const p = document.createElement('p');
   p.className = 'transcript';
   const span = document.createElement('span');
@@ -60,7 +61,6 @@ function startBubble(speaker) {
 
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
-  console.log('📊 Scene created');
   const renderer = createRenderer();
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
@@ -75,41 +75,36 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
-      console.log("💬 eventCallback got event:", event.type, event);
+      console.log("💬 event:", event.type);
 
       if (event.type === 'input_audio_buffer.speech_started') {
-        startBubble('user');
+        startBubble('user', event.pressId);
       }
       
       // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        console.log('🗣️ word:', event.word, 'speaker:', speaker);
-        addWord(event.word, speaker);
+        console.log('🗣️', speaker, event.word);
+        addWord(event.word, speaker, event.pressId);
       }
 
       // ② ignore delta events to prevent duplicates
-      if (
-        event.type === 'response.audio_transcript.delta' &&
-        typeof event.delta === 'string'
-      ) {
-        console.log('👉 transcript delta ignored');
-      }
+
 
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings } = event.record;
+        const { speaker = 'ai', id, text } = event.record;
         const bubble = activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        // Skip placeholder records
+        if (!bubble || text === '...') {
           return;
         }
 
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
-        finalizeBubble(speaker);
+        finalizeBubble(speaker, event.pressId);
         return;
       }
 
@@ -141,7 +136,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   composer.addPass(rgbShiftPass);
   
 
-  async function addWord(word, speaker = "ai") {
+  async function addWord(word, speaker = "ai", pressId) {
     const key = word.trim().toLowerCase();
     if (!usedWords.has(key)) {
       usedWords.add(key);
@@ -173,9 +168,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     }
 
     let bubble = activeBubbles[speaker];
-    if (!bubble) {
+    if (!bubble || (pressId && bubble.dataset.pressId != pressId.toString())) {
       bubble = document.createElement('div');
       bubble.classList.add('bubble', speaker);
+      if (pressId) bubble.dataset.pressId = pressId;
       const p = document.createElement('p');
       p.className = 'transcript';
       const span = document.createElement('span');
@@ -198,7 +194,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     scrollToBottom();
   }
 
-  function finalizeBubble(speaker) {
+  function finalizeBubble(speaker, pressId) {
+    const b = activeBubbles[speaker];
+    if (!b) return;
+    if (pressId && b.dataset.pressId != pressId.toString()) return;
+    console.log(`🫧 end bubble for ${speaker}`);
     activeBubbles[speaker] = null;
   }
 
