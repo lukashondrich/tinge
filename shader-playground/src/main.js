@@ -101,14 +101,16 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const { speaker = 'ai', id, text, wordTimings } = event.record;
         const bubble = activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        // Skip placeholder records
+        if (!bubble || text === '...') {
           return;
         }
 
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
+        // Finalize even if wordTimings is empty. In that case, DialoguePanel
+        // renders the text without per-word playback.
         finalizeBubble(speaker);
         return;
       }
