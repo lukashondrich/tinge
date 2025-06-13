@@ -19,6 +19,7 @@ let aiRecordingStartTime = null;
 let aiWordOffsets = [];
 let pendingUserRecordPromise = null;
 let pendingUserRecord = null;
+let lastUserTranscript = '';
 
 // Toggle to switch between semantic VAD and manual push‑to‑talk control.
 // When false, turn detection will be disabled and the client must
@@ -104,14 +105,10 @@ function createPTTButton() {
   pttButton.style.fontWeight = 'bold';
   pttButton.style.fontFamily = 'Arial, sans-serif';
   
-  // Test onclick to verify basic functionality
-  pttButton.onclick = () => {
-    debugLog('Button clicked! Basic click functionality works.');
-  };
+  pttButton.onclick = () => {};
   
   // Add event listeners for PTT button
   pttButton.addEventListener('mousedown', (e) => {
-    debugLog('mousedown event fired');
     isPTTPressed = true;
     handlePTTPress(e);
   });
@@ -119,40 +116,34 @@ function createPTTButton() {
   // Listen for mouseup on the document to catch releases outside the button
   document.addEventListener('mouseup', (e) => {
     if (isPTTPressed) {
-      debugLog('document mouseup event fired - releasing PTT');
       isPTTPressed = false;
       handlePTTRelease(e);
     }
   });
   
   pttButton.addEventListener('touchstart', (e) => {
-    debugLog('touchstart event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
+    e.preventDefault();
     isPTTPressed = true;
     handlePTTPress(e);
   });
   
   pttButton.addEventListener('touchend', (e) => {
-    debugLog('touchend event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
+    e.preventDefault();
     isPTTPressed = false;
     handlePTTRelease(e);
   });
   
   // Optional: Add touchcancel for better mobile support
   pttButton.addEventListener('touchcancel', (e) => {
-    debugLog('touchcancel event fired');
     e.preventDefault();
     isPTTPressed = false;
     handlePTTRelease(e);
   });
   
   document.body.appendChild(pttButton);
-  debugLog('PTT button created and added to document body');
 }
 
 async function handlePTTPress(e) {
-  debugLog('PTT button pressed handler called');
 
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
@@ -160,11 +151,8 @@ async function handlePTTPress(e) {
   // Connect if not already connected
   if (!isConnected) {
     try {
-      debugLog('Not connected yet, initiating connection...');
       await connect();
-      // Don't enable mic yet if we're still connecting
       if (!isConnected) {
-        debugLog('Connection initiated but not yet established');
         return;
       }
     } catch (error) {
@@ -195,7 +183,6 @@ async function handlePTTPress(e) {
 }
 
 function handlePTTRelease(e) {
-  debugLog('PTT button released handler called');
   disableMicrophone();
 
   if (userAudioMgr.isRecording) {
@@ -254,19 +241,15 @@ export async function connect() {
     // Create PeerConnection
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    peerConnection.onicecandidate = e => debugLog("ICE candidate: " + JSON.stringify(e.candidate));
-    peerConnection.onconnectionstatechange = () => debugLog("Connection state: " + peerConnection.connectionState);
+    peerConnection.onicecandidate = () => {};
+    peerConnection.onconnectionstatechange = () => {};
 
     peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection.iceConnectionState;
-        debugLog("ICE state: " + state);
         if (state === "disconnected") {
-          // Optional: try to recover without user action:
-          debugLog("🌀 ICE disconnected — restarting ICE");
           peerConnection.restartIce();
         }
         if (state === "failed") {
-          debugLog("⚠️ ICE truly failed — marking disconnected");
           isConnected = false;
           pttButton.innerText = "Reconnect";
           pttButton.style.backgroundColor = "#888";
@@ -363,9 +346,8 @@ export async function connect() {
         aiAudioMgr.stream = remoteStream;
         try {
         await aiAudioMgr.init();
-        debugLog("✅ AI AudioManager initialized with remote stream");
         } catch (err) {
-        debugLog(`❌ AI AudioManager init error: ${err}`, true);
+        debugLog(`AI AudioManager init error: ${err}`, true);
         }
     };
 
@@ -423,6 +405,10 @@ export async function connect() {
         // — user speech done (server-VAD) — (unchanged)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const t = (event.transcript || '').trim();
+          if (t === lastUserTranscript) {
+            debugLog('Duplicate transcript ignored');
+            return;
+          }
           if (t) {
             for (const w of t.split(/\s+/)) {
               onEventCallback({
@@ -446,6 +432,7 @@ export async function connect() {
                 .finally(() => {
                   StorageService.addUtterance(record);
                   onEventCallback({ type: 'utterance.added', record });
+                  lastUserTranscript = t;
                   if (pendingUserRecord === record) pendingUserRecord = null;
                   pendingUserRecordPromise = null;
                 });
@@ -553,7 +540,6 @@ function enableMicrophone() {
     isMicActive = true;
     pttButton.style.backgroundColor = '#f00'; // Red when active
     pttButton.innerText = 'Talking';
-    debugLog('Microphone enabled');
   } else {
     if (!audioTrack) {
       debugLog('Cannot enable microphone - no audio track available', true);
@@ -570,7 +556,6 @@ function disableMicrophone() {
     isMicActive = false;
     pttButton.style.backgroundColor = '#44f'; // Blue when inactive
     pttButton.innerText = 'Push to Talk';
-    debugLog('Microphone disabled');
   } else {
     debugLog('Cannot disable microphone - no audio track available', true);
   }

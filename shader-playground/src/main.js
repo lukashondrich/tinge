@@ -13,7 +13,6 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 
 
-console.log('🚀 main.js loaded');
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
@@ -39,11 +38,12 @@ function scrollToBottom() {
 
 // simple word playback helper (stubbed until audio timing is known)
 function playAudioFor(word) {
-  console.log('🔊 playAudioFor', word);
+  /* no-op */
 }
 
 function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
+  console.log(`🫧 start bubble for ${speaker}`);
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
   const p = document.createElement('p');
@@ -60,7 +60,6 @@ function startBubble(speaker) {
 
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
-  console.log('📊 Scene created');
   const renderer = createRenderer();
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
@@ -75,7 +74,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
-      console.log("💬 eventCallback got event:", event.type, event);
+      console.log("💬 event:", event.type);
 
       if (event.type === 'input_audio_buffer.speech_started') {
         startBubble('user');
@@ -84,17 +83,12 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        console.log('🗣️ word:', event.word, 'speaker:', speaker);
+        console.log('🗣️', speaker, event.word);
         addWord(event.word, speaker);
       }
 
       // ② ignore delta events to prevent duplicates
-      if (
-        event.type === 'response.audio_transcript.delta' &&
-        typeof event.delta === 'string'
-      ) {
-        console.log('👉 transcript delta ignored');
-      }
+
 
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
@@ -199,6 +193,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   }
 
   function finalizeBubble(speaker) {
+    console.log(`🫧 end bubble for ${speaker}`);
     activeBubbles[speaker] = null;
   }
 

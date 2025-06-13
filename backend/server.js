@@ -20,11 +20,6 @@ app.use(cors());
 // Serve static files from public directory (if needed)
 app.use(express.static('public'));
 
-// Log all requests for debugging
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
 
 // API route for token generation
 app.get("/token", async (req, res) => {
