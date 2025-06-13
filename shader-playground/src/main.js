@@ -12,8 +12,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 
-
-console.log('🚀 main.js loaded');
+const log = (...args) => console.log('[ui]', ...args);
+log('init');
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
@@ -39,11 +39,12 @@ function scrollToBottom() {
 
 // simple word playback helper (stubbed until audio timing is known)
 function playAudioFor(word) {
-  console.log('🔊 playAudioFor', word);
+  /* stubbed */
 }
 
 function startBubble(speaker) {
   if (activeBubbles[speaker]) return;
+  log('bubble start', speaker);
   const bubble = document.createElement('div');
   bubble.classList.add('bubble', speaker);
   const p = document.createElement('p');
@@ -60,22 +61,21 @@ function startBubble(speaker) {
 
 // Initialize scene and OpenAI Realtime
 createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
-  console.log('📊 Scene created');
+  log('scene ready');
   const renderer = createRenderer();
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
-  console.log('🔄 Initializing OpenAI Realtime...');
+  log('realtime init');
   
   initOpenAIRealtime(
     (remoteStream) => {
-      console.log("🔊 Received remote audio stream");
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
-      console.log("💬 eventCallback got event:", event.type, event);
+      log('event', event.type);
 
       if (event.type === 'input_audio_buffer.speech_started') {
         startBubble('user');
@@ -84,7 +84,6 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        console.log('🗣️ word:', event.word, 'speaker:', speaker);
         addWord(event.word, speaker);
       }
 
@@ -93,7 +92,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         event.type === 'response.audio_transcript.delta' &&
         typeof event.delta === 'string'
       ) {
-        console.log('👉 transcript delta ignored');
+        return;
       }
 
       // ③ final utterance record with audio & timings
@@ -119,7 +118,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         typeof event.transcript === 'string'
       ) {
         const speaker = event.speaker || 'ai';
-        console.log('✅ final transcript:', event.transcript);
+        log('final transcript');
         // wait for utterance.added to finalize
       }
     }
@@ -199,6 +198,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   }
 
   function finalizeBubble(speaker) {
+    log('bubble end', speaker);
     activeBubbles[speaker] = null;
   }
 
