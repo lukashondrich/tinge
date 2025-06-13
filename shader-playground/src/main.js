@@ -93,11 +93,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings } = event.record;
+        const { speaker = 'ai', id, text } = event.record;
         const bubble = activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        // Skip placeholder records
+        if (!bubble || text === '...') {
           return;
         }
 
