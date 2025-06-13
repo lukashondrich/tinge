@@ -53,10 +53,10 @@ function stopAndTranscribe(audioMgr, transcriptText) {
       });
   }
 
-// Debug logging function
-function debugLog(message, error = false) {
-  const prefix = error ? '❌ ERROR:' : '🔍 DEBUG:';
-  console.log(`${prefix} ${message}`);
+// Simple logger so we can enable/disable verbose output in one place
+function debugLog(msg, error = false) {
+  const prefix = error ? '❌' : '🔍';
+  console.log(`${prefix} ${msg}`);
 }
 
 // our recorder for “utterance” blobs
@@ -254,7 +254,10 @@ export async function connect() {
     // Create PeerConnection
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    peerConnection.onicecandidate = e => debugLog("ICE candidate: " + JSON.stringify(e.candidate));
+    peerConnection.onicecandidate = e => {
+      if (!e.candidate) return;
+      debugLog('ICE candidate received');
+    };
     peerConnection.onconnectionstatechange = () => debugLog("Connection state: " + peerConnection.connectionState);
 
     peerConnection.oniceconnectionstatechange = () => {
@@ -422,6 +425,7 @@ export async function connect() {
       
         // — user speech done (server-VAD) — (unchanged)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
+          debugLog(`User transcription completed: "${event.transcript}"`);
           const t = (event.transcript || '').trim();
           if (t) {
             for (const w of t.split(/\s+/)) {
@@ -434,10 +438,15 @@ export async function connect() {
 
             const finalize = (record) => {
               record.text = t;
+
+              // Emit immediately so the UI can show the transcript right away
+              onEventCallback({ type: 'utterance.added', record });
+
               fetchWordTimings(record.audioBlob)
                 .then(({ words, fullText }) => {
                   record.wordTimings = words;
                   record.fullText = fullText;
+                  onEventCallback({ type: 'utterance.updated', record });
                 })
                 .catch(() => {
                   record.wordTimings = [];
@@ -445,7 +454,6 @@ export async function connect() {
                 })
                 .finally(() => {
                   StorageService.addUtterance(record);
-                  onEventCallback({ type: 'utterance.added', record });
                   if (pendingUserRecord === record) pendingUserRecord = null;
                   pendingUserRecordPromise = null;
                 });

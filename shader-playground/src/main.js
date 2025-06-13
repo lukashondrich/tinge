@@ -75,7 +75,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
-      console.log("💬 eventCallback got event:", event.type, event);
+      console.log('💬', event.type);
 
       if (event.type === 'input_audio_buffer.speech_started') {
         startBubble('user');
@@ -84,42 +84,35 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ① stream words into the active bubble
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        console.log('🗣️ word:', event.word, 'speaker:', speaker);
         addWord(event.word, speaker);
       }
 
-      // ② ignore delta events to prevent duplicates
-      if (
-        event.type === 'response.audio_transcript.delta' &&
-        typeof event.delta === 'string'
-      ) {
-        console.log('👉 transcript delta ignored');
+      // ② ignore delta events to reduce noise
+      if (event.type === 'response.audio_transcript.delta') {
+        return;
       }
 
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings } = event.record;
+        const { speaker = 'ai', id } = event.record;
         const bubble = activeBubbles[speaker];
-
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
-          return;
-        }
+        if (!bubble || event.record.text === '...') return;
 
         bubble.dataset.utteranceId = id;
-        panel.add(event.record); // DialoguePanel will replace the bubble
+        panel.add(event.record);
         scrollToBottom();
         finalizeBubble(speaker);
         return;
       }
 
+      if (event.type === 'utterance.updated' && event.record) {
+        panel.add(event.record);
+        scrollToBottom();
+        return;
+      }
+
       // ④ mark end of the current utterance (handled when record arrives)
-      if (
-        event.type === 'response.audio_transcript.done' &&
-        typeof event.transcript === 'string'
-      ) {
-        const speaker = event.speaker || 'ai';
-        console.log('✅ final transcript:', event.transcript);
+      if (event.type === 'response.audio_transcript.done') {
         // wait for utterance.added to finalize
       }
     }
