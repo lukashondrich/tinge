@@ -31,6 +31,10 @@ const activeBubbles = { user: null, ai: null };
 // (e.g. while waiting for /transcribe), we stash it here so the record
 // can still replace the correct element once ready.
 const pendingFinalBubbles = { user: null, ai: null };
+// Final transcript text from `response.audio_transcript.done` in case
+// the later `utterance.added` record contains only '...' due to
+// a transcription error.
+const pendingFinalText = { user: '', ai: '' };
 
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
@@ -115,8 +119,19 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const { speaker = 'ai', id, text, wordTimings } = event.record;
         const bubble = pendingFinalBubbles[speaker] || activeBubbles[speaker];
 
-        // Skip placeholder records
-        if (!bubble || text === '...') {
+        if (!bubble) {
+          return;
+        }
+
+        // Use transcript from the done event if record only contains '...'
+        let finalText = text;
+        if (text === '...' && pendingFinalText[speaker]) {
+          finalText = pendingFinalText[speaker];
+          event.record.text = finalText;
+        }
+
+        // Skip placeholder records entirely when no transcript is available
+        if (finalText === '...') {
           return;
         }
 
@@ -127,6 +142,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         // renders the text without per-word playback.
         finalizeBubble(speaker);
         pendingFinalBubbles[speaker] = null;
+        pendingFinalText[speaker] = '';
         return;
       }
 
@@ -137,7 +153,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       ) {
         const speaker = event.speaker || 'ai';
         console.log('✅ final transcript:', event.transcript);
-        // wait for utterance.added to finalize
+        pendingFinalText[speaker] = event.transcript;
+        // wait for utterance.added to finalize or fallback to this text
       }
     }
   )
