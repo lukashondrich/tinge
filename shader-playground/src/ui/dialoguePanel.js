@@ -17,7 +17,7 @@ export class DialoguePanel {
      * record.text         // original punctuated transcript
      * record.wordTimings  // [{word, start, end}, …] from Whisper
      */
-    async add(record) {
+    async add(record, replaceEl = null) {
       // 1) Bubble wrapper
       const bubble = document.createElement('div');
       bubble.classList.add('bubble', record.speaker === 'ai' ? 'ai' : 'user');
@@ -80,12 +80,13 @@ export class DialoguePanel {
   
       // 5) Append bubble & auto-scroll, updating if already exists
       bubble.appendChild(p);
-      const existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
-      if (existing) {
-        this.container.replaceChild(bubble, existing);
+      const target = replaceEl || this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+      if (target && target.parentNode === this.container) {
+        this.container.replaceChild(bubble, target);
       } else {
         this.container.appendChild(bubble);
       }
       this.container.scrollTop = this.container.scrollHeight;
+      return bubble;
     }
   }

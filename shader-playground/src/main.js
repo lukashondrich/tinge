@@ -56,6 +56,7 @@ function startBubble(speaker) {
   bubble.__highlight = span;
   activeBubbles[speaker] = bubble;
   scrollToBottom();
+  console.log(`✨ new ${speaker} bubble`);
 }
 
 // Initialize scene and OpenAI Realtime
@@ -78,6 +79,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       console.log('💬', event.type);
 
       if (event.type === 'input_audio_buffer.speech_started') {
+        console.log('👤 user speech started');
         startBubble('user');
       }
       
@@ -99,13 +101,15 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         if (!bubble || event.record.text === '...') return;
 
         bubble.dataset.utteranceId = id;
-        panel.add(event.record);
-        scrollToBottom();
+        console.log(`📝 final ${speaker} utterance`);
+        panel.add(event.record, bubble);
         finalizeBubble(speaker);
+        scrollToBottom();
         return;
       }
 
       if (event.type === 'utterance.updated' && event.record) {
+        console.log(`🔄 updated ${event.record.speaker || 'ai'} timings`);
         panel.add(event.record);
         scrollToBottom();
         return;
@@ -193,6 +197,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   function finalizeBubble(speaker) {
     activeBubbles[speaker] = null;
+    console.log(`✅ ${speaker} bubble finalized`);
   }
 
 

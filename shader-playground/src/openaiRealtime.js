@@ -104,55 +104,42 @@ function createPTTButton() {
   pttButton.style.fontWeight = 'bold';
   pttButton.style.fontFamily = 'Arial, sans-serif';
   
-  // Test onclick to verify basic functionality
-  pttButton.onclick = () => {
-    debugLog('Button clicked! Basic click functionality works.');
-  };
-  
-  // Add event listeners for PTT button
+  // Basic PTT interactions
   pttButton.addEventListener('mousedown', (e) => {
-    debugLog('mousedown event fired');
     isPTTPressed = true;
     handlePTTPress(e);
   });
-  
-  // Listen for mouseup on the document to catch releases outside the button
+
   document.addEventListener('mouseup', (e) => {
     if (isPTTPressed) {
-      debugLog('document mouseup event fired - releasing PTT');
       isPTTPressed = false;
       handlePTTRelease(e);
     }
   });
-  
+
   pttButton.addEventListener('touchstart', (e) => {
-    debugLog('touchstart event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
+    e.preventDefault();
     isPTTPressed = true;
     handlePTTPress(e);
   });
-  
+
   pttButton.addEventListener('touchend', (e) => {
-    debugLog('touchend event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
+    e.preventDefault();
     isPTTPressed = false;
     handlePTTRelease(e);
   });
-  
-  // Optional: Add touchcancel for better mobile support
+
   pttButton.addEventListener('touchcancel', (e) => {
-    debugLog('touchcancel event fired');
     e.preventDefault();
     isPTTPressed = false;
     handlePTTRelease(e);
   });
   
   document.body.appendChild(pttButton);
-  debugLog('PTT button created and added to document body');
 }
 
 async function handlePTTPress(e) {
-  debugLog('PTT button pressed handler called');
+  debugLog('PTT pressed');
 
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
@@ -195,7 +182,7 @@ async function handlePTTPress(e) {
 }
 
 function handlePTTRelease(e) {
-  debugLog('PTT button released handler called');
+  debugLog('PTT released');
   disableMicrophone();
 
   if (userAudioMgr.isRecording) {
@@ -204,6 +191,7 @@ function handlePTTRelease(e) {
       .then(record => {
         if (!record) return null;
         pendingUserRecord = record;
+        debugLog('▶️ emit utterance.added (placeholder)');
         if (onEventCallback) {
           onEventCallback({ type: 'utterance.added', record });
         }
@@ -439,13 +427,14 @@ export async function connect() {
             const finalize = (record) => {
               record.text = t;
 
-              // Emit immediately so the UI can show the transcript right away
+              debugLog('▶️ emit utterance.added (final)');
               onEventCallback({ type: 'utterance.added', record });
 
               fetchWordTimings(record.audioBlob)
                 .then(({ words, fullText }) => {
                   record.wordTimings = words;
                   record.fullText = fullText;
+                  debugLog('⏱️ emit utterance.updated');
                   onEventCallback({ type: 'utterance.updated', record });
                 })
                 .catch(() => {
