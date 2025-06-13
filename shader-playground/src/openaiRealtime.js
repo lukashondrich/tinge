@@ -19,7 +19,11 @@ let aiRecordingStartTime = null;
 let aiWordOffsets = [];
 let pendingUserRecordPromise = null;
 let pendingUserRecord = null;
-let lastUserTranscript = '';
+
+// Track PTT button presses so incoming events can be grouped
+let pressCounter = 0;
+let currentPressId = 0;
+let pendingPressId = 0; // waiting for transcript
 
 // Toggle to switch between semantic VAD and manual push‑to‑talk control.
 // When false, turn detection will be disabled and the client must
@@ -145,6 +149,10 @@ function createPTTButton() {
 
 async function handlePTTPress(e) {
 
+  // new PTT session
+  pressCounter += 1;
+  currentPressId = pressCounter;
+
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
   
@@ -169,20 +177,19 @@ async function handlePTTPress(e) {
         event_id: crypto.randomUUID()
       }));
       debugLog('Sent input_audio_buffer.clear');
-    } else {
-      debugLog('Cannot clear buffer - data channel not open', true);
     }
   }
 
   userAudioMgr.startRecording();
   // Mimic the server's speech_started event so the UI behaves the same
   if (onEventCallback) {
-    onEventCallback({ type: 'input_audio_buffer.speech_started' });
+    onEventCallback({ type: 'input_audio_buffer.speech_started', pressId: currentPressId });
   }
   enableMicrophone();
 }
 
 function handlePTTRelease(e) {
+  pendingPressId = currentPressId;
   disableMicrophone();
 
   if (userAudioMgr.isRecording) {
@@ -192,7 +199,7 @@ function handlePTTRelease(e) {
         if (!record) return null;
         pendingUserRecord = record;
         if (onEventCallback) {
-          onEventCallback({ type: 'utterance.added', record });
+          onEventCallback({ type: 'utterance.added', record, pressId: pendingPressId });
         }
         return record;
       })
@@ -219,8 +226,6 @@ function handlePTTRelease(e) {
         event_id: crypto.randomUUID()
       }));
       debugLog('Sent response.create');
-    } else {
-      debugLog('Cannot commit audio - data channel not open', true);
     }
   }
 }
@@ -405,16 +410,13 @@ export async function connect() {
         // — user speech done (server-VAD) — (unchanged)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const t = (event.transcript || '').trim();
-          if (t === lastUserTranscript) {
-            debugLog('Duplicate transcript ignored');
-            return;
-          }
           if (t) {
             for (const w of t.split(/\s+/)) {
               onEventCallback({
                 type: 'transcript.word',
                 word: w,
-                speaker: 'user'
+                speaker: 'user',
+                pressId: pendingPressId
               });
             }
 
@@ -431,8 +433,8 @@ export async function connect() {
                 })
                 .finally(() => {
                   StorageService.addUtterance(record);
-                  onEventCallback({ type: 'utterance.added', record });
-                  lastUserTranscript = t;
+                  onEventCallback({ type: 'utterance.added', record, pressId: pendingPressId });
+                  pendingPressId = 0;
                   if (pendingUserRecord === record) pendingUserRecord = null;
                   pendingUserRecordPromise = null;
                 });
