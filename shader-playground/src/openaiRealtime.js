@@ -53,10 +53,9 @@ function stopAndTranscribe(audioMgr, transcriptText) {
       });
   }
 
-// Simple logger so we can enable/disable verbose output in one place
-function debugLog(msg, error = false) {
-  const prefix = error ? '❌' : '🔍';
-  console.log(`${prefix} ${msg}`);
+// Minimal logger to follow the event flow
+function log(message) {
+  console.log(`[realtime] ${message}`);
 }
 
 // our recorder for “utterance” blobs
@@ -68,7 +67,7 @@ export async function initOpenAIRealtime(streamCallback, eventCallback) {
   // Store the callback for later use
   onRemoteStreamCallback = streamCallback;
   onEventCallback = eventCallback;
-  debugLog("Initializing OpenAI Realtime...");
+  log('init realtime');
 
   // Prepare MediaRecorder
   await userAudioMgr.init();
@@ -104,31 +103,35 @@ function createPTTButton() {
   pttButton.style.fontWeight = 'bold';
   pttButton.style.fontFamily = 'Arial, sans-serif';
   
-  // Basic PTT interactions
+  pttButton.onclick = () => {};
+  
+  // Add event listeners for PTT button
   pttButton.addEventListener('mousedown', (e) => {
     isPTTPressed = true;
     handlePTTPress(e);
   });
-
+  
+  // Listen for mouseup on the document to catch releases outside the button
   document.addEventListener('mouseup', (e) => {
     if (isPTTPressed) {
       isPTTPressed = false;
       handlePTTRelease(e);
     }
   });
-
+  
   pttButton.addEventListener('touchstart', (e) => {
     e.preventDefault();
     isPTTPressed = true;
     handlePTTPress(e);
   });
-
+  
   pttButton.addEventListener('touchend', (e) => {
     e.preventDefault();
     isPTTPressed = false;
     handlePTTRelease(e);
   });
-
+  
+  // Optional: Add touchcancel for better mobile support
   pttButton.addEventListener('touchcancel', (e) => {
     e.preventDefault();
     isPTTPressed = false;
@@ -139,7 +142,7 @@ function createPTTButton() {
 }
 
 async function handlePTTPress(e) {
-  debugLog('PTT pressed');
+  log('ptt down');
 
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
@@ -147,15 +150,14 @@ async function handlePTTPress(e) {
   // Connect if not already connected
   if (!isConnected) {
     try {
-      debugLog('Not connected yet, initiating connection...');
+      log('connect');
       await connect();
       // Don't enable mic yet if we're still connecting
       if (!isConnected) {
-        debugLog('Connection initiated but not yet established');
         return;
       }
     } catch (error) {
-      debugLog(`Connection failed: ${error.message}`, true);
+      log(`connect failed: ${error.message}`);
       return;
     }
   }
@@ -167,13 +169,11 @@ async function handlePTTPress(e) {
         type: 'input_audio_buffer.clear',
         event_id: crypto.randomUUID()
       }));
-      debugLog('Sent input_audio_buffer.clear');
-    } else {
-      debugLog('Cannot clear buffer - data channel not open', true);
     }
   }
 
   userAudioMgr.startRecording();
+
   // Mimic the server's speech_started event so the UI behaves the same
   if (onEventCallback) {
     onEventCallback({ type: 'input_audio_buffer.speech_started' });
@@ -182,7 +182,7 @@ async function handlePTTPress(e) {
 }
 
 function handlePTTRelease(e) {
-  debugLog('PTT released');
+  log('ptt up');
   disableMicrophone();
 
   if (userAudioMgr.isRecording) {
@@ -191,16 +191,14 @@ function handlePTTRelease(e) {
       .then(record => {
         if (!record) return null;
         pendingUserRecord = record;
-        debugLog('▶️ emit utterance.added (placeholder)');
         if (onEventCallback) {
           onEventCallback({ type: 'utterance.added', record });
         }
         return record;
       })
-      .catch(err => debugLog(`User stop error: ${err}`, true));
+      .catch(err => log(`user stop error: ${err}`));
   }
 
-  // Signal to consumers that speech has ended
   if (onEventCallback) {
     onEventCallback({ type: 'input_audio_buffer.speech_stopped' });
   }
@@ -213,27 +211,23 @@ function handlePTTRelease(e) {
         type: 'input_audio_buffer.commit',
         event_id: crypto.randomUUID()
       }));
-      debugLog('Sent input_audio_buffer.commit');
 
       dataChannel.send(JSON.stringify({
         type: 'response.create',
         event_id: crypto.randomUUID()
       }));
-      debugLog('Sent response.create');
-    } else {
-      debugLog('Cannot commit audio - data channel not open', true);
     }
   }
 }
 
 export async function connect() {
     try {
-    debugLog('Connecting to OpenAI Realtime API...');
+    log('connect start');
     pttButton.innerText = 'Connecting...';
     pttButton.style.backgroundColor = '#666';
 
     // Get token
-    debugLog('Requesting token from server...');
+    log('requesting token');
     const tokenResponse = await fetch('/token');
     if (!tokenResponse.ok) throw new Error(`Failed to get token: ${tokenResponse.status}`);
     const data = await tokenResponse.json();
@@ -242,22 +236,14 @@ export async function connect() {
     // Create PeerConnection
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    peerConnection.onicecandidate = e => {
-      if (!e.candidate) return;
-      debugLog('ICE candidate received');
-    };
-    peerConnection.onconnectionstatechange = () => debugLog("Connection state: " + peerConnection.connectionState);
 
     peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection.iceConnectionState;
-        debugLog("ICE state: " + state);
         if (state === "disconnected") {
           // Optional: try to recover without user action:
-          debugLog("🌀 ICE disconnected — restarting ICE");
           peerConnection.restartIce();
         }
         if (state === "failed") {
-          debugLog("⚠️ ICE truly failed — marking disconnected");
           isConnected = false;
           pttButton.innerText = "Reconnect";
           pttButton.style.backgroundColor = "#888";
@@ -272,7 +258,6 @@ export async function connect() {
     dataChannel = peerConnection.createDataChannel('oai-events');
     
     dataChannel.onclose = () => {
-        debugLog('🔌 Data channel closed — marking disconnected');
         isConnected = false;
         if (pttButton) {
           pttButton.innerText = 'Reconnect';
@@ -282,7 +267,6 @@ export async function connect() {
 
     // Set up Whisper+VAD on open
     dataChannel.onopen = async () => {
-        debugLog('Data channel opened');
         isConnected = true;
         pttButton.innerText = 'Push to Talk';
         pttButton.style.backgroundColor = '#44f';
@@ -308,9 +292,8 @@ export async function connect() {
             }
             };
             dataChannel.send(JSON.stringify(sysEvent));
-            debugLog('Sent system prompt from YAML');
         } catch (err) {
-            debugLog(`Failed to load system prompt YAML: ${err.message}`, true);
+            log(`system prompt load failed: ${err.message}`);
         }
 
         // ─── enable audio transcription and VAD ───
@@ -328,7 +311,6 @@ export async function connect() {
         }
         };
         dataChannel.send(JSON.stringify(sessionUpdate));
-        debugLog('Sent session.update ▶︎ enable audio transcription');
     };
 
     // —————————————————————————————————————————
@@ -337,7 +319,6 @@ export async function connect() {
 
     // 1) Catch remote audio and wire up AI recorder
     peerConnection.ontrack = async (event) => {
-        debugLog("✅ Remote track received from OpenAI");
         const remoteStream = event.streams[0];
 
         // Pass to UI
@@ -354,16 +335,15 @@ export async function connect() {
         aiAudioMgr.stream = remoteStream;
         try {
         await aiAudioMgr.init();
-        debugLog("✅ AI AudioManager initialized with remote stream");
         } catch (err) {
-        debugLog(`❌ AI AudioManager init error: ${err}`, true);
+        log(`AI AudioManager init error: ${err}`);
         }
     };
 
     // 2) Handle all incoming events
     dataChannel.addEventListener("message", (e) => {
         const event = JSON.parse(e.data);
-        debugLog(`Received event: ${event.type}`);
+        log(`event: ${event.type}`);
         if (!event.timestamp) event.timestamp = new Date().toLocaleTimeString();
       
         // Relay raw events
@@ -373,10 +353,8 @@ export async function connect() {
         // — AI interim speech (start recorder + accumulate text + offsets) —
         if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
             if (!aiAudioMgr.isRecording) {
-            debugLog("▶️ [AI] startRecording()");
             aiRecordingStartTime = performance.now();
             aiWordOffsets = [];
-            aiAudioMgr.startRecording();
             }
             // capture offset
             const offsetMs = performance.now() - aiRecordingStartTime;
@@ -395,7 +373,6 @@ export async function connect() {
         // — stop recording exactly once, at the end of the audio buffer —
         if (event.type === 'output_audio_buffer.stopped') {
             if (aiAudioMgr.isRecording) {
-                debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
                 stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
                     if (!record) return;
                     onEventCallback({ type: 'utterance.added', record });
@@ -405,15 +382,14 @@ export async function connect() {
                 aiWordOffsets = [];
                 aiRecordingStartTime = null;
                 })
-                .catch(err => debugLog(`AI transcription error: ${err}`, true));
+                .catch(err => log(`AI transcription error: ${err}`));
             } else {
-            debugLog("⚠️ [AI] got buffer-stopped but was not recording, skipping");
+            log('AI buffer-stopped but was not recording');
             }
         }
       
         // — user speech done (server-VAD) — (unchanged)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
-          debugLog(`User transcription completed: "${event.transcript}"`);
           const t = (event.transcript || '').trim();
           if (t) {
             for (const w of t.split(/\s+/)) {
@@ -426,16 +402,10 @@ export async function connect() {
 
             const finalize = (record) => {
               record.text = t;
-
-              debugLog('▶️ emit utterance.added (final)');
-              onEventCallback({ type: 'utterance.added', record });
-
               fetchWordTimings(record.audioBlob)
                 .then(({ words, fullText }) => {
                   record.wordTimings = words;
                   record.fullText = fullText;
-                  debugLog('⏱️ emit utterance.updated');
-                  onEventCallback({ type: 'utterance.updated', record });
                 })
                 .catch(() => {
                   record.wordTimings = [];
@@ -443,6 +413,7 @@ export async function connect() {
                 })
                 .finally(() => {
                   StorageService.addUtterance(record);
+                  onEventCallback({ type: 'utterance.added', record });
                   if (pendingUserRecord === record) pendingUserRecord = null;
                   pendingUserRecordPromise = null;
                 });
@@ -455,13 +426,13 @@ export async function connect() {
                 .then(record => {
                   if (record) finalize(record);
                 })
-                .catch(err => debugLog(`User transcription error: ${err}`, true));
+                .catch(err => log(`user transcription error: ${err}`));
             } else {
               stopAndTranscribe(userAudioMgr, t)
                 .then(record => {
                   if (record) finalize(record);
                 })
-                .catch(err => debugLog(`User transcription error: ${err}`, true));
+                .catch(err => log(`user transcription error: ${err}`));
             }
           }
 
@@ -476,18 +447,18 @@ export async function connect() {
     
     
     // Create and set local description
-    debugLog('Creating offer...');
+    log('creating offer');
     try {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      debugLog('Local description set');
+      log('local desc set');
     } catch (sdpError) {
-      debugLog(`Error creating SDP offer: ${sdpError.message}`, true);
+      log(`offer error: ${sdpError.message}`);
       throw new Error(`SDP creation failed: ${sdpError.message}`);
     }
     
     // Exchange SDP with OpenAI server
-    debugLog('Exchanging SDP with OpenAI...');
+    log('exchange sdp');
     const baseUrl = 'https://api.openai.com/v1/realtime';
     const model = 'gpt-4o-mini-realtime-preview-2024-12-17';
     
@@ -503,32 +474,28 @@ export async function connect() {
       
       if (!sdpResponse.ok) {
         const errorText = await sdpResponse.text();
-        debugLog(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`, true);
-        debugLog(`Error details: ${errorText}`, true);
-        throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
       }
       
       // Set remote description
       const sdpText = await sdpResponse.text();
-      debugLog('SDP response received, setting remote description...');
+      log('sdp received');
       const answer = {
         type: 'answer',
         sdp: sdpText
       };
       
       await peerConnection.setRemoteDescription(answer);
-      debugLog('Remote description set');
+      log('remote desc set');
     } catch (fetchError) {
-      debugLog(`Error during SDP exchange: ${fetchError.message}`, true);
-      throw new Error(`SDP exchange failed: ${fetchError.message}`);
+      log(`sdp error: ${fetchError.message}`);
     }
     
     
-    debugLog('Connection established successfully');
+    log('connected');
     isConnected = true;
     
   } catch (error) {
-    debugLog(`Connection error: ${error.message}`, true);
+    log(`connection error: ${error.message}`);
     pttButton.innerText = 'Error';
     pttButton.style.backgroundColor = '#c00';
     
@@ -550,13 +517,11 @@ function enableMicrophone() {
     isMicActive = true;
     pttButton.style.backgroundColor = '#f00'; // Red when active
     pttButton.innerText = 'Talking';
-    debugLog('Microphone enabled');
+    log('mic on');
   } else {
     if (!audioTrack) {
-      debugLog('Cannot enable microphone - no audio track available', true);
     }
     if (!isConnected) {
-      debugLog('Cannot enable microphone - not connected to OpenAI', true);
     }
   }
 }
@@ -567,15 +532,13 @@ function disableMicrophone() {
     isMicActive = false;
     pttButton.style.backgroundColor = '#44f'; // Blue when inactive
     pttButton.innerText = 'Push to Talk';
-    debugLog('Microphone disabled');
+    log('mic off');
   } else {
-    debugLog('Cannot disable microphone - no audio track available', true);
   }
 }
 
 export function sendTextMessage(text) {
   if (!dataChannel || dataChannel.readyState !== 'open') {
-    debugLog('Cannot send message: data channel not open', true);
     return false;
   }
   
@@ -595,7 +558,7 @@ export function sendTextMessage(text) {
   };
   
   dataChannel.send(JSON.stringify(event));
-  debugLog(`Sent text: ${text}`);
+  log(`sent text: ${text}`);
   
   // Send response.create event
   const responseEvent = {
@@ -636,5 +599,5 @@ export function cleanup() {
   isConnected = false;
   isMicActive = false;
   
-  debugLog('OpenAI Realtime resources cleaned up');
+  log('cleanup');
 }
