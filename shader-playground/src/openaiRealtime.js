@@ -19,6 +19,7 @@ let aiRecordingStartTime = null;
 let aiWordOffsets = [];
 let pendingUserRecordPromise = null;
 let pendingUserRecord = null;
+let lastAIRecord = null;
 
 // Track PTT button presses so incoming events can be grouped
 let pressCounter = 0;
@@ -394,6 +395,7 @@ export async function connect() {
                 debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
                 stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
                     if (!record) return;
+                    lastAIRecord = record;
                     onEventCallback({ type: 'utterance.added', record });
 
                 // reset for next turn
@@ -459,7 +461,15 @@ export async function connect() {
 
           return; // swallow
         }
-      
+
+        if (event.type === 'response.audio_transcript.done' && lastAIRecord) {
+          lastAIRecord.text = (event.transcript || '').trim();
+          StorageService.addUtterance(lastAIRecord);
+          onEventCallback({ type: 'utterance.added', record: lastAIRecord });
+          lastAIRecord = null;
+          return; // swallow
+        }
+
         // — drop the old “response.done” or “response.audio_transcript.done” blocks entirely —
       });
       
