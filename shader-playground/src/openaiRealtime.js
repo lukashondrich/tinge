@@ -196,8 +196,8 @@ async function handlePTTPress(e) {
 
 function handlePTTRelease(e) {
   debugLog('PTT button released handler called');
-  disableMicrophone();
-
+  
+  // Stop local recording immediately to capture full speech
   if (userAudioMgr.isRecording) {
       pendingUserRecordPromise = userAudioMgr
         .stopRecording('...')
@@ -212,30 +212,36 @@ function handlePTTRelease(e) {
       .catch(err => debugLog(`User stop error: ${err}`, true));
   }
 
-  // Signal to consumers that speech has ended
-  if (onEventCallback) {
-    onEventCallback({ type: 'input_audio_buffer.speech_stopped' });
-  }
+  // Add buffer time before finalizing the audio processing
+  setTimeout(() => {
+    debugLog('Buffer time completed, finalizing audio processing');
+    disableMicrophone();
 
-  // With turn detection disabled we must explicitly commit the audio
-  // buffer and request a response from the server.
-  if (!ENABLE_SEMANTIC_VAD) {
-    if (dataChannel && dataChannel.readyState === 'open') {
-      dataChannel.send(JSON.stringify({
-        type: 'input_audio_buffer.commit',
-        event_id: crypto.randomUUID()
-      }));
-      debugLog('Sent input_audio_buffer.commit');
-
-      dataChannel.send(JSON.stringify({
-        type: 'response.create',
-        event_id: crypto.randomUUID()
-      }));
-      debugLog('Sent response.create');
-    } else {
-      debugLog('Cannot commit audio - data channel not open', true);
+    // Signal to consumers that speech has ended
+    if (onEventCallback) {
+      onEventCallback({ type: 'input_audio_buffer.speech_stopped' });
     }
-  }
+
+    // With turn detection disabled we must explicitly commit the audio
+    // buffer and request a response from the server.
+    if (!ENABLE_SEMANTIC_VAD) {
+      if (dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({
+          type: 'input_audio_buffer.commit',
+          event_id: crypto.randomUUID()
+        }));
+        debugLog('Sent input_audio_buffer.commit');
+
+        dataChannel.send(JSON.stringify({
+          type: 'response.create',
+          event_id: crypto.randomUUID()
+        }));
+        debugLog('Sent response.create');
+      } else {
+        debugLog('Cannot commit audio - data channel not open', true);
+      }
+    }
+  }, 500); // 500ms buffer time
 }
 
 export async function connect() {
