@@ -59,9 +59,52 @@ function startBubble(speaker) {
 }
 
 // Initialize scene and OpenAI Realtime
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded, labels }) => {
   console.log('📊 Scene created');
   const renderer = createRenderer();
+
+  // 🏷 Tooltip for hovered words
+  const tooltip = document.createElement('div');
+  tooltip.id = 'wordTooltip';
+  Object.assign(tooltip.style, {
+    position: 'absolute',
+    pointerEvents: 'none',
+    padding: '2px 6px',
+    background: 'rgba(0,0,0,0.7)',
+    color: '#fff',
+    fontSize: '12px',
+    borderRadius: '4px',
+    display: 'none',
+    zIndex: 1000
+  });
+  document.body.appendChild(tooltip);
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function onPointerMove(e) {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObject(mesh);
+    if (hits.length > 0 && hits[0].instanceId != null) {
+      const id = hits[0].instanceId;
+      const label = labels[id];
+      if (label) {
+        tooltip.textContent = label;
+        tooltip.style.left = e.clientX + 8 + 'px';
+        tooltip.style.top = e.clientY + 8 + 'px';
+        tooltip.style.display = 'block';
+        return;
+      }
+    }
+    tooltip.style.display = 'none';
+  }
+
+  renderer.domElement.addEventListener('mousemove', onPointerMove);
+  renderer.domElement.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
   console.log('🔄 Initializing OpenAI Realtime...');
@@ -170,6 +213,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       mesh.instanceColor.needsUpdate = true;
 
       recentlyAdded.set(id, performance.now());
+      labels[id] = word;
     }
 
     let bubble = activeBubbles[speaker];
