@@ -199,14 +199,12 @@ function handlePTTRelease(e) {
   
   // Stop local recording immediately to capture full speech
   if (userAudioMgr.isRecording) {
-      pendingUserRecordPromise = userAudioMgr
-        .stopRecording('...')
+    pendingUserRecordPromise = userAudioMgr
+      .stopRecording('...')
       .then(record => {
         if (!record) return null;
         pendingUserRecord = record;
-        if (onEventCallback) {
-          onEventCallback({ type: 'utterance.added', record });
-        }
+        // Do not dispatch utterance.added yet – wait for final transcription
         return record;
       })
       .catch(err => debugLog(`User stop error: ${err}`, true));

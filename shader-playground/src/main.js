@@ -141,13 +141,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings } = event.record;
-        const bubble = activeBubbles[speaker];
-
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
-          return;
+        const { speaker = 'ai', id } = event.record;
+        if (!activeBubbles[speaker]) {
+          startBubble(speaker);
         }
+
+        const bubble = activeBubbles[speaker];
+        if (!bubble) return;
 
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
