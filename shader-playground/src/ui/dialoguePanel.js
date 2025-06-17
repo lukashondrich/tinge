@@ -54,6 +54,7 @@ export class DialoguePanel {
       const parts = record.text.split(wordRe);
 
       let w = 0;  // index into record.wordTimings
+      // If wordTimings is empty, spans will be plain text with no per-word playback
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         if (i % 2 === 1 && record.wordTimings && record.wordTimings[w]) {

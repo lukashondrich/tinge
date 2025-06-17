@@ -27,6 +27,14 @@ const panel = new DialoguePanel('#transcriptContainer');
 
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
+// When we finalize a bubble before its utterance.added record arrives
+// (e.g. while waiting for /transcribe), we stash it here so the record
+// can still replace the correct element once ready.
+const pendingFinalBubbles = { user: null, ai: null };
+// Final transcript text from `response.audio_transcript.done` in case
+// the later `utterance.added` record contains only '...' due to
+// a transcription error.
+const pendingFinalText = { user: '', ai: '' };
 
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
@@ -131,6 +139,16 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         addWord(event.word, speaker);
       }
 
+      // When AI audio stops but the final record hasn't arrived yet,
+      // start a fresh bubble for the next utterance.
+      if (event.type === 'output_audio_buffer.stopped') {
+        const speaker = event.speaker || 'ai';
+        if (activeBubbles[speaker]) {
+          pendingFinalBubbles[speaker] = activeBubbles[speaker];
+          activeBubbles[speaker] = null;
+        }
+      }
+
       // ② ignore delta events to prevent duplicates
       if (
         event.type === 'response.audio_transcript.delta' &&
@@ -142,17 +160,32 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
         const { speaker = 'ai', id, text, wordTimings } = event.record;
-        const bubble = activeBubbles[speaker];
+        const bubble = pendingFinalBubbles[speaker] || activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        if (!bubble) {
+          return;
+        }
+
+        // Use transcript from the done event if record only contains '...'
+        let finalText = text;
+        if (text === '...' && pendingFinalText[speaker]) {
+          finalText = pendingFinalText[speaker];
+          event.record.text = finalText;
+        }
+
+        // Skip placeholder records entirely when no transcript is available
+        if (finalText === '...') {
           return;
         }
 
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
+        // Finalize even if wordTimings is empty. In that case, DialoguePanel
+        // renders the text without per-word playback.
         finalizeBubble(speaker);
+        pendingFinalBubbles[speaker] = null;
+        pendingFinalText[speaker] = '';
         return;
       }
 
@@ -163,7 +196,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       ) {
         const speaker = event.speaker || 'ai';
         console.log('✅ final transcript:', event.transcript);
-        // wait for utterance.added to finalize
+        pendingFinalText[speaker] = event.transcript;
+        // wait for utterance.added to finalize or fallback to this text
       }
     }
   )
