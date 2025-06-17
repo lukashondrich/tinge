@@ -19,6 +19,8 @@ export async function createScene() {
 
   // ✅ Load, scale, and center embedding data
   const raw = await fetch('/embedding.json').then(r => r.json());
+  // Keep labels for hit‑testing
+  const labels = raw.map(p => p.label || '');
   const scale = SCALE;
 
 
@@ -150,6 +152,7 @@ export async function createScene() {
     dummy,
     numPoints,
     lineSegments,
-    recentlyAdded
+    recentlyAdded,
+    labels
   };
 }
