@@ -66,7 +66,11 @@ export class DialoguePanel {
             const src = audioCtx.createBufferSource();
             src.buffer = audioBuffer;
             src.connect(audioCtx.destination);
-            src.start(0, start, end - start);
+            // Add 200ms buffer before and after word timing
+            const playbackBuffer = 0.1; // 200ms in seconds
+            const bufferedStart = Math.max(0, start - playbackBuffer);
+            const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
+            src.start(0, bufferedStart, bufferedEnd - bufferedStart);
           });
           highlightedSpan.appendChild(span);
         } else {
