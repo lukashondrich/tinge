@@ -145,7 +145,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const bubble = activeBubbles[speaker];
 
         // Skip placeholder records with no timing info
-        if (!bubble || text === '...' || !wordTimings || !wordTimings.length) {
+        if (!bubble || text === '...') {
           return;
         }
 
