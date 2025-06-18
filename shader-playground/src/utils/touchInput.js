@@ -6,6 +6,10 @@ export function setupTouchRotation(mesh) {
     let dragSpeed = 0;
   
     const onPointerDown = (e) => {
+      if (e.target.closest && e.target.closest('#ptt-button')) {
+        isDragging = false;
+        return;
+      }
       isDragging = true;
       lastX = e.clientX || e.touches?.[0]?.clientX || 0;
       lastY = e.clientY || e.touches?.[0]?.clientY || 0;

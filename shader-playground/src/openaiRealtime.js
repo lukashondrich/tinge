@@ -90,9 +90,10 @@ function createPTTButton() {
   pttButton.innerText = 'Push to Talk';
   pttButton.style.position = 'fixed';
   pttButton.style.bottom = '20px';
-  pttButton.style.right = '20px';
-  pttButton.style.width = '100px';
-  pttButton.style.height = '100px';
+  pttButton.style.left = '50%';
+  pttButton.style.transform = 'translateX(-50%)';
+  pttButton.style.width = '120px';
+  pttButton.style.height = '120px';
   pttButton.style.borderRadius = '50%';
   pttButton.style.backgroundColor = '#44f';  // Blue to make it more visible 
   pttButton.style.color = 'white';
@@ -125,27 +126,39 @@ function createPTTButton() {
     }
   });
   
+  // Touch controls for mobile – hold to talk
   pttButton.addEventListener('touchstart', (e) => {
     debugLog('touchstart event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
-    isPTTPressed = true;
-    handlePTTPress(e);
-  });
-  
+    e.preventDefault();
+    if (!isPTTPressed) {
+      isPTTPressed = true;
+      handlePTTPress(e);
+    }
+  }, { passive: false });
+
+  pttButton.addEventListener('touchmove', (e) => {
+    if (isPTTPressed) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
   pttButton.addEventListener('touchend', (e) => {
     debugLog('touchend event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
-    isPTTPressed = false;
-    handlePTTRelease(e);
-  });
-  
-  // Optional: Add touchcancel for better mobile support
+    e.preventDefault();
+    if (isPTTPressed) {
+      isPTTPressed = false;
+      handlePTTRelease(e);
+    }
+  }, { passive: false });
+
   pttButton.addEventListener('touchcancel', (e) => {
     debugLog('touchcancel event fired');
     e.preventDefault();
-    isPTTPressed = false;
-    handlePTTRelease(e);
-  });
+    if (isPTTPressed) {
+      isPTTPressed = false;
+      handlePTTRelease(e);
+    }
+  }, { passive: false });
   
   document.body.appendChild(pttButton);
   debugLog('PTT button created and added to document body');

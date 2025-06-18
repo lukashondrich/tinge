@@ -119,6 +119,12 @@ button:focus-visible {
   word-wrap: break-word;
 }
 
+@media (max-width: 600px) {
+  .bubble {
+    max-width: 80%;
+  }
+}
+
 .bubble.placeholder {
   opacity: 0.6;
   font-style: italic;
