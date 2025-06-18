@@ -93,8 +93,8 @@ function createPTTButton() {
   pttButton.style.bottom = '20px';
   pttButton.style.left = '50%';
   pttButton.style.transform = 'translateX(-50%)';
-  pttButton.style.width = '100px';
-  pttButton.style.height = '100px';
+  pttButton.style.width = '120px';
+  pttButton.style.height = '120px';
   pttButton.style.borderRadius = '50%';
   pttButton.style.backgroundColor = '#44f';  // Blue to make it more visible 
   pttButton.style.color = 'white';
@@ -127,36 +127,43 @@ function createPTTButton() {
     }
   });
   
-  // Track swipe state for touch gestures
+  // Track swipe gestures for mobile interaction
   let swipeStart = null;
   pttButton.addEventListener('touchstart', (e) => {
     debugLog('touchstart event fired');
     e.preventDefault();
     const t = e.touches[0];
     swipeStart = { x: t.clientX, y: t.clientY };
-  });
+  }, { passive: false });
+
+  pttButton.addEventListener('touchmove', (e) => {
+    if (!swipeStart) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const dir = detectSwipe(swipeStart, { x: t.clientX, y: t.clientY });
+    if (dir === 'up' && !isPTTPressed) {
+      debugLog('Swipe up detected');
+      isPTTPressed = true;
+      handlePTTPress(e);
+      swipeStart = { x: t.clientX, y: t.clientY };
+    }
+    if (dir === 'down' && isPTTPressed) {
+      debugLog('Swipe down detected');
+      isPTTPressed = false;
+      handlePTTRelease(e);
+      swipeStart = { x: t.clientX, y: t.clientY };
+    }
+  }, { passive: false });
 
   pttButton.addEventListener('touchend', (e) => {
     debugLog('touchend event fired');
     e.preventDefault();
-    const t = e.changedTouches[0];
-    const swipeEnd = { x: t.clientX, y: t.clientY };
-    const dir = detectSwipe(swipeStart || swipeEnd, swipeEnd);
-    if (dir === 'up') {
-      debugLog('Swipe up detected');
-      if (!isPTTPressed) {
-        isPTTPressed = true;
-        handlePTTPress(e);
-      }
-    } else if (dir === 'down') {
-      debugLog('Swipe down detected');
-      if (isPTTPressed) {
-        isPTTPressed = false;
-        handlePTTRelease(e);
-      }
-    }
     swipeStart = null;
-  });
+    if (isPTTPressed) {
+      isPTTPressed = false;
+      handlePTTRelease(e);
+    }
+  }, { passive: false });
 
   pttButton.addEventListener('touchcancel', (e) => {
     debugLog('touchcancel event fired');
@@ -166,7 +173,7 @@ function createPTTButton() {
       isPTTPressed = false;
       handlePTTRelease(e);
     }
-  });
+  }, { passive: false });
   
   document.body.appendChild(pttButton);
   debugLog('PTT button created and added to document body');
