@@ -5,6 +5,7 @@
 import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
+import { detectSwipe } from './utils/detectSwipe.js';
 
 
 let peerConnection = null;
@@ -90,7 +91,8 @@ function createPTTButton() {
   pttButton.innerText = 'Push to Talk';
   pttButton.style.position = 'fixed';
   pttButton.style.bottom = '20px';
-  pttButton.style.right = '20px';
+  pttButton.style.left = '50%';
+  pttButton.style.transform = 'translateX(-50%)';
   pttButton.style.width = '100px';
   pttButton.style.height = '100px';
   pttButton.style.borderRadius = '50%';
@@ -125,26 +127,45 @@ function createPTTButton() {
     }
   });
   
+  // Track swipe state for touch gestures
+  let swipeStart = null;
   pttButton.addEventListener('touchstart', (e) => {
     debugLog('touchstart event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
-    isPTTPressed = true;
-    handlePTTPress(e);
+    e.preventDefault();
+    const t = e.touches[0];
+    swipeStart = { x: t.clientX, y: t.clientY };
   });
-  
+
   pttButton.addEventListener('touchend', (e) => {
     debugLog('touchend event fired');
-    e.preventDefault(); // Prevent default behavior for touch events
-    isPTTPressed = false;
-    handlePTTRelease(e);
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    const swipeEnd = { x: t.clientX, y: t.clientY };
+    const dir = detectSwipe(swipeStart || swipeEnd, swipeEnd);
+    if (dir === 'up') {
+      debugLog('Swipe up detected');
+      if (!isPTTPressed) {
+        isPTTPressed = true;
+        handlePTTPress(e);
+      }
+    } else if (dir === 'down') {
+      debugLog('Swipe down detected');
+      if (isPTTPressed) {
+        isPTTPressed = false;
+        handlePTTRelease(e);
+      }
+    }
+    swipeStart = null;
   });
-  
-  // Optional: Add touchcancel for better mobile support
+
   pttButton.addEventListener('touchcancel', (e) => {
     debugLog('touchcancel event fired');
     e.preventDefault();
-    isPTTPressed = false;
-    handlePTTRelease(e);
+    swipeStart = null;
+    if (isPTTPressed) {
+      isPTTPressed = false;
+      handlePTTRelease(e);
+    }
   });
   
   document.body.appendChild(pttButton);
