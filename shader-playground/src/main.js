@@ -33,6 +33,9 @@ const usedWords = new Set();
 
 const panelEl = document.getElementById('transcriptContainer');
 
+// timers used to delay bubble finalization
+const finalizeTimers = { user: null, ai: null };
+
 function scrollToBottom() {
   panelEl.scrollTop = panelEl.scrollHeight;
 }
@@ -152,7 +155,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         bubble.dataset.utteranceId = id;
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
-        finalizeBubble(speaker);
+        clearTimeout(finalizeTimers[speaker]);
+        finalizeTimers[speaker] = setTimeout(() => {
+          finalizeBubble(speaker);
+        }, 300);
         return;
       }
 
