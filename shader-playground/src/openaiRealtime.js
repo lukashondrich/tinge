@@ -5,7 +5,6 @@
 import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
-import { detectSwipe } from './utils/detectSwipe.js';
 
 
 let peerConnection = null;
@@ -127,38 +126,25 @@ function createPTTButton() {
     }
   });
   
-  // Track swipe gestures for mobile interaction
-  let swipeStart = null;
+  // Touch controls for mobile – hold to talk
   pttButton.addEventListener('touchstart', (e) => {
     debugLog('touchstart event fired');
     e.preventDefault();
-    const t = e.touches[0];
-    swipeStart = { x: t.clientX, y: t.clientY };
+    if (!isPTTPressed) {
+      isPTTPressed = true;
+      handlePTTPress(e);
+    }
   }, { passive: false });
 
   pttButton.addEventListener('touchmove', (e) => {
-    if (!swipeStart) return;
-    e.preventDefault();
-    const t = e.touches[0];
-    const dir = detectSwipe(swipeStart, { x: t.clientX, y: t.clientY });
-    if (dir === 'up' && !isPTTPressed) {
-      debugLog('Swipe up detected');
-      isPTTPressed = true;
-      handlePTTPress(e);
-      swipeStart = { x: t.clientX, y: t.clientY };
-    }
-    if (dir === 'down' && isPTTPressed) {
-      debugLog('Swipe down detected');
-      isPTTPressed = false;
-      handlePTTRelease(e);
-      swipeStart = { x: t.clientX, y: t.clientY };
+    if (isPTTPressed) {
+      e.preventDefault();
     }
   }, { passive: false });
 
   pttButton.addEventListener('touchend', (e) => {
     debugLog('touchend event fired');
     e.preventDefault();
-    swipeStart = null;
     if (isPTTPressed) {
       isPTTPressed = false;
       handlePTTRelease(e);
@@ -168,7 +154,6 @@ function createPTTButton() {
   pttButton.addEventListener('touchcancel', (e) => {
     debugLog('touchcancel event fired');
     e.preventDefault();
-    swipeStart = null;
     if (isPTTPressed) {
       isPTTPressed = false;
       handlePTTRelease(e);
