@@ -36,6 +36,25 @@ const panelEl = document.getElementById('transcriptContainer');
 // timer used to delay bubble finalization per speaker
 const finalizeTimers = { user: null, ai: null };
 
+// Queue to preserve word order while async embedding requests complete
+const wordQueue = [];
+let processingWordQueue = false;
+
+async function processWordQueue() {
+  if (processingWordQueue) return;
+  processingWordQueue = true;
+  while (wordQueue.length > 0) {
+    const { word, speaker } = wordQueue.shift();
+    await processWord(word, speaker);
+  }
+  processingWordQueue = false;
+}
+
+function addWord(word, speaker = 'ai') {
+  wordQueue.push({ word, speaker });
+  processWordQueue();
+}
+
 function scrollToBottom() {
   panelEl.scrollTop = panelEl.scrollHeight;
 }
@@ -190,7 +209,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   composer.addPass(rgbShiftPass);
   
 
-  async function addWord(word, speaker = "ai") {
+  async function processWord(word, speaker = "ai") {
     const key = word.trim().toLowerCase();
     if (!usedWords.has(key)) {
       usedWords.add(key);
