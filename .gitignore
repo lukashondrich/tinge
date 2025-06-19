@@ -6,6 +6,9 @@ __pycache__/
 # dependencies
 node_modules/
 
+# user profile storage
+user-memory/profiles/
+
 # environment files
 .env
 

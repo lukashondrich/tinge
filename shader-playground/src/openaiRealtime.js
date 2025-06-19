@@ -5,6 +5,43 @@
 import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
+import { updateUserProfile, queryUserData } from '../../user-memory/profileService.js';
+
+// Tools for accessing and updating user memory
+const FUNCTION_TOOLS = [
+  {
+    type: 'function',
+    name: 'query_user_profile',
+    description: 'Retrieve stored information about the current user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: ['string', 'null'],
+          description: 'Optional dot path of the data to read (e.g. "preferences.topics")'
+        }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
+    name: 'update_user_profile',
+    description: 'Merge new learning data into the current user profile.',
+    parameters: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'object',
+          description: 'Profile fields to merge into the existing profile'
+        }
+      },
+      required: ['data'],
+      additionalProperties: false
+    }
+  }
+];
 
 
 let peerConnection = null;
@@ -355,7 +392,8 @@ export async function connect() {
               eagerness: 'low', // optional
               create_response: true,
               interrupt_response: false,
-            } : null
+            } : null,
+            tools: FUNCTION_TOOLS
         }
         };
         dataChannel.send(JSON.stringify(sessionUpdate));
@@ -399,6 +437,36 @@ export async function connect() {
       
         // Relay raw events
         if (onEventCallback) onEventCallback(event);
+
+        // Handle function calling
+        if (event.type === 'response.function_call') {
+            debugLog(`Function call requested: ${event.name}`);
+            try {
+                const args = JSON.parse(event.arguments || '{}');
+                debugLog(`Function arguments: ${JSON.stringify(args)}`);
+                let result = null;
+                if (event.name === 'query_user_profile') {
+                    const path = args.path || null;
+                    result = queryUserData('demo-user', path);
+                } else if (event.name === 'update_user_profile') {
+                    result = updateUserProfile('demo-user', args.data || {});
+                }
+                if (result !== null) {
+                    const responseEvent = {
+                        type: 'function.response',
+                        id: event.id,
+                        response: JSON.stringify(result)
+                    };
+                    dataChannel.send(JSON.stringify(responseEvent));
+                    debugLog(`Sent function.response: ${JSON.stringify(result)}`);
+                } else {
+                    debugLog(`No handler for function: ${event.name}`, true);
+                }
+            } catch (err) {
+                debugLog(`Function call error: ${err.message}`, true);
+            }
+            return;
+        }
       
 
         // — AI interim speech (start recorder + accumulate text + offsets) —
