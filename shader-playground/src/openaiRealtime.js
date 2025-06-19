@@ -5,44 +5,43 @@
 import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
+import { updateUserProfile, queryUserData } from '../../user-memory/profileService.js';
 
-// Example function tools for the Realtime API
-const FUNCTION_TOOLS = [{
-  type: 'function',
-  name: 'search_knowledge_base',
-  description: 'Query a knowledge base to retrieve relevant info on a topic.',
-  parameters: {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: 'The user question or search query.'
+// Tools for accessing and updating user memory
+const FUNCTION_TOOLS = [
+  {
+    type: 'function',
+    name: 'query_user_profile',
+    description: 'Retrieve stored information about the current user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: ['string', 'null'],
+          description: 'Optional dot path of the data to read (e.g. "preferences.topics")'
+        }
       },
-      options: {
-        type: 'object',
-        properties: {
-          num_results: {
-            type: 'number',
-            description: 'Number of top results to return.'
-          },
-          domain_filter: {
-            type: ['string', 'null'],
-            description: "Optional domain to narrow the search (e.g. 'finance', 'medical'). Pass null if not needed."
-          },
-          sort_by: {
-            type: ['string', 'null'],
-            enum: ['relevance', 'date', 'popularity', 'alphabetical'],
-            description: 'How to sort results. Pass null if not needed.'
-          }
-        },
-        required: ['num_results', 'domain_filter', 'sort_by'],
-        additionalProperties: false
-      }
-    },
-    required: ['query', 'options'],
-    additionalProperties: false
+      required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
+    name: 'update_user_profile',
+    description: 'Merge new learning data into the current user profile.',
+    parameters: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'object',
+          description: 'Profile fields to merge into the existing profile'
+        }
+      },
+      required: ['data'],
+      additionalProperties: false
+    }
   }
-}];
+];
 
 
 let peerConnection = null;
@@ -430,9 +429,11 @@ export async function connect() {
                 const args = JSON.parse(event.arguments || '{}');
                 debugLog(`Function arguments: ${JSON.stringify(args)}`);
                 let result = null;
-                if (event.name === 'search_knowledge_base') {
-                    // Placeholder implementation: return a simple string
-                    result = `Results for ${args.query || ''}`;
+                if (event.name === 'query_user_profile') {
+                    const path = args.path || null;
+                    result = queryUserData('demo-user', path);
+                } else if (event.name === 'update_user_profile') {
+                    result = updateUserProfile('demo-user', args.data || {});
                 }
                 if (result !== null) {
                     const responseEvent = {
