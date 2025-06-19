@@ -42,10 +42,13 @@ function stopAndTranscribe(audioMgr, transcriptText) {
       .then(async record => {
         if (!record) return null;
         try {
+          debugLog(`🔍 Fetching word timings for transcript: "${transcriptText.substring(0, 50)}..."`);
           const { words, fullText } = await fetchWordTimings(record.audioBlob);
           record.wordTimings = words;
           record.fullText    = fullText;
-        } catch {
+          debugLog(`✅ Word timings fetched: ${words ? words.length : 0} words`);
+        } catch (err) {
+          debugLog(`⚠️ Word timing fetch failed: ${err.message}`, true);
           record.wordTimings = [];
           record.fullText    = record.text; // fallback to original
         }
@@ -411,12 +414,8 @@ export async function connect() {
             aiWordOffsets.push({ word: event.delta, offsetMs });
 
             aiTranscript += event.delta;
-            onEventCallback({
-            type: 'transcript.word',
-            word: event.delta,
-            speaker: 'ai',
-            offsetMs
-            });
+            // Pass delta events directly to UI (no conversion to transcript.word)
+            // The UI will handle accumulating deltas into the bubble
         }
       
 
@@ -424,8 +423,13 @@ export async function connect() {
         if (event.type === 'output_audio_buffer.stopped') {
             if (aiAudioMgr.isRecording) {
                 debugLog("🔴 [AI] output_audio_buffer.stopped — stopping recorder");
+                debugLog(`🔍 [AI] Final transcript length: ${aiTranscript.trim().length} chars`);
                 stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
-                    if (!record) return;
+                    if (!record) {
+                        debugLog("⚠️ [AI] stopAndTranscribe returned null record", true);
+                        return;
+                    }
+                    debugLog(`✅ [AI] Created final record: ${record.id}, text: "${record.text.substring(0, 50)}..."`);
                     onEventCallback({ type: 'utterance.added', record });
 
                 // reset for next turn
@@ -488,6 +492,21 @@ export async function connect() {
           }
 
           return; // swallow
+        }
+      
+        // — handle final AI transcription completion —
+        if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
+          const finalTranscript = event.transcript.trim();
+          debugLog(`✅ Final AI transcript: "${finalTranscript}"`);
+          
+          // Relay this event to the UI so it can handle final transcription logic
+          if (onEventCallback) {
+            onEventCallback({
+              ...event,
+              transcript: finalTranscript,
+              speaker: 'ai'
+            });
+          }
         }
       
         // — drop the old “response.done” or “response.audio_transcript.done” blocks entirely —

@@ -118,7 +118,7 @@ export async function createScene() {
   const lineMaterial = new THREE.LineBasicMaterial({
     color: 0x88bbff,
     transparent: true,
-    opacity: 0.12,
+    opacity: 0.32,
     depthWrite: false,
     fog: true
   });

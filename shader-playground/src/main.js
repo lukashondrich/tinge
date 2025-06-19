@@ -128,19 +128,21 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         startBubble('user');
       }
       
-      // ① stream words into the active bubble
-      if (event.type === 'transcript.word' && typeof event.word === 'string') {
-        const speaker = event.speaker || 'ai';
-        console.log('🗣️ word:', event.word, 'speaker:', speaker);
-        addWord(event.word, speaker);
-      }
-
-      // ② ignore delta events to prevent duplicates
+      // ① Handle delta events by accumulating text in the bubble
       if (
         event.type === 'response.audio_transcript.delta' &&
         typeof event.delta === 'string'
       ) {
-        console.log('👉 transcript delta ignored');
+        const speaker = 'ai';
+        console.log('🗣️ delta:', event.delta, 'speaker:', speaker);
+        addDeltaToActiveBubble(event.delta, speaker);
+      }
+
+      // ② Handle individual word events (for user speech)
+      if (event.type === 'transcript.word' && typeof event.word === 'string') {
+        const speaker = event.speaker || 'ai';
+        console.log('🗣️ word:', event.word, 'speaker:', speaker);
+        addWord(event.word, speaker);
       }
 
       // ③ final utterance record with audio & timings
@@ -148,12 +150,30 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         const { speaker = 'ai', id, text, wordTimings } = event.record;
         const bubble = activeBubbles[speaker];
 
-        // Skip placeholder records with no timing info
-        if (!bubble || text === '...') {
+        // Handle placeholder records - they need processing to set up bubble tracking
+        // even if they don't have final content yet
+        const isPlaceholder = text === '...' && (!wordTimings || wordTimings.length === 0);
+        
+        if (isPlaceholder) {
+          console.log('👉 Processing placeholder record for bubble tracking:', { speaker, id });
+          // Set utteranceId on bubble for future replacement
+          if (bubble) {
+            bubble.dataset.utteranceId = id;
+          }
+          // Start finalization timer - when final transcription arrives, it will replace this
+          clearTimeout(finalizeTimers[speaker]);
+          finalizeTimers[speaker] = setTimeout(() => {
+            finalizeBubble(speaker);
+          }, 2000); // Longer timeout for user speech (server transcription takes time)
           return;
         }
 
-        bubble.dataset.utteranceId = id;
+        // If we have a final transcription but no active bubble, it's still valid
+        if (bubble) {
+          bubble.dataset.utteranceId = id;
+        }
+        
+        console.log('✅ Adding final utterance to panel:', { speaker, id, text: text.substring(0, 50) + '...' });
         panel.add(event.record); // DialoguePanel will replace the bubble
         scrollToBottom();
         clearTimeout(finalizeTimers[speaker]);
@@ -163,14 +183,21 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         return;
       }
 
-      // ④ mark end of the current utterance (handled when record arrives)
+      // ④ handle final AI transcript completion
       if (
         event.type === 'response.audio_transcript.done' &&
         typeof event.transcript === 'string'
       ) {
-        const speaker = event.speaker || 'ai';
-        console.log('✅ final transcript:', event.transcript);
-        // wait for utterance.added to finalize
+        const speaker = 'ai'; // This event is always from AI
+        const transcript = event.transcript.trim();
+        console.log('✅ AI final transcript done:', transcript);
+        
+        // If we have a final transcript but no utterance.added event yet,
+        // this helps ensure we don't lose the final transcription
+        // The actual processing will happen when utterance.added arrives
+        if (transcript && !activeBubbles[speaker]) {
+          console.log('⚠️ Got final transcript but no active AI bubble - transcript may be lost');
+        }
       }
     }
   )
@@ -184,16 +211,50 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   async function processWordQueue() {
     if (processingWordQueue) return;
     processingWordQueue = true;
-    while (wordQueue.length > 0) {
-      const { word, speaker } = wordQueue.shift();
-      await processWord(word, speaker);
+    try {
+      while (wordQueue.length > 0) {
+        const { word, speaker } = wordQueue.shift();
+        try {
+          await processWord(word, speaker);
+        } catch (err) {
+          console.error('🚨 Error processing word:', word, 'Error:', err);
+          // Continue processing other words even if one fails
+        }
+      }
+    } finally {
+      // Always reset the flag, even if errors occurred
+      processingWordQueue = false;
     }
-    processingWordQueue = false;
   }
 
   function addWord(word, speaker = 'ai') {
     wordQueue.push({ word, speaker });
     processWordQueue();
+  }
+
+  function addDeltaToActiveBubble(delta, speaker = 'ai') {
+    let bubble = activeBubbles[speaker];
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.classList.add('bubble', speaker);
+      const p = document.createElement('p');
+      p.className = 'transcript';
+      const span = document.createElement('span');
+      span.className = 'highlighted-text';
+      p.appendChild(span);
+      bubble.appendChild(p);
+      panelEl.appendChild(bubble);
+      bubble.__highlight = span;
+      activeBubbles[speaker] = bubble;
+    }
+    
+    const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
+    
+    // Simply append the delta as text (no word splitting needed)
+    const textNode = document.createTextNode(delta);
+    target.appendChild(textNode);
+    
+    scrollToBottom();
   }
 
   // Set up post-processing
@@ -211,61 +272,77 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
 
   async function processWord(word, speaker = "ai") {
-    const key = word.trim().toLowerCase();
-    if (!usedWords.has(key)) {
-      usedWords.add(key);
-      let newPoint = { x: 0, y: 0, z: 0 };
-      try {
-        const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
-        if (res.ok) {
-          const data = await res.json();
-          newPoint = { x: data.x, y: data.y, z: data.z };
-        }
-      } catch (err) {
-        console.error('Embedding fetch failed', err);
+    try {
+      // FIRST: Update UI immediately (synchronous) to preserve word order
+      let bubble = activeBubbles[speaker];
+      if (!bubble) {
+        bubble = document.createElement('div');
+        bubble.classList.add('bubble', speaker);
+        const p = document.createElement('p');
+        p.className = 'transcript';
+        const span = document.createElement('span');
+        span.className = 'highlighted-text';
+        p.appendChild(span);
+        bubble.appendChild(p);
+        panelEl.appendChild(bubble);
+        bubble.__highlight = span;
+        activeBubbles[speaker] = bubble;
       }
-      optimizer.addPoint(newPoint);
+      const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
+      word.split(/\s+/).forEach(tok => {
+        if (!tok) return;
+        const span = document.createElement('span');
+        span.className = 'word';
+        span.textContent = tok + ' ';
+        span.onclick = () => playAudioFor(tok);
+        target.appendChild(span);
+      });
+      scrollToBottom();
 
-      // --- make room first ---
-      const id = optimizer.getPositions().length - 1;
-      mesh.count = id + 1;                // ensure the new slot exists
+      // SECOND: Process embeddings asynchronously (won't affect word order)
+      const key = word.trim().toLowerCase();
+      if (!usedWords.has(key)) {
+        usedWords.add(key);
+        let newPoint = { x: 0, y: 0, z: 0 };
+        try {
+          const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
+          if (res.ok) {
+            const data = await res.json();
+            newPoint = { x: data.x, y: data.y, z: data.z };
+          } else {
+            console.warn('🟡 Embedding fetch returned non-OK status:', res.status, 'for word:', word);
+          }
+        } catch (err) {
+          console.error('🔴 Embedding fetch failed for word:', word, 'Error:', err);
+          // Continue with default position
+        }
+        
+        try {
+          optimizer.addPoint(newPoint);
 
-      // pick the colour
-      const colour = speaker === 'user'
-        ? new THREE.Color('#69ea4f')       // green
-        : new THREE.Color(0x5a005a);       // purple
+          // --- make room first ---
+          const id = optimizer.getPositions().length - 1;
+          mesh.count = id + 1;                // ensure the new slot exists
 
-      mesh.setColorAt(id, colour);
-      mesh.instanceColor.needsUpdate = true;
+          // pick the colour
+          const colour = speaker === 'user'
+            ? new THREE.Color('#69ea4f')       // green
+            : new THREE.Color(0x5a005a);       // purple
 
-      recentlyAdded.set(id, performance.now());
-      labels[id] = word;
+          mesh.setColorAt(id, colour);
+          mesh.instanceColor.needsUpdate = true;
+
+          recentlyAdded.set(id, performance.now());
+          labels[id] = word;
+        } catch (err) {
+          console.error('🔴 Error adding point to 3D scene for word:', word, 'Error:', err);
+          // Don't rethrow - UI update was successful
+        }
+      }
+    } catch (err) {
+      console.error('🚨 Critical error in processWord for:', word, 'Error:', err);
+      throw err; // Rethrow critical errors that affect UI
     }
-
-    let bubble = activeBubbles[speaker];
-    if (!bubble) {
-      bubble = document.createElement('div');
-      bubble.classList.add('bubble', speaker);
-      const p = document.createElement('p');
-      p.className = 'transcript';
-      const span = document.createElement('span');
-      span.className = 'highlighted-text';
-      p.appendChild(span);
-      bubble.appendChild(p);
-      panelEl.appendChild(bubble);
-      bubble.__highlight = span;
-      activeBubbles[speaker] = bubble;
-    }
-    const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
-    word.split(/\s+/).forEach(tok => {
-      if (!tok) return;
-      const span = document.createElement('span');
-      span.className = 'word';
-      span.textContent = tok + ' ';
-      span.onclick = () => playAudioFor(tok);
-      target.appendChild(span);
-    });
-    scrollToBottom();
   }
 
   function finalizeBubble(speaker) {

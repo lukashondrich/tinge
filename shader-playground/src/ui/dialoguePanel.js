@@ -18,6 +18,8 @@ export class DialoguePanel {
      * record.wordTimings  // [{word, start, end}, …] from Whisper
      */
     async add(record) {
+      console.log(`🎯 DialoguePanel.add called for ${record.speaker} with text: "${record.text.substring(0, 50)}..." and ${record.wordTimings ? record.wordTimings.length : 0} word timings`);
+      
       // 1) Bubble wrapper
       const bubble = document.createElement('div');
       bubble.classList.add('bubble', record.speaker === 'ai' ? 'ai' : 'user');
@@ -86,8 +88,10 @@ export class DialoguePanel {
       bubble.appendChild(p);
       const existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
       if (existing) {
+        console.log(`🔄 DialoguePanel: Replacing existing bubble for ${record.speaker} utterance ${record.id}`);
         this.container.replaceChild(bubble, existing);
       } else {
+        console.log(`➕ DialoguePanel: Adding new bubble for ${record.speaker} utterance ${record.id}`);
         this.container.appendChild(bubble);
       }
       this.container.scrollTop = this.container.scrollHeight;
