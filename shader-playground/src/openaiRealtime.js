@@ -6,6 +6,44 @@ import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
 
+// Example function tools for the Realtime API
+const FUNCTION_TOOLS = [{
+  type: 'function',
+  name: 'search_knowledge_base',
+  description: 'Query a knowledge base to retrieve relevant info on a topic.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The user question or search query.'
+      },
+      options: {
+        type: 'object',
+        properties: {
+          num_results: {
+            type: 'number',
+            description: 'Number of top results to return.'
+          },
+          domain_filter: {
+            type: ['string', 'null'],
+            description: "Optional domain to narrow the search (e.g. 'finance', 'medical'). Pass null if not needed."
+          },
+          sort_by: {
+            type: ['string', 'null'],
+            enum: ['relevance', 'date', 'popularity', 'alphabetical'],
+            description: 'How to sort results. Pass null if not needed.'
+          }
+        },
+        required: ['num_results', 'domain_filter', 'sort_by'],
+        additionalProperties: false
+      }
+    },
+    required: ['query', 'options'],
+    additionalProperties: false
+  }
+}];
+
 
 let peerConnection = null;
 let dataChannel = null;
@@ -339,7 +377,8 @@ export async function connect() {
               eagerness: 'low', // optional
               create_response: true,
               interrupt_response: false,
-            } : null
+            } : null,
+            tools: FUNCTION_TOOLS
         }
         };
         dataChannel.send(JSON.stringify(sessionUpdate));
@@ -383,6 +422,30 @@ export async function connect() {
       
         // Relay raw events
         if (onEventCallback) onEventCallback(event);
+
+        // Handle function calling
+        if (event.type === 'response.function_call') {
+            try {
+                const args = JSON.parse(event.arguments || '{}');
+                let result = null;
+                if (event.name === 'search_knowledge_base') {
+                    // Placeholder implementation: return a simple string
+                    result = `Results for ${args.query || ''}`;
+                }
+                if (result !== null) {
+                    const responseEvent = {
+                        type: 'function.response',
+                        id: event.id,
+                        response: JSON.stringify(result)
+                    };
+                    dataChannel.send(JSON.stringify(responseEvent));
+                    debugLog('Sent function.response');
+                }
+            } catch (err) {
+                debugLog(`Function call error: ${err.message}`, true);
+            }
+            return;
+        }
       
 
         // — AI interim speech (start recorder + accumulate text + offsets) —
