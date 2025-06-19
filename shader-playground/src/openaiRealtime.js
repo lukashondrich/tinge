@@ -425,8 +425,10 @@ export async function connect() {
 
         // Handle function calling
         if (event.type === 'response.function_call') {
+            debugLog(`Function call requested: ${event.name}`);
             try {
                 const args = JSON.parse(event.arguments || '{}');
+                debugLog(`Function arguments: ${JSON.stringify(args)}`);
                 let result = null;
                 if (event.name === 'search_knowledge_base') {
                     // Placeholder implementation: return a simple string
@@ -439,7 +441,9 @@ export async function connect() {
                         response: JSON.stringify(result)
                     };
                     dataChannel.send(JSON.stringify(responseEvent));
-                    debugLog('Sent function.response');
+                    debugLog(`Sent function.response: ${JSON.stringify(result)}`);
+                } else {
+                    debugLog(`No handler for function: ${event.name}`, true);
                 }
             } catch (err) {
                 debugLog(`Function call error: ${err.message}`, true);
