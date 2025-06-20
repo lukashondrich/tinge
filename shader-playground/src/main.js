@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { createRGBShiftPass } from './effects/rgbShiftPass.js';
+import { createVHSCRTPass } from './effects/vhsCrtPass.js';
 import { createRenderer } from './core/renderer.js';
 import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
@@ -281,6 +282,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
   const rgbShiftPass = createRGBShiftPass();
   composer.addPass(rgbShiftPass);
+
+  // Add VHS CRT shader pass for retro 80s aesthetic
+  const vhsCrtPass = createVHSCRTPass();
+  composer.addPass(vhsCrtPass);
   
 
   async function processWord(word, speaker = "ai") {
@@ -432,6 +437,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
     // ✨ Apply RGB shift only when user is dragging
     rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;
+    
+    // Update VHS CRT shader time for animated effects
+    vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
+    
     composer.render();
   }
 
