@@ -53,6 +53,8 @@ export async function createScene() {
 
   const numPoints = raw.length;
   const geometry = new THREE.SphereGeometry(1, 12, 12);
+  geometry.computeBoundingSphere();
+  geometry.boundingSphere.radius *= 1.5; // further enlarge raycast hit area
   // --- NEW: give every vertex a white colour so the shader’s vertexColor
   // component is (1,1,1) instead of the default (0,0,0) ---
   const nVerts = geometry.attributes.position.count;   // # of vertices
