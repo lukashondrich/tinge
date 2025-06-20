@@ -24,6 +24,7 @@ export default defineConfig({
       '/token': 'http://localhost:3000',
       '/transcribe': 'http://localhost:3000',
       '/embed-word': 'http://localhost:3001'
+      // Note: /profiles removed - now using localStorage instead of backend
       // Remove the WebSocket proxy since we're using WebRTC, not WebSockets
     }
   },

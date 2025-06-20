@@ -138,6 +138,8 @@ app.post('/transcribe', upload.single('file'), async (req, res) => {
 
 
 
+// Note: Profile management removed - now using client-side localStorage
+
 app.listen(port, () => {
   console.log(`┌────────────────────────────────────┐`);
   console.log(`│    Express server running on ${port}    │`);
@@ -145,4 +147,5 @@ app.listen(port, () => {
   console.log(`API Key: ${apiKey ? "✓ Found" : "✗ Missing"}`);
   console.log(`Health check: http://localhost:${port}/health`);
   console.log(`Token endpoint: http://localhost:${port}/token`);
+  console.log(`Transcribe endpoint: http://localhost:${port}/transcribe`);
 });
