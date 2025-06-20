@@ -197,6 +197,9 @@ body{background:var(--canvas);}      /* or panel */
   background: transparent;
   cursor: pointer;
   transition: background 0.2s;
+  display: inline-block;
+  padding: 2px 4px;   /* enlarge clickable area */
+  margin: -2px -4px;
 }
 
 .bubble .transcript .word:hover {
