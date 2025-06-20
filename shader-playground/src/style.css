@@ -95,7 +95,7 @@ button:focus-visible {
   }
 }
 
-/* Transcript panel container */
+/* Transcript panel container with VHS effects to match 3D scene */
 #transcriptContainer {
   position: absolute;
   top: 0;
@@ -107,6 +107,19 @@ button:focus-visible {
   padding: 8px;
   box-sizing: border-box;
   z-index: 1000;
+  /* Match the shader effects applied to 3D scene */
+  filter: 
+    contrast(1.05) 
+    brightness(1.02) 
+    saturate(1.08);
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0,255,0,0.01) 3px,
+      rgba(0,255,0,0.01) 4px
+    );
 }
 
 /* Utterance container */
@@ -173,7 +186,7 @@ body{background:var(--canvas);}      /* or panel */
   :root{--canvas:#ffffff;--user-accent:#0baf50;--ai-accent:#8425e5;}
 }
 
-/* Pastel highlight styles */
+/* Pastel highlight styles with subtle VHS text distortion */
 .bubble .transcript .highlighted-text {
   font-weight: 500;
   font-size: 0.875rem;
@@ -182,6 +195,10 @@ body{background:var(--canvas);}      /* or panel */
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   line-height: 1.2;
+  /* Subtle chromatic aberration effect */
+  text-shadow: 
+    0.5px 0 0 rgba(255,0,0,0.1), 
+    -0.5px 0 0 rgba(0,255,255,0.1);
 }
 
 .bubble.user .transcript .highlighted-text {
