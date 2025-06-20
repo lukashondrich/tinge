@@ -1,5 +1,5 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "DM Mono", "Courier New", monospace;
   line-height: 1.5;
   font-weight: 400;
 
@@ -128,7 +128,7 @@ button:focus-visible {
 .bubble.placeholder {
   opacity: 0.6;
   font-style: italic;
-  font-family: cursive;
+  font-family: "DM Mono", "Courier New", monospace;
 }
 
 /* Play-utterance button styling */
@@ -154,7 +154,7 @@ button:focus-visible {
   --user-accent:#11FF6B;
   --ai-accent:#A910E5;
   --noise-alpha:.07;
-  --bubble-font:"Space Grotesk",system-ui,sans-serif;
+  --bubble-font:"DM Mono","Courier New",monospace;
   --bubble-pad:10px 14px;
 }
 
