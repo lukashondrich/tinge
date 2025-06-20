@@ -198,8 +198,8 @@ body{background:var(--canvas);}      /* or panel */
   cursor: pointer;
   transition: background 0.2s;
   display: inline-block;
-  padding: 2px 4px;   /* enlarge clickable area */
-  margin: -2px -4px;
+  padding: 4px 6px;   /* further enlarge clickable area */
+  margin: -4px -6px;
 }
 
 .bubble .transcript .word:hover {
