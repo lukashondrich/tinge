@@ -31,6 +31,9 @@ const activeBubbles = { user: null, ai: null };
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
 
+// Track processed utterances to prevent duplicates
+const processedUtterances = new Set();
+
 const panelEl = document.getElementById('transcriptContainer');
 
 // timer used to delay bubble finalization per speaker
@@ -148,6 +151,15 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ③ final utterance record with audio & timings
       if (event.type === 'utterance.added' && event.record) {
         const { speaker = 'ai', id, text, wordTimings } = event.record;
+        
+        // Prevent duplicate processing of the same utterance
+        const utteranceKey = `${speaker}-${id}`;
+        if (processedUtterances.has(utteranceKey)) {
+          console.log(`⚠️ Duplicate utterance.added event detected for ${utteranceKey}, ignoring`);
+          return;
+        }
+        processedUtterances.add(utteranceKey);
+        
         const bubble = activeBubbles[speaker];
 
         // Handle placeholder records - they need processing to set up bubble tracking

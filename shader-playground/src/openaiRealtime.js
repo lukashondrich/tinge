@@ -567,9 +567,11 @@ function handlePTTRelease(e) {
       .then(record => {
         if (!record) return null;
         pendingUserRecord = record;
-        if (onEventCallback) {
-          onEventCallback({ type: 'utterance.added', record });
-        }
+        debugLog(`🎙️ Created placeholder user record ${record.id}, waiting for server transcription`);
+        
+        // IMPORTANT: Do NOT emit utterance.added here - wait for server transcription
+        // This prevents duplicate bubbles. Server transcription will enhance and emit this record.
+        
         return record;
       })
       .catch(err => debugLog(`User stop error: ${err}`, true));
@@ -918,10 +920,13 @@ export async function connect() {
             }
         }
       
-        // — user speech done (server-VAD) — (unchanged)
+        // — user speech done (server-VAD) — ENHANCED to prevent duplicates
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const t = (event.transcript || '').trim();
           if (t) {
+            debugLog(`🎯 User transcription completed: "${t}"`);
+            
+            // Send word events for real-time display (preserve fast text)
             for (const w of t.split(/\s+/)) {
               onEventCallback({
                 type: 'transcript.word',
@@ -930,39 +935,58 @@ export async function connect() {
               });
             }
 
-            const finalize = (record) => {
-              record.text = t;
-              fetchWordTimings(record.audioBlob)
-                .then(({ words, fullText }) => {
-                  record.wordTimings = words;
-                  record.fullText = fullText;
-                })
-                .catch(() => {
-                  record.wordTimings = [];
-                  record.fullText = t;
-                })
-                .finally(() => {
-                  StorageService.addUtterance(record);
-                  onEventCallback({ type: 'utterance.added', record });
-                  if (pendingUserRecord === record) pendingUserRecord = null;
-                  pendingUserRecordPromise = null;
-                });
+            const enhanceRecord = async (record) => {
+              debugLog(`🔧 Enhancing user record ${record.id} with server transcription`);
+              record.text = t; // Replace placeholder text with final transcription
+              
+              try {
+                debugLog(`🔍 Fetching word timings for: "${t.substring(0, 50)}..."`);
+                const { words, fullText } = await fetchWordTimings(record.audioBlob);
+                record.wordTimings = words;
+                record.fullText = fullText;
+                debugLog(`✅ Enhanced record with ${words ? words.length : 0} word timings`);
+              } catch (err) {
+                debugLog(`⚠️ Word timing fetch failed: ${err.message}`, true);
+                record.wordTimings = [];
+                record.fullText = t;
+              }
+              
+              // Store and emit single enhanced record
+              StorageService.addUtterance(record);
+              onEventCallback({ type: 'utterance.added', record });
+              debugLog(`📢 Emitted single enhanced utterance.added for ${record.id}`);
+              
+              // Clean up pending state
+              if (pendingUserRecord === record) pendingUserRecord = null;
+              pendingUserRecordPromise = null;
             };
 
+            // Try to enhance existing pending record first
             if (pendingUserRecord) {
-              finalize(pendingUserRecord);
+              debugLog(`📝 Enhancing existing pendingUserRecord: ${pendingUserRecord.id}`);
+              enhanceRecord(pendingUserRecord).catch(err => 
+                debugLog(`User record enhancement error: ${err}`, true)
+              );
             } else if (pendingUserRecordPromise) {
+              debugLog(`⏳ Waiting for pendingUserRecordPromise to resolve...`);
               pendingUserRecordPromise
                 .then(record => {
-                  if (record) finalize(record);
+                  if (record) {
+                    debugLog(`📝 Enhancing resolved pendingUserRecord: ${record.id}`);
+                    enhanceRecord(record);
+                  } else {
+                    debugLog(`⚠️ pendingUserRecordPromise resolved to null`, true);
+                  }
                 })
-                .catch(err => debugLog(`User transcription error: ${err}`, true));
+                .catch(err => debugLog(`User transcription promise error: ${err}`, true));
             } else {
+              // Fallback: create new record if no pending record exists
+              debugLog(`🆘 No pending record found, creating fallback record`);
               stopAndTranscribe(userAudioMgr, t)
                 .then(record => {
-                  if (record) finalize(record);
+                  if (record) enhanceRecord(record);
                 })
-                .catch(err => debugLog(`User transcription error: ${err}`, true));
+                .catch(err => debugLog(`User transcription fallback error: ${err}`, true));
             }
           }
 
