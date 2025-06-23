@@ -103,7 +103,8 @@ button:focus-visible {
   width: 100%;
   max-height: 50vh;
   overflow-y: auto;
-  pointer-events: auto;
+  /* Allow clicks to pass through the container */
+  pointer-events: none;
   padding: 8px;
   box-sizing: border-box;
   z-index: 1000;
@@ -130,6 +131,8 @@ button:focus-visible {
   gap: 0; /* play button flush with highlighted text */
   max-width: 33%;
   word-wrap: break-word;
+  /* Re-enable interaction on bubbles */
+  pointer-events: auto;
 }
 
 @media (max-width: 600px) {
