@@ -31,6 +31,9 @@ const activeBubbles = { user: null, ai: null };
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
 
+// Track pending text from delta events for word extraction
+let pendingDeltaText = '';
+
 // Track processed utterances to prevent duplicates with mobile-specific keys
 const processedUtterances = new Set();
 const deviceUtterances = new Map(); // Track utterances by device type
@@ -195,10 +198,24 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         if (speaker === 'user') {
           if (activeBubbles[speaker]) {
             updateUserPlaceholder(event.word, speaker);
+            addWord(event.word, speaker); // Also add user words to word cloud
           }
           return;
         }
-        addWord(event.word, speaker);
+        
+        // For AI speech, only process word events if we don't have an active delta-based bubble
+        // This prevents conflicts between delta and word event processing
+        const bubble = activeBubbles[speaker];
+        if (!bubble || !bubble.__deltaText) {
+          addWord(event.word, speaker);
+        } else {
+          // We have delta-based content, just add to word cloud without UI update
+          const key = event.word.trim().toLowerCase();
+          if (!usedWords.has(key)) {
+            wordQueue.push({ word: event.word, speaker });
+            processWordQueue();
+          }
+        }
       }
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
@@ -362,9 +379,41 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     
     const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
     
-    // Simply append the delta as text (no word splitting needed)
-    const textNode = document.createTextNode(delta);
+    // Store accumulated delta text on the bubble for consistent rendering
+    if (!bubble.__deltaText) {
+      bubble.__deltaText = '';
+    }
+    bubble.__deltaText += delta;
+    
+    // Clear existing content and rebuild with accumulated text
+    target.innerHTML = '';
+    const textNode = document.createTextNode(bubble.__deltaText);
     target.appendChild(textNode);
+    
+    // Extract words from delta for word cloud
+    if (speaker === 'ai') {
+      pendingDeltaText += delta;
+      
+      // Extract complete words from the accumulated text
+      const words = pendingDeltaText.match(/\b\w+\b/g);
+      if (words) {
+        // Find the last complete word position
+        const lastWordMatch = pendingDeltaText.match(/.*\b(\w+)\b/);
+        if (lastWordMatch) {
+          const lastWordEnd = lastWordMatch.index + lastWordMatch[0].length;
+          
+          // Add complete words to the word cloud
+          words.forEach(word => {
+            if (word.length > 2) { // Only add words longer than 2 characters
+              addWord(word, speaker);
+            }
+          });
+          
+          // Keep only the remaining incomplete text
+          pendingDeltaText = pendingDeltaText.substring(lastWordEnd);
+        }
+      }
+    }
     
     scrollToBottom();
   }
@@ -485,7 +534,28 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   }
 
   function finalizeBubble(speaker) {
+    const bubble = activeBubbles[speaker];
+    if (bubble) {
+      // Clear delta text from the bubble
+      bubble.__deltaText = '';
+    }
     activeBubbles[speaker] = null;
+    
+    // Clear pending delta text for AI speaker when finalizing
+    if (speaker === 'ai') {
+      // Process any remaining words in the pending text
+      if (pendingDeltaText.trim()) {
+        const words = pendingDeltaText.match(/\b\w+\b/g);
+        if (words) {
+          words.forEach(word => {
+            if (word.length > 2) { // Only add words longer than 2 characters
+              addWord(word, speaker);
+            }
+          });
+        }
+      }
+      pendingDeltaText = '';
+    }
   }
 
 
