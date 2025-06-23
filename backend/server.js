@@ -17,6 +17,11 @@ const apiKey = process.env.OPENAI_API_KEY;
 // Enable CORS for all routes
 app.use(cors());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // Serve static files from public directory (if needed)
 app.use(express.static('public'));
 

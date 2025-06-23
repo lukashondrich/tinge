@@ -4,6 +4,11 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
 const embeddingFile = path.join(__dirname, '../shader-playground/public/embedding.json');
 let embeddings = [];
 try {

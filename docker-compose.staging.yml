@@ -1,0 +1,50 @@
+# Staging environment docker-compose
+
+services:
+  frontend:
+    build:
+      context: ./shader-playground
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - embedding-service
+    environment:
+      - NODE_ENV=staging
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=staging
+      - PORT=3000
+    env_file:
+      - .env.staging
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  embedding-service:
+    build:
+      context: ./embedding-service
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=staging
+      - PORT=3001
+    volumes:
+      - embedding-data:/app/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  embedding-data:
+
+networks:
+  app-network:
+    driver: bridge
