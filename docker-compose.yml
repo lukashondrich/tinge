@@ -1,0 +1,53 @@
+# Development docker-compose
+
+services:
+  frontend:
+    build:
+      context: ./shader-playground
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+      - embedding-service
+    environment:
+      - NODE_ENV=development
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - app-network
+
+  embedding-service:
+    build:
+      context: ./embedding-service
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    volumes:
+      - ./embedding-service:/app
+      - /app/node_modules
+      - ./shader-playground/public:/app/public
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

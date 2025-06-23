@@ -8,6 +8,8 @@ node_modules/
 
 # environment files
 .env
+.env.staging
+.env.production
 
 # build / cache
 dist/
