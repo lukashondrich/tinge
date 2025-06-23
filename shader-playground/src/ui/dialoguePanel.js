@@ -18,12 +18,42 @@ export class DialoguePanel {
      * record.wordTimings  // [{word, start, end}, …] from Whisper
      */
     async add(record) {
-      console.log(`🎯 DialoguePanel.add called for ${record.speaker} with text: "${record.text.substring(0, 50)}..." and ${record.wordTimings ? record.wordTimings.length : 0} word timings`);
       
-      // Check for existing bubble first to prevent duplicates
-      const existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+      // For user speech, always look for the most recent unfinalized bubble to replace
+      // This ensures the "Speaking..." placeholder gets replaced with final transcription
+      let existing = null;
+      if (record.speaker === 'user' && record.text !== '...') {
+        const userBubbles = this.container.querySelectorAll(`.bubble.user`);
+        for (let i = userBubbles.length - 1; i >= 0; i--) {
+          const bubble = userBubbles[i];
+          // Look for bubbles without utteranceId (unfinalized) or placeholder bubbles
+          const isPlaceholder = bubble.querySelector('.highlighted-text')?.textContent?.includes('Speaking...');
+          const isUnfinalized = !bubble.dataset.utteranceId || bubble.dataset.utteranceId === 'undefined';
+          
+          if (isUnfinalized || isPlaceholder) {
+            existing = bubble;
+            break;
+          }
+        }
+      } else {
+        // For AI speech, use the original detection logic
+        existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+        
+        if (!existing && record.text !== '...') {
+          const speakerBubbles = this.container.querySelectorAll(`.bubble.${record.speaker}`);
+          for (let i = speakerBubbles.length - 1; i >= 0; i--) {
+            const bubble = speakerBubbles[i];
+            if (!bubble.dataset.utteranceId || bubble.dataset.utteranceId === 'undefined') {
+              existing = bubble;
+              break;
+            }
+          }
+        }
+      }
+      
       if (existing && record.text !== '...') {
-        console.log(`🔄 DialoguePanel: Found existing bubble for ${record.speaker} utterance ${record.id}, enhancing instead of duplicating`);
+        // Set the utteranceId on the existing bubble before enhancing
+        existing.dataset.utteranceId = record.id;
         // If we have an existing bubble and this is a final record (not placeholder), enhance it
         await this.enhanceExistingBubble(existing, record);
         return;
@@ -39,6 +69,8 @@ export class DialoguePanel {
   
       // 2) Utterance-level play button (only if we have audio blob and it's not placeholder)
       let playBtn = null;
+      let audioBuffer = null;
+      
       if (record.audioBlob && record.text !== '...') {
         playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
@@ -47,7 +79,7 @@ export class DialoguePanel {
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
-        let audioBuffer = bufferCache.get(record.id);
+        audioBuffer = bufferCache.get(record.id);
         if (!audioBuffer) {
           try {
             const raw = await record.audioBlob.arrayBuffer();
@@ -58,7 +90,6 @@ export class DialoguePanel {
           }
         }
       } else {
-        console.log(`ℹ️ Skipping play button for ${record.speaker} record ${record.id} - ${record.audioBlob ? 'placeholder text' : 'no audio blob'}`);
       }
   
       // 4) Build the transcript with pastel highlighting
@@ -76,22 +107,27 @@ export class DialoguePanel {
       let w = 0;  // index into record.wordTimings
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        if (i % 2 === 1 && record.wordTimings && record.wordTimings[w]) {
-          // odd indexes are words
-          const { start, end } = record.wordTimings[w++];
+        if (i % 2 === 1) {
+          // odd indexes are words - always create spans for proper styling
           const span = document.createElement('span');
           span.className = 'word';
           span.textContent = part;
-          span.addEventListener('click', () => {
-            const src = audioCtx.createBufferSource();
-            src.buffer = audioBuffer;
-            src.connect(audioCtx.destination);
-            // Add 200ms buffer before and after word timing
-            const playbackBuffer = 0.1; // 200ms in seconds
-            const bufferedStart = Math.max(0, start - playbackBuffer);
-            const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-            src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-          });
+          
+          // Only add click handler if we have audio timing data
+          if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
+            const { start, end } = record.wordTimings[w];
+            span.addEventListener('click', () => {
+              const src = audioCtx.createBufferSource();
+              src.buffer = audioBuffer;
+              src.connect(audioCtx.destination);
+              // Add 200ms buffer before and after word timing
+              const playbackBuffer = 0.1; // 200ms in seconds
+              const bufferedStart = Math.max(0, start - playbackBuffer);
+              const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
+              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+            });
+          }
+          w++; // increment word index regardless
           highlightedSpan.appendChild(span);
         } else {
           // even indexes are the exact "glue" (spaces, punctuation)—just text
@@ -106,10 +142,8 @@ export class DialoguePanel {
       bubble.appendChild(p);
       const existingAfterBuild = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
       if (existingAfterBuild) {
-        console.log(`🔄 DialoguePanel: Replacing existing bubble for ${record.speaker} utterance ${record.id}`);
         this.container.replaceChild(bubble, existingAfterBuild);
       } else {
-        console.log(`➕ DialoguePanel: Adding new bubble for ${record.speaker} utterance ${record.id}`);
         this.container.appendChild(bubble);
       }
       this.container.scrollTop = this.container.scrollHeight;
@@ -119,8 +153,6 @@ export class DialoguePanel {
      * Enhance an existing bubble with complete audio data and word timings
      */
     async enhanceExistingBubble(bubble, record) {
-      console.log(`🔧 Enhancing bubble ${record.id} with audio and word timings`);
-      
       // Remove placeholder class if present
       bubble.classList.remove('placeholder');
       
@@ -178,22 +210,27 @@ export class DialoguePanel {
       let w = 0;  // index into record.wordTimings
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        if (i % 2 === 1 && record.wordTimings && record.wordTimings[w] && audioBuffer) {
-          // odd indexes are words - make them clickable if we have audio
-          const { start, end } = record.wordTimings[w++];
+        if (i % 2 === 1) {
+          // odd indexes are words - always create spans for proper styling
           const span = document.createElement('span');
           span.className = 'word';
           span.textContent = part;
-          span.addEventListener('click', () => {
-            const src = audioCtx.createBufferSource();
-            src.buffer = audioBuffer;
-            src.connect(audioCtx.destination);
-            // Add 200ms buffer before and after word timing
-            const playbackBuffer = 0.1; // 200ms in seconds
-            const bufferedStart = Math.max(0, start - playbackBuffer);
-            const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-            src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-          });
+          
+          // Only add click handler if we have audio timing data
+          if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
+            const { start, end } = record.wordTimings[w];
+            span.addEventListener('click', () => {
+              const src = audioCtx.createBufferSource();
+              src.buffer = audioBuffer;
+              src.connect(audioCtx.destination);
+              // Add 200ms buffer before and after word timing
+              const playbackBuffer = 0.1; // 200ms in seconds
+              const bufferedStart = Math.max(0, start - playbackBuffer);
+              const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
+              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+            });
+          }
+          w++; // increment word index regardless
           highlightedSpan.appendChild(span);
         } else {
           // even indexes are the exact "glue" (spaces, punctuation)—just text
