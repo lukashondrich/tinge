@@ -6,10 +6,18 @@ export function setupTouchRotation(mesh) {
     let dragSpeed = 0;
   
     const onPointerDown = (e) => {
-      if (e.target.closest && e.target.closest('#ptt-button')) {
+      // Enhanced PTT button exclusion for mobile devices
+      const target = e.target || e.touches?.[0]?.target;
+      if (target && (
+        target.id === 'ptt-button' || 
+        target.closest('#ptt-button') ||
+        target.classList?.contains('ptt-button')
+      )) {
         isDragging = false;
+        console.log('🎯 Touch input blocked - PTT button interaction detected');
         return;
       }
+      
       isDragging = true;
       lastX = e.clientX || e.touches?.[0]?.clientX || 0;
       lastY = e.clientY || e.touches?.[0]?.clientY || 0;
