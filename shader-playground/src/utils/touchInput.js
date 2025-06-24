@@ -1,8 +1,7 @@
-export function setupTouchRotation(mesh) {
+export function setupTouchRotation(_mesh) {
     let isDragging = false;
     let lastX = 0;
     let lastY = 0;
-    let rotationY = 0;
     let dragSpeed = 0;
   
     const onPointerDown = (e) => {
@@ -14,6 +13,7 @@ export function setupTouchRotation(mesh) {
         target.classList?.contains('ptt-button')
       )) {
         isDragging = false;
+        // eslint-disable-next-line no-console
         console.log('🎯 Touch input blocked - PTT button interaction detected');
         return;
       }
@@ -29,7 +29,6 @@ export function setupTouchRotation(mesh) {
       const currentY = e.clientY || e.touches?.[0]?.clientY || 0;
       const delta = currentX - lastX;
       dragSpeed = Math.abs(delta);
-      rotationY += delta * 0.005;
       lastX = currentX;
       lastY = currentY;
     };

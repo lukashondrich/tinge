@@ -17,6 +17,7 @@ import { DialoguePanel } from './ui/dialoguePanel.js';
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
+  // eslint-disable-next-line no-console
   console.warn('🔥 animate() already running — skipping');
   throw new Error('animate() already running');
 }
@@ -167,6 +168,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;
+      // eslint-disable-next-line no-console
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
@@ -301,11 +303,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         // this helps ensure we don't lose the final transcription
         // The actual processing will happen when utterance.added arrives
         if (transcript && !activeBubbles[speaker]) {
+          // eslint-disable-next-line no-console
           console.warn('Got final transcript but no active AI bubble - transcript may be lost');
         }
       }
     }
   )
+  // eslint-disable-next-line no-console
   .catch(err => console.error("⚠️ Realtime init error:", err));
   const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
@@ -322,6 +326,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         try {
           await processWord(word, speaker);
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Error processing word:', word, 'Error:', err);
           // Continue processing other words even if one fails
         }
@@ -498,9 +503,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
             const data = await res.json();
             newPoint = { x: data.x, y: data.y, z: data.z };
           } else {
+            // eslint-disable-next-line no-console
             console.warn('Embedding fetch returned non-OK status:', res.status, 'for word:', word);
           }
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Embedding fetch failed for word:', word, 'Error:', err);
           // Continue with default position
         }
@@ -523,11 +530,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
           recentlyAdded.set(id, performance.now());
           labels[id] = word;
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
           // Don't rethrow - UI update was successful
         }
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Critical error in processWord for:', word, 'Error:', err);
       throw err; // Rethrow critical errors that affect UI
     }
