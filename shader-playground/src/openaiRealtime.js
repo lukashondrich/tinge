@@ -399,7 +399,7 @@ function createPTTButton() {
   });
   
   // Listen for mouseup on the document to catch releases outside the button
-  document.addEventListener('mouseup', (e) => {
+  document.addEventListener('mouseup', (_e) => {
     if (isPTTPressed) {
       isPTTPressed = false;
       handlePTTRelease(_e);
@@ -424,6 +424,7 @@ function createPTTButton() {
       isPTTPressed = true;
       handlePTTPress(e);
     } else {
+      // PTT already pressed
     }
   }, { passive: false });
 
@@ -433,10 +434,10 @@ function createPTTButton() {
     }
   }, { passive: false });
 
-  pttButton.addEventListener('touchend', (e) => {
+  pttButton.addEventListener('touchend', (_e) => {
     // eslint-disable-next-line no-unused-vars
     const now = Date.now();
-    e.preventDefault();
+    _e.preventDefault();
     
     if (isPTTPressed) {
       isPTTPressed = false;
@@ -563,8 +564,12 @@ export async function connect() {
     // Create PeerConnection
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    peerConnection.onicecandidate = e => {}; // ICE candidate handling
-    peerConnection.onconnectionstatechange = () => {}; // Connection state tracking
+    peerConnection.onicecandidate = _e => {
+      // ICE candidate handling - not implemented
+    };
+    peerConnection.onconnectionstatechange = () => {
+      // Connection state tracking - not implemented  
+    };
 
     peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection.iceConnectionState;

@@ -194,6 +194,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
       // ② Handle individual word events 
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
+        // eslint-disable-next-line no-unused-vars
         const _deviceType = event.deviceType || 'unknown';
         
         // For user speech, only process words if there's an active bubble (from PTT press)
@@ -223,6 +224,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
       if (event.type === 'utterance.added' && event.record) {
+        // eslint-disable-next-line no-unused-vars
         const { speaker = 'ai', id, text, wordTimings, deviceType: _deviceType } = event.record;
         const eventDeviceType = event.deviceType || 'unknown';
         
@@ -634,6 +636,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     
     controls.update();
 
+    // eslint-disable-next-line no-unused-vars
     const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
     camera.lookAt(0, 0, 0);
 
