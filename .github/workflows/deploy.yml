@@ -1,0 +1,58 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install Railway CLI
+      run: npm install -g @railway/cli
+    
+    - name: Deploy Backend
+      run: |
+        cd backend
+        railway link ${{ secrets.RAILWAY_BACKEND_ID }}
+        railway up --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    
+    - name: Deploy Embedding Service
+      run: |
+        cd embedding-service
+        railway link ${{ secrets.RAILWAY_EMBEDDING_ID }}
+        railway up --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    
+    - name: Deploy Frontend
+      run: |
+        cd shader-playground
+        railway link ${{ secrets.RAILWAY_FRONTEND_ID }}
+        railway up --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    
+    - name: Wait for deployments
+      run: sleep 60
+    
+    - name: Health Check
+      run: |
+        echo "Checking service health..."
+        # Add health check URLs here once deployed
+        # curl -f https://backend-xxx.up.railway.app/health
+        # curl -f https://embedding-xxx.up.railway.app/health
+        # curl -f https://frontend-xxx.up.railway.app

@@ -1,15 +1,19 @@
 # Embedding Service Dockerfile
 FROM node:18-bullseye-slim
 
-# Install Python and system dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install Python and system dependencies with retry logic
+RUN apt-get update && \
+    for i in 1 2 3; do \
+        apt-get install -y \
+            python3 \
+            python3-pip \
+            python3-venv \
+            python3-dev \
+            build-essential \
+            curl \
+        && break || sleep 5; \
+    done && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -17,7 +21,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install Node.js dependencies
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy Python requirements if they exist
 COPY requirements.txt* ./
