@@ -29,8 +29,6 @@
     "build:all": "cd shader-playground && npm run build",
     "start:prod": "NODE_ENV=production npm run build:all && npm run docker:prod",
     "deploy:check": "npm run test && npm run lint && npm run build:all",
-    "railway:install": "npm install -g @railway/cli",
-    "railway:login": "railway login",
     "preproduction": "npm run deploy:check"
   },
   "dependencies": {

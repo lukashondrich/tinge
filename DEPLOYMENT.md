@@ -8,6 +8,16 @@ This guide will help you deploy your Three.js Playground to Railway.app for fami
 1. [Railway.app account](https://railway.app) (free tier available)
 2. GitHub account with this repository
 3. OpenAI API key
+4. Railway CLI (optional, for advanced deployment)
+
+### Step 0: Install Railway CLI (Optional)
+```bash
+# Install Railway CLI globally
+npm install -g @railway/cli
+
+# Login to Railway
+railway login
+```
 
 ### Step 1: Prepare for Deployment
 
