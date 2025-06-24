@@ -17,6 +17,7 @@ export const StorageService = {
    */
   async addUtterance(utterance) {
     await db.utterances.put(utterance);
+    // eslint-disable-next-line no-console
     console.log('🔖 Utterance saved to IndexedDB:', utterance);
   },
 
@@ -26,6 +27,7 @@ export const StorageService = {
    */
   async getUtterances() {
     const all = await db.utterances.orderBy('timestamp').toArray();
+    // eslint-disable-next-line no-console
     console.log('📂 Loaded utterances from IndexedDB:', all);
     return all;
   }

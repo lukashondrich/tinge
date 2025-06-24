@@ -40,6 +40,7 @@ export class AudioManager {
   startRecording() {
     if (!this.recorder) throw new Error('AudioManager not initialized');
     if (this.isRecording) {
+      // eslint-disable-next-line no-console
       console.warn('AudioManager: already recording, ignoring start call');
       return;
     }
@@ -55,6 +56,7 @@ export class AudioManager {
   async stopRecording(transcriptText) {
     if (!this.recorder) throw new Error('AudioManager not initialized');
     if (!this.isRecording) {
+      // eslint-disable-next-line no-console
       console.warn('AudioManager: not recording, ignoring stop call');
       // Still resolve to avoid hanging promises
       return Promise.resolve(null);
@@ -66,6 +68,7 @@ export class AudioManager {
         // fallback to webm if mimeType is missing
         const mime = this.recorder.mimeType || 'audio/webm';
         const blob = new Blob(this.chunks, { type: mime });
+        // eslint-disable-next-line no-console
         console.log('🔉 AudioManager: blob type=', blob.type, 'size=', blob.size);
         const id = crypto.randomUUID();
         const timestamp = Date.now();

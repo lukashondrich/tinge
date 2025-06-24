@@ -62,7 +62,8 @@ function scrollToBottom() {
 }
 
 // simple word playback helper (stubbed until audio timing is known)
-function playAudioFor(word) {
+function playAudioFor(_word) {
+  // Stubbed until audio timing is implemented
 }
 
 function startBubble(speaker) {
@@ -115,7 +116,7 @@ function startBubble(speaker) {
 }
 
 // Initialize scene and OpenAI Realtime
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded, labels }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, controls, recentlyAdded, labels }) => {
   const renderer = createRenderer();
 
   // 🏷 Tooltip for hovered words
@@ -193,7 +194,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ② Handle individual word events 
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        const deviceType = event.deviceType || 'unknown';
+        const _deviceType = event.deviceType || 'unknown';
         
         // For user speech, only process words if there's an active bubble (from PTT press)
         // This prevents creating new bubbles but allows updating existing placeholder
@@ -222,7 +223,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings, deviceType } = event.record;
+        const { speaker = 'ai', id, text, wordTimings, deviceType: _deviceType } = event.record;
         const eventDeviceType = event.deviceType || 'unknown';
         
         // Enhanced duplicate prevention with device-specific tracking
@@ -569,7 +570,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
 
   // Animation loop
-  function animate(t) {
+  function animate(_t) {
     requestAnimationFrame(animate);
     optimizer.step();
   
@@ -633,7 +634,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     
     controls.update();
 
-    const { speed, offsetX, offsetY } = getSpeed();
+    const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
     camera.lookAt(0, 0, 0);
 
     // ✨ Apply RGB shift only when user is dragging
@@ -649,8 +650,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
   // Handle cleanup on page unload
   window.addEventListener('beforeunload', () => {
-    if (typeof cleanup === 'function') {
-      cleanup();
+    if (typeof window.cleanup === 'function') {
+      window.cleanup();
     }
     if (typeof disposeTouch === 'function') {
       disposeTouch();
