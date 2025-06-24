@@ -1,6 +1,6 @@
-import { describe, test, expect } from '@jest/globals';
-import request from 'supertest';
-import express from 'express';
+const { describe, test, expect } = require('@jest/globals');
+const request = require('supertest');
+const express = require('express');
 
 // Create a minimal test server for health check
 const createTestApp = () => {
