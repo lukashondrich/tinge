@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 
 // Mock DOM environment for testing
@@ -128,8 +128,8 @@ describe('Frontend Component Tests', () => {
       const THREE = await import('three');
       
       const scene = new THREE.Scene();
-      const geometry = new THREE.SphereGeometry();
-      const material = new THREE.MeshBasicMaterial();
+      new THREE.SphereGeometry();
+      new THREE.MeshBasicMaterial();
       const mesh = new THREE.Mesh();
       
       scene.add(mesh);
@@ -248,13 +248,6 @@ describe('Frontend Component Tests', () => {
     test('should handle touch events', () => {
       const element = document.createElement('div');
       
-      // Mock touch event
-      const mockTouchEvent = {
-        preventDefault: vi.fn(),
-        touches: [{ clientX: 100, clientY: 200 }],
-        type: 'touchstart'
-      };
-      
       let touchStartCalled = false;
       element.addEventListener('touchstart', (e) => {
         touchStartCalled = true;
@@ -315,7 +308,7 @@ describe('Frontend Component Tests', () => {
         value: mockIndexedDB
       });
       
-      const request = indexedDB.open('test-db', 1);
+      indexedDB.open('test-db', 1);
       expect(mockIndexedDB.open).toHaveBeenCalledWith('test-db', 1);
     });
   });
