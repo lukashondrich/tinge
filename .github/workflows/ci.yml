@@ -79,6 +79,23 @@ jobs:
           echo "No test script found in frontend"
         fi
     
+    - name: Run embedding service tests
+      run: |
+        cd embedding-service
+        if grep -q "test" package.json; then
+          npm test
+        else
+          echo "No test script found in embedding service"
+        fi
+    
+    - name: Run integration tests
+      run: |
+        if grep -q "test:integration" package.json; then
+          npm run test:integration
+        else
+          echo "No integration tests found"
+        fi
+    
     - name: Build frontend
       run: |
         cd shader-playground
