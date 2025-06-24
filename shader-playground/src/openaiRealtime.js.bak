@@ -57,8 +57,7 @@ function stopAndTranscribe(audioMgr, transcriptText) {
           record.wordTimings = words;
           record.fullText    = fullText;
         } catch (err) {
-          // eslint-disable-next-line no-console
-    console.error(`Word timing fetch failed: ${err.message}`);
+          console.error(`Word timing fetch failed: ${err.message}`);
           record.wordTimings = [];
           record.fullText    = record.text; // fallback to original
         }
@@ -185,7 +184,6 @@ async function handleGetUserProfile(args) {
     
     return profile;
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error(`Error getting user profile: ${error.message}`);
     return { error: error.message };
   }
@@ -337,7 +335,6 @@ async function handleUpdateUserProfile(args) {
     
     return result;
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error(`Profile update error: ${error.message}`);
     return { error: error.message };
   }
@@ -399,10 +396,10 @@ function createPTTButton() {
   });
   
   // Listen for mouseup on the document to catch releases outside the button
-  document.addEventListener('mouseup', (_e) => {
+  document.addEventListener('mouseup', (e) => {
     if (isPTTPressed) {
       isPTTPressed = false;
-      handlePTTRelease(_e);
+      handlePTTRelease(e);
     }
   });
   
@@ -424,7 +421,6 @@ function createPTTButton() {
       isPTTPressed = true;
       handlePTTPress(e);
     } else {
-      // PTT already pressed
     }
   }, { passive: false });
 
@@ -434,31 +430,29 @@ function createPTTButton() {
     }
   }, { passive: false });
 
-  pttButton.addEventListener('touchend', (_e) => {
-    // eslint-disable-next-line no-unused-vars
+  pttButton.addEventListener('touchend', (e) => {
     const now = Date.now();
-    _e.preventDefault();
+    e.preventDefault();
     
     if (isPTTPressed) {
       isPTTPressed = false;
-      handlePTTRelease(_e);
+      handlePTTRelease(e);
     } else {
-      // PTT not pressed
     }
   }, { passive: false });
 
-  pttButton.addEventListener('touchcancel', (_e) => {
-    _e.preventDefault();
+  pttButton.addEventListener('touchcancel', (e) => {
+    e.preventDefault();
     if (isPTTPressed) {
       isPTTPressed = false;
-      handlePTTRelease(_e);
+      handlePTTRelease(e);
     }
   }, { passive: false });
   
   document.body.appendChild(pttButton);
 }
 
-async function handlePTTPress(_e) {
+async function handlePTTPress(e) {
 
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
@@ -472,8 +466,7 @@ async function handlePTTPress(_e) {
         return;
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
-    console.error(`Connection failed: ${error.message}`);
+      console.error(`Connection failed: ${error.message}`);
       return;
     }
   }
@@ -486,8 +479,7 @@ async function handlePTTPress(_e) {
         event_id: crypto.randomUUID()
       }));
     } else {
-      // eslint-disable-next-line no-console
-    console.error('Cannot clear buffer - data channel not open');
+      console.error('Cannot clear buffer - data channel not open');
     }
   }
 
@@ -499,7 +491,7 @@ async function handlePTTPress(_e) {
   enableMicrophone();
 }
 
-function handlePTTRelease(_e) {
+function handlePTTRelease(e) {
   
   // Stop local recording immediately to capture full speech
   if (userAudioMgr.isRecording) {
@@ -514,8 +506,7 @@ function handlePTTRelease(_e) {
         
         return record;
       })
-      .catch(err => // eslint-disable-next-line no-console
-    console.error(`User stop error: ${err}`));
+      .catch(err => console.error(`User stop error: ${err}`));
   }
 
   // Add buffer time before finalizing the audio processing (mobile-specific timing)
@@ -543,8 +534,7 @@ function handlePTTRelease(_e) {
           event_id: crypto.randomUUID()
         }));
       } else {
-        // eslint-disable-next-line no-console
-    console.error('Cannot commit audio - data channel not open');
+        console.error('Cannot commit audio - data channel not open');
       }
     }
   }, bufferTime); // Mobile-aware buffer time
@@ -564,12 +554,8 @@ export async function connect() {
     // Create PeerConnection
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
-    peerConnection.onicecandidate = _e => {
-      // ICE candidate handling - not implemented
-    };
-    peerConnection.onconnectionstatechange = () => {
-      // Connection state tracking - not implemented  
-    };
+    peerConnection.onicecandidate = e => {}; // ICE candidate handling
+    peerConnection.onconnectionstatechange = () => {}; // Connection state tracking
 
     peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection.iceConnectionState;
@@ -578,8 +564,7 @@ export async function connect() {
           peerConnection.restartIce();
         }
         if (state === "failed") {
-          // eslint-disable-next-line no-console
-    console.error('ICE connection failed - marking disconnected');
+          console.error('ICE connection failed - marking disconnected');
           isConnected = false;
           pttButton.innerText = "Reconnect";
           pttButton.style.backgroundColor = "#888";
@@ -629,8 +614,7 @@ export async function connect() {
             };
             dataChannel.send(JSON.stringify(sysEvent));
         } catch (err) {
-            // eslint-disable-next-line no-console
-    console.error(`Failed to load system prompt YAML: ${err.message}`);
+            console.error(`Failed to load system prompt YAML: ${err.message}`);
         }
 
         // ─── enable audio transcription and VAD ───
@@ -801,14 +785,13 @@ export async function connect() {
         try {
         await aiAudioMgr.init();
         } catch (err) {
-        // eslint-disable-next-line no-console
-    console.error(`AI AudioManager init error: ${err}`);
+        console.error(`AI AudioManager init error: ${err}`);
         }
     };
 
     // 2) Handle all incoming events
-    dataChannel.addEventListener("message", async (_e) => {
-        const event = JSON.parse(_e.data);
+    dataChannel.addEventListener("message", async (e) => {
+        const event = JSON.parse(e.data);
         if (!event.timestamp) event.timestamp = new Date().toLocaleTimeString();
       
         // Relay raw events
@@ -838,8 +821,7 @@ export async function connect() {
             if (aiAudioMgr.isRecording) {
                 stopAndTranscribe(aiAudioMgr, aiTranscript.trim()).then(record => {
                     if (!record) {
-                        // eslint-disable-next-line no-console
-    console.error('AI stopAndTranscribe returned null record');
+                        console.error('AI stopAndTranscribe returned null record');
                         return;
                     }
                     onEventCallback({ type: 'utterance.added', record });
@@ -849,10 +831,8 @@ export async function connect() {
                 aiWordOffsets = [];
                 aiRecordingStartTime = null;
                 })
-                .catch(err => // eslint-disable-next-line no-console
-    console.error(`AI transcription error: ${err}`));
+                .catch(err => console.error(`AI transcription error: ${err}`));
             } else {
-                // No recording in progress
             }
         }
       
@@ -887,8 +867,7 @@ export async function connect() {
                 record.wordTimings = words;
                 record.fullText = fullText;
               } catch (err) {
-                // eslint-disable-next-line no-console
-    console.error(`Word timing fetch failed: ${err.message}`);
+                console.error(`Word timing fetch failed: ${err.message}`);
                 record.wordTimings = [];
                 record.fullText = t;
               }
@@ -910,8 +889,7 @@ export async function connect() {
             // Try to enhance existing pending record first
             if (pendingUserRecord) {
               enhanceRecord(pendingUserRecord).catch(err => 
-                // eslint-disable-next-line no-console
-    console.error(`User record enhancement error: ${err}`)
+                console.error(`User record enhancement error: ${err}`)
               );
             } else if (pendingUserRecordPromise) {
               pendingUserRecordPromise
@@ -919,20 +897,17 @@ export async function connect() {
                   if (record) {
                     enhanceRecord(record);
                   } else {
-                    // eslint-disable-next-line no-console
-    console.error('pendingUserRecordPromise resolved to null');
+                    console.error('pendingUserRecordPromise resolved to null');
                   }
                 })
-                .catch(err => // eslint-disable-next-line no-console
-    console.error(`User transcription promise error: ${err}`));
+                .catch(err => console.error(`User transcription promise error: ${err}`));
             } else {
               // Fallback: create new record if no pending record exists
               stopAndTranscribe(userAudioMgr, t)
                 .then(record => {
                   if (record) enhanceRecord(record);
                 })
-                .catch(err => // eslint-disable-next-line no-console
-    console.error(`User transcription fallback error: ${err}`));
+                .catch(err => console.error(`User transcription fallback error: ${err}`));
             }
           }
 
@@ -970,8 +945,7 @@ export async function connect() {
             } else if (event.name === 'update_user_profile') {
               result = await handleUpdateUserProfile(args);
             } else {
-              // eslint-disable-next-line no-console
-    console.error(`Unknown function call: ${event.name}`);
+              console.error(`Unknown function call: ${event.name}`);
               result = { error: `Unknown function: ${event.name}` };
             }
 
@@ -996,10 +970,8 @@ export async function connect() {
             dataChannel.send(JSON.stringify(responseEvent));
 
           } catch (error) {
-            // eslint-disable-next-line no-console
-    console.error(`Function call error: ${error.message}`);
-            // eslint-disable-next-line no-console
-    console.error(`Error stack: ${error.stack}`);
+            console.error(`Function call error: ${error.message}`);
+            console.error(`Error stack: ${error.stack}`);
             
             // Send error result
             const errorResultEvent = {
@@ -1027,8 +999,7 @@ export async function connect() {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
     } catch (sdpError) {
-      // eslint-disable-next-line no-console
-    console.error(`Error creating SDP offer: ${sdpError.message}`);
+      console.error(`Error creating SDP offer: ${sdpError.message}`);
       throw new Error(`SDP creation failed: ${sdpError.message}`);
     }
     
@@ -1048,10 +1019,8 @@ export async function connect() {
       
       if (!sdpResponse.ok) {
         const errorText = await sdpResponse.text();
-        // eslint-disable-next-line no-console
-    console.error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
-        // eslint-disable-next-line no-console
-    console.error(`Error details: ${errorText}`);
+        console.error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
+        console.error(`Error details: ${errorText}`);
         throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
       }
       
@@ -1064,18 +1033,15 @@ export async function connect() {
       
       await peerConnection.setRemoteDescription(answer);
     } catch (fetchError) {
-      // eslint-disable-next-line no-console
-    console.error(`Error during SDP exchange: ${fetchError.message}`);
+      console.error(`Error during SDP exchange: ${fetchError.message}`);
       throw new Error(`SDP exchange failed: ${fetchError.message}`);
     }
     
     
-    // eslint-disable-next-line no-console
     console.log('OpenAI Realtime connection established');
     isConnected = true;
     
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error(`OpenAI connection error: ${error.message}`);
     pttButton.innerText = 'Error';
     pttButton.style.backgroundColor = '#c00';
@@ -1100,12 +1066,10 @@ function enableMicrophone() {
     pttButton.innerText = 'Talking';
   } else {
     if (!audioTrack) {
-      // eslint-disable-next-line no-console
-    console.error('Cannot enable microphone - no audio track available');
+      console.error('Cannot enable microphone - no audio track available');
     }
     if (!isConnected) {
-      // eslint-disable-next-line no-console
-    console.error('Cannot enable microphone - not connected to OpenAI');
+      console.error('Cannot enable microphone - not connected to OpenAI');
     }
   }
 }
@@ -1117,14 +1081,12 @@ function disableMicrophone() {
     pttButton.style.backgroundColor = '#44f'; // Blue when inactive
     pttButton.innerText = 'Push to Talk';
   } else {
-    // eslint-disable-next-line no-console
     console.error('Cannot disable microphone - no audio track available');
   }
 }
 
 export function sendTextMessage(text) {
   if (!dataChannel || dataChannel.readyState !== 'open') {
-    // eslint-disable-next-line no-console
     console.error('Cannot send message: data channel not open');
     return false;
   }

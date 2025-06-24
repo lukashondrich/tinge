@@ -86,10 +86,12 @@ export class DialoguePanel {
             audioBuffer = await audioCtx.decodeAudioData(raw);
             bufferCache.set(record.id, audioBuffer);
           } catch (err) {
+            // eslint-disable-next-line no-console
             console.warn(`⚠️ Failed to decode audio for ${record.id}:`, err);
           }
         }
       } else {
+        // No audio blob available for this record
       }
   
       // 4) Build the transcript with pastel highlighting
@@ -172,6 +174,7 @@ export class DialoguePanel {
             audioBuffer = await audioCtx.decodeAudioData(raw);
             bufferCache.set(record.id, audioBuffer);
           } catch (err) {
+            // eslint-disable-next-line no-console
             console.warn(`⚠️ Failed to decode audio for ${record.id}:`, err);
           }
         }

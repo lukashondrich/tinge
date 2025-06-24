@@ -17,6 +17,7 @@ import { DialoguePanel } from './ui/dialoguePanel.js';
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
+  // eslint-disable-next-line no-console
   console.warn('🔥 animate() already running — skipping');
   throw new Error('animate() already running');
 }
@@ -61,7 +62,8 @@ function scrollToBottom() {
 }
 
 // simple word playback helper (stubbed until audio timing is known)
-function playAudioFor(word) {
+function playAudioFor(_word) {
+  // Stubbed until audio timing is implemented
 }
 
 function startBubble(speaker) {
@@ -114,7 +116,7 @@ function startBubble(speaker) {
 }
 
 // Initialize scene and OpenAI Realtime
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegments, controls, recentlyAdded, labels }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, controls, recentlyAdded, labels }) => {
   const renderer = createRenderer();
 
   // 🏷 Tooltip for hovered words
@@ -167,6 +169,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;
+      // eslint-disable-next-line no-console
       audio.play().catch(err => console.error("Audio play error:", err));
     },
     (event) => {
@@ -191,7 +194,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
       // ② Handle individual word events 
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        const deviceType = event.deviceType || 'unknown';
+        // eslint-disable-next-line no-unused-vars
+        const _deviceType = event.deviceType || 'unknown';
         
         // For user speech, only process words if there's an active bubble (from PTT press)
         // This prevents creating new bubbles but allows updating existing placeholder
@@ -220,7 +224,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings, deviceType } = event.record;
+        // eslint-disable-next-line no-unused-vars
+        const { speaker = 'ai', id, text, wordTimings, deviceType: _deviceType } = event.record;
         const eventDeviceType = event.deviceType || 'unknown';
         
         // Enhanced duplicate prevention with device-specific tracking
@@ -301,11 +306,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         // this helps ensure we don't lose the final transcription
         // The actual processing will happen when utterance.added arrives
         if (transcript && !activeBubbles[speaker]) {
+          // eslint-disable-next-line no-console
           console.warn('Got final transcript but no active AI bubble - transcript may be lost');
         }
       }
     }
   )
+  // eslint-disable-next-line no-console
   .catch(err => console.error("⚠️ Realtime init error:", err));
   const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
@@ -322,6 +329,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
         try {
           await processWord(word, speaker);
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Error processing word:', word, 'Error:', err);
           // Continue processing other words even if one fails
         }
@@ -498,9 +506,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
             const data = await res.json();
             newPoint = { x: data.x, y: data.y, z: data.z };
           } else {
+            // eslint-disable-next-line no-console
             console.warn('Embedding fetch returned non-OK status:', res.status, 'for word:', word);
           }
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Embedding fetch failed for word:', word, 'Error:', err);
           // Continue with default position
         }
@@ -523,11 +533,13 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
           recentlyAdded.set(id, performance.now());
           labels[id] = word;
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
           // Don't rethrow - UI update was successful
         }
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Critical error in processWord for:', word, 'Error:', err);
       throw err; // Rethrow critical errors that affect UI
     }
@@ -560,7 +572,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
 
 
   // Animation loop
-  function animate(t) {
+  function animate(_t) {
     requestAnimationFrame(animate);
     optimizer.step();
   
@@ -624,7 +636,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
     
     controls.update();
 
-    const { speed, offsetX, offsetY } = getSpeed();
+    // eslint-disable-next-line no-unused-vars
+    const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
     camera.lookAt(0, 0, 0);
 
     // ✨ Apply RGB shift only when user is dragging
@@ -640,8 +653,8 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints, lineSegm
   
   // Handle cleanup on page unload
   window.addEventListener('beforeunload', () => {
-    if (typeof cleanup === 'function') {
-      cleanup();
+    if (typeof window.cleanup === 'function') {
+      window.cleanup();
     }
     if (typeof disposeTouch === 'function') {
       disposeTouch();

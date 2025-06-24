@@ -35,7 +35,6 @@
     "eslint": "^8.56.0"
   },
   "jest": {
-    "type": "module",
     "testEnvironment": "node",
     "collectCoverageFrom": [
       "**/*.js",
