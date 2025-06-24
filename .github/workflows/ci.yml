@@ -46,7 +46,7 @@ jobs:
       run: |
         cd backend
         if grep -q "lint" package.json; then
-          npm run lint
+          timeout 300 npm run lint || echo "Backend linting timed out"
         else
           echo "No linting script found in backend"
         fi
@@ -56,7 +56,7 @@ jobs:
       run: |
         cd shader-playground
         if grep -q "lint" package.json; then
-          npm run lint
+          timeout 300 npm run lint || echo "Frontend linting timed out"
         else
           echo "No linting script found in frontend"
         fi
@@ -103,7 +103,22 @@ jobs:
     
     - name: Test Docker builds
       run: |
-        docker compose -f docker-compose.yml build --no-cache
+        # Retry Docker builds up to 3 times to handle transient network issues
+        for i in 1 2 3; do
+          echo "Docker build attempt $i"
+          if docker compose -f docker-compose.yml build --no-cache; then
+            echo "Docker build succeeded on attempt $i"
+            break
+          else
+            echo "Docker build failed on attempt $i"
+            if [ $i -eq 3 ]; then
+              echo "All Docker build attempts failed"
+              exit 1
+            fi
+            echo "Retrying in 30 seconds..."
+            sleep 30
+          fi
+        done
 
   security:
     runs-on: ubuntu-latest

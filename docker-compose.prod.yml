@@ -1,4 +1,5 @@
 # Production environment docker-compose
+version: '3.8'
 
 services:
   frontend:
@@ -6,16 +7,20 @@ services:
       context: ./shader-playground
       dockerfile: Dockerfile
     ports:
-      - "80:80"
-      - "443:443"
+      - "${PORT:-80}:80"
     depends_on:
       - backend
       - embedding-service
     environment:
       - NODE_ENV=production
+      - VITE_API_URL=${BACKEND_URL:-https://backend.railway.app}
+      - VITE_EMBEDDING_URL=${EMBEDDING_URL:-https://embedding.railway.app}
     restart: unless-stopped
-    networks:
-      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
@@ -27,14 +32,20 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - PORT=3000
-    env_file:
-      - .env.production
+      - PORT=${PORT:-3000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-https://frontend.railway.app}
+      - EMBEDDING_SERVICE_URL=${EMBEDDING_URL:-https://embedding.railway.app}
     restart: unless-stopped
-    networks:
-      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
@@ -46,24 +57,20 @@ services:
     build:
       context: ./embedding-service
       dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3001}:3001"
     environment:
       - NODE_ENV=production
-      - PORT=3001
-    volumes:
-      - embedding-data:/app/data
+      - PORT=${PORT:-3001}
     restart: unless-stopped
-    networks:
-      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     deploy:
       resources:
         limits:
-          memory: 2G
-        reservations:
           memory: 1G
-
-volumes:
-  embedding-data:
-
-networks:
-  app-network:
-    driver: bridge
+        reservations:
+          memory: 512M
