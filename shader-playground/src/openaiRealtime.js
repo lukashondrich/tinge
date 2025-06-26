@@ -41,7 +41,7 @@ const ENABLE_SEMANTIC_VAD = false;
 async function fetchWordTimings(blob) {
     const fd = new FormData();
     fd.append('file', blob, 'utterance.webm');
-    const res = await fetch('/transcribe', { method: 'POST', body: fd });
+    const res = await fetch(`${__API_URL__}/transcribe`, { method: 'POST', body: fd });
     if (!res.ok) throw new Error(`Transcription API error ${res.status}`);
     const { words, fullText } = await res.json();
     return { words, fullText };
@@ -556,7 +556,7 @@ export async function connect() {
     pttButton.style.backgroundColor = '#666';
 
     // Get token
-    const tokenResponse = await fetch('/token');
+    const tokenResponse = await fetch(`${__API_URL__}/token`);
     if (!tokenResponse.ok) throw new Error(`Failed to get token: ${tokenResponse.status}`);
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.client_secret.value;
