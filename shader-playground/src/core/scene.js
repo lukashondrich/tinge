@@ -17,8 +17,28 @@ export async function createScene() {
   );
   camera.position.z = 15;
 
-  // ✅ Load, scale, and center embedding data
-  const raw = await fetch('/embedding.json').then(r => r.json());
+  // ✅ Load, scale, and center embedding data with fallback
+  let raw;
+  try {
+    raw = await fetch('/embedding.json').then(r => r.json());
+  } catch (error) {
+    console.warn('Failed to load embedding.json, generating random fallback points:', error);
+    // Generate random points between -1 and 1 for each dimension
+    const fallbackWords = [
+      'hello', 'world', 'three', 'javascript', 'shader', 'playground', 'webgl', 'graphics',
+      'computer', 'science', 'artificial', 'intelligence', 'machine', 'learning', 'data',
+      'visualization', 'interactive', 'experience', 'creativity', 'innovation', 'technology',
+      'future', 'digital', 'virtual', 'reality', 'immersive', 'design', 'art', 'beauty'
+    ];
+    
+    raw = fallbackWords.map(word => ({
+      label: word,
+      x: (Math.random() - 0.5) * 2, // Random between -1 and 1
+      y: (Math.random() - 0.5) * 2, // Random between -1 and 1
+      z: (Math.random() - 0.5) * 2  // Random between -1 and 1
+    }));
+  }
+  
   // Keep labels for hit‑testing
   const labels = raw.map(p => p.label || '');
   const scale = SCALE;

@@ -499,20 +499,26 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
       const key = word.trim().toLowerCase();
       if (!usedWords.has(key)) {
         usedWords.add(key);
-        let newPoint = { x: 0, y: 0, z: 0 };
+        let newPoint = {
+          x: (Math.random() - 0.5) * 2, // Random between -1 and 1
+          y: (Math.random() - 0.5) * 2, // Random between -1 and 1
+          z: (Math.random() - 0.5) * 2  // Random between -1 and 1
+        };
+        
         try {
-          const res = await fetch(`/embed-word?word=${encodeURIComponent(word)}`);
+          const res = await fetch(`${__API_URL__}/embed-word?word=${encodeURIComponent(word)}`);
           if (res.ok) {
             const data = await res.json();
             newPoint = { x: data.x, y: data.y, z: data.z };
+            // eslint-disable-next-line no-console
+            console.log('Got embedding for word:', word, newPoint);
           } else {
             // eslint-disable-next-line no-console
-            console.warn('Embedding fetch returned non-OK status:', res.status, 'for word:', word);
+            console.warn('Embedding service unavailable, using random position for word:', word);
           }
         } catch (err) {
           // eslint-disable-next-line no-console
-          console.error('Embedding fetch failed for word:', word, 'Error:', err);
-          // Continue with default position
+          console.warn('Embedding service unavailable, using random fallback position for word:', word, err.message);
         }
         
         try {
