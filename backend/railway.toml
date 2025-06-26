@@ -8,3 +8,7 @@ healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
+
+[variables]
+NODE_ENV = "production"
+PORT = "3000"
