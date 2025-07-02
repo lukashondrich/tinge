@@ -2,6 +2,16 @@
 
 A Three.js playground application with AI-powered features, including real-time audio processing and semantic embeddings.
 
+## 🚀 Live Demo
+
+**Try it now**: https://tingefrontend-production.up.railway.app
+
+The live application includes:
+- Interactive Three.js scene with semantic word visualization
+- OpenAI Realtime API integration for voice interactions
+- Real-time speech-to-text and AI responses
+- Dynamic 3D word cloud with physics simulation
+
 ## Architecture
 
 This is a multi-service application consisting of:
@@ -114,14 +124,22 @@ The application is containerized and can be deployed to any Docker-compatible pl
    docker-compose -f docker-compose.prod.yml up -d
    ```
 
-### Deployment Platforms
+### Production Deployment
 
-Ready for deployment on:
+**Current Live Deployment**: Railway.app
+
+The application is currently deployed on Railway with the following services:
+- **Frontend**: https://tingefrontend-production.up.railway.app
+- **Backend API**: https://tingebackend-production.up.railway.app
+
+**Alternative Deployment Platforms**:
 - AWS ECS/Fargate
 - Google Cloud Run
 - Azure Container Instances  
 - DigitalOcean App Platform
-- Railway, Render, or similar platforms
+- Render, Vercel, or similar platforms
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Environment Variables
 
