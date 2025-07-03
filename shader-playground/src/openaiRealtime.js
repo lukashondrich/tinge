@@ -602,10 +602,12 @@ export async function connect() {
         mobileDebug('Testing backend connectivity...');
         mobileDebug(`Backend URL: ${__API_URL__}`);
         
-        // Try a simple fetch first
+        // Try a simple fetch first with mobile-specific options
         const healthResponse = await fetch(`${__API_URL__}/health`, { 
           method: 'GET',
           signal: AbortSignal.timeout(8000),
+          mode: 'cors',
+          credentials: 'omit',
           headers: {
             'Accept': 'application/json',
             'Cache-Control': 'no-cache'
@@ -623,25 +625,28 @@ export async function connect() {
       } catch (healthError) {
         mobileDebug(`Backend unreachable: ${healthError.name} - ${healthError.message}`);
         
-        // Try alternative approach - use window.location to bypass some mobile restrictions
+        // Since mobile browser CAN reach the backend, try a simplified approach
+        mobileDebug(`Mobile browser can reach backend, trying simplified fetch...`);
+        
+        // Try with minimal headers to avoid CORS preflight
         try {
-          mobileDebug('Trying alternative connectivity test...');
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          
-          const imgTest = new Promise((resolve, reject) => {
-            img.onload = () => resolve('Image loaded');
-            img.onerror = () => reject(new Error('Image failed'));
-            img.src = `${__API_URL__}/health?_=${Date.now()}`;
-            setTimeout(() => reject(new Error('Image timeout')), 5000);
+          const simpleResponse = await fetch(`${__API_URL__}/health`, {
+            signal: AbortSignal.timeout(5000)
           });
           
-          await imgTest;
-          mobileDebug('Alternative connectivity test passed');
-        } catch (altError) {
-          mobileDebug(`Alternative test also failed: ${altError.message}`);
-          throw new Error(`Cannot reach backend server - try switching networks or using WiFi instead of mobile data`);
+          if (simpleResponse.ok) {
+            mobileDebug('Simplified fetch succeeded!');
+          } else {
+            throw new Error(`Simplified fetch failed: ${simpleResponse.status}`);
+          }
+        } catch (simpleError) {
+          mobileDebug(`Simplified fetch failed: ${simpleError.message}`);
+          // Continue anyway since browser can reach it - might be CORS-specific
+          mobileDebug('Continuing despite fetch failure since browser access works...');
         }
+        
+        // Don't throw error - continue to token request since backend is reachable
+        mobileDebug('Proceeding with token request despite connectivity test failures...');
       }
     }
 
@@ -656,7 +661,14 @@ export async function connect() {
     let EPHEMERAL_KEY;
     try {
       const tokenResponse = await fetch(`${__API_URL__}/token`, {
-        signal: tokenController.signal
+        signal: tokenController.signal,
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
       });
       clearTimeout(tokenTimeout);
       
