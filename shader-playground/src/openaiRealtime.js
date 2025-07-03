@@ -660,16 +660,31 @@ export async function connect() {
     
     let EPHEMERAL_KEY;
     try {
-      const tokenResponse = await fetch(`${__API_URL__}/token`, {
-        signal: tokenController.signal,
-        method: 'GET',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
-        }
-      });
+      // Try multiple fetch approaches for mobile compatibility
+      let tokenResponse;
+      
+      // First attempt: minimal fetch
+      try {
+        mobileDebug('Trying minimal token fetch...');
+        tokenResponse = await fetch(`${__API_URL__}/token`, {
+          signal: tokenController.signal
+        });
+      } catch (minimalError) {
+        mobileDebug(`Minimal fetch failed: ${minimalError.message}`);
+        
+        // Second attempt: with explicit CORS settings
+        mobileDebug('Trying CORS-explicit token fetch...');
+        tokenResponse = await fetch(`${__API_URL__}/token`, {
+          signal: tokenController.signal,
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Accept': '*/*'
+          }
+        });
+      }
+      
       clearTimeout(tokenTimeout);
       
       if (!tokenResponse.ok) {
@@ -688,6 +703,13 @@ export async function connect() {
         throw new Error('Token request timed out - check network connection');
       } else {
         mobileDebug(`Token request failed: ${tokenError.name} - ${tokenError.message}`);
+        
+        // For mobile debugging: show what we know works
+        if (MOBILE_DEVICE) {
+          mobileDebug('MOBILE WORKAROUND: Try opening the backend URL directly in browser and copying the token manually if needed');
+          mobileDebug(`Backend token URL: ${__API_URL__}/token`);
+        }
+        
         throw new Error(`Token request failed: ${tokenError.message}`);
       }
     }
