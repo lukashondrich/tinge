@@ -19,19 +19,58 @@ export class AudioManager {
    */
   async init() {
     if (!this.stream) {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    }
-    this.recorder = new MediaRecorder(this.stream);
-    this.recorder.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size > 0) {
-        this.chunks.push(ev.data);
+      try {
+        // Mobile-specific audio constraints for better compatibility
+        const constraints = {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            // Add mobile-specific settings
+            channelCount: 1,
+            sampleRate: 16000
+          }
+        };
+        
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        // eslint-disable-next-line no-console
+        console.log('Microphone access granted:', this.stream.getAudioTracks());
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Microphone access failed:', err);
+        // Provide helpful error messages for different scenarios
+        if (err.name === 'NotAllowedError') {
+          throw new Error('Microphone permission denied. Please allow microphone access and try again.');
+        } else if (err.name === 'NotFoundError') {
+          throw new Error('No microphone found. Please connect a microphone and try again.');
+        } else if (err.name === 'NotSupportedError') {
+          throw new Error('Microphone not supported by this browser. Try Chrome or Safari.');
+        } else {
+          throw new Error(`Microphone error: ${err.message}`);
+        }
       }
-    };
+    }
+    
+    try {
+      this.recorder = new MediaRecorder(this.stream);
+      this.recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) {
+          this.chunks.push(ev.data);
+        }
+      };
 
-    // reset state when stopped
-    this.recorder.onstop = () => {
-      this.isRecording = false;
-    };
+      // reset state when stopped
+      this.recorder.onstop = () => {
+        this.isRecording = false;
+      };
+      
+      // eslint-disable-next-line no-console
+      console.log('MediaRecorder initialized successfully');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('MediaRecorder initialization failed:', err);
+      throw new Error(`Recording setup failed: ${err.message}`);
+    }
   }
 
   /**

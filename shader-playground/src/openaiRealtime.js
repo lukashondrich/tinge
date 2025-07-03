@@ -1077,12 +1077,36 @@ export async function connect() {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error(`OpenAI connection error: ${error.message}`);
-    pttButton.innerText = 'Error';
+    // eslint-disable-next-line no-console
+    console.error(`Error details:`, error);
+    
+    // Show specific error message for common mobile issues
+    let errorText = 'Error';
+    if (error.message.includes('getUserMedia') || error.message.includes('Permission')) {
+      errorText = MOBILE_DEVICE ? 'Mic Access' : 'Mic Error';
+    } else if (error.message.includes('SDP') || error.message.includes('WebRTC')) {
+      errorText = MOBILE_DEVICE ? 'Connection' : 'WebRTC Error';
+    } else if (error.message.includes('token') || error.message.includes('fetch')) {
+      errorText = 'Network';
+    }
+    
+    pttButton.innerText = errorText;
     pttButton.style.backgroundColor = '#c00';
     
-    // Reset after 3 seconds
+    // Reset after 3 seconds with mobile-specific messaging
     setTimeout(() => {
-      pttButton.innerText = 'Try Again';
+      if (MOBILE_DEVICE && errorText === 'Mic Access') {
+        pttButton.innerText = 'Allow Mic';
+        // Show mobile help panel
+        const mobileHelp = document.getElementById('mobileHelp');
+        if (mobileHelp) {
+          mobileHelp.style.display = 'block';
+        }
+        // eslint-disable-next-line no-console
+        console.log('Mobile microphone troubleshooting: Check browser permissions, try refreshing, or use Chrome/Safari');
+      } else {
+        pttButton.innerText = 'Try Again';
+      }
       pttButton.style.backgroundColor = '#44f';
     }, 3000);
     

@@ -26,6 +26,38 @@
   <body>
     <!-- Transcript panel for DialoguePanel -->
     <aside id="transcriptContainer" class="dialogue-panel"></aside>
+    
+    <!-- Mobile microphone help panel -->
+    <div id="mobileHelp" style="
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      display: none;
+      z-index: 1000;
+    ">
+      <div style="font-weight: bold; margin-bottom: 8px;">📱 Mobile Microphone Help</div>
+      <div>• Allow microphone permission when prompted</div>
+      <div>• Use Chrome or Safari for best compatibility</div>
+      <div>• Ensure a stable internet connection</div>
+      <div>• Try refreshing if issues persist</div>
+      <button onclick="document.getElementById('mobileHelp').style.display='none'" style="
+        margin-top: 10px;
+        padding: 5px 10px;
+        background: #44f;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      ">Got it</button>
+    </div>
+    
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
