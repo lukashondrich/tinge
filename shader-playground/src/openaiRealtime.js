@@ -597,14 +597,18 @@ export async function connect() {
     }
 
     // Get token
+    mobileDebug('Requesting OpenAI token...');
     const tokenResponse = await fetch(`${__API_URL__}/token`);
     if (!tokenResponse.ok) throw new Error(`Failed to get token: ${tokenResponse.status}`);
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.client_secret.value;
+    mobileDebug('OpenAI token received successfully');
 
     // Create PeerConnection
+    mobileDebug('Creating WebRTC PeerConnection...');
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnection.addTransceiver("audio", { direction: "sendrecv" });
+    mobileDebug('PeerConnection created and audio transceiver added');
     peerConnection.onicecandidate = _e => {
       // ICE candidate handling - not implemented
     };
@@ -1065,11 +1069,13 @@ export async function connect() {
     
     // Create and set local description
     try {
+      mobileDebug('Creating WebRTC SDP offer...');
       const offer = await peerConnection.createOffer();
+      mobileDebug('Setting local SDP description...');
       await peerConnection.setLocalDescription(offer);
+      mobileDebug('Local SDP description set successfully');
     } catch (sdpError) {
-      // eslint-disable-next-line no-console
-    console.error(`Error creating SDP offer: ${sdpError.message}`);
+      mobileDebug(`SDP offer creation failed: ${sdpError.name} - ${sdpError.message}`);
       throw new Error(`SDP creation failed: ${sdpError.message}`);
     }
     
@@ -1078,6 +1084,7 @@ export async function connect() {
     const model = 'gpt-4o-mini-realtime-preview-2024-12-17';
     
     try {
+      mobileDebug('Exchanging SDP with OpenAI server...');
       const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
         method: 'POST',
         body: peerConnection.localDescription.sdp,
@@ -1089,13 +1096,12 @@ export async function connect() {
       
       if (!sdpResponse.ok) {
         const errorText = await sdpResponse.text();
-        // eslint-disable-next-line no-console
-    console.error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
-        // eslint-disable-next-line no-console
-    console.error(`Error details: ${errorText}`);
+        mobileDebug(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
+        mobileDebug(`Error details: ${errorText.substring(0, 100)}...`);
         throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
       }
       
+      mobileDebug('SDP exchange successful, setting remote description...');
       // Set remote description
       const sdpText = await sdpResponse.text();
       const answer = {
@@ -1104,15 +1110,16 @@ export async function connect() {
       };
       
       await peerConnection.setRemoteDescription(answer);
+      mobileDebug('Remote SDP description set successfully');
     } catch (fetchError) {
-      // eslint-disable-next-line no-console
-    console.error(`Error during SDP exchange: ${fetchError.message}`);
+      mobileDebug(`SDP exchange error: ${fetchError.name} - ${fetchError.message}`);
       throw new Error(`SDP exchange failed: ${fetchError.message}`);
     }
     
     
     // eslint-disable-next-line no-console
     console.log('OpenAI Realtime connection established');
+    mobileDebug('🎉 OpenAI Realtime connection fully established!');
     isConnected = true;
     
   } catch (error) {
