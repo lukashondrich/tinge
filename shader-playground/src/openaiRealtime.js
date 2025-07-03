@@ -596,13 +596,59 @@ export async function connect() {
       }
     }
 
-    // Get token
+    // Test backend connectivity first on mobile
+    if (MOBILE_DEVICE) {
+      try {
+        mobileDebug('Testing backend connectivity...');
+        const healthResponse = await fetch(`${__API_URL__}/health`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        });
+        if (healthResponse.ok) {
+          mobileDebug('Backend health check passed');
+        } else {
+          mobileDebug(`Backend health check failed: ${healthResponse.status}`);
+        }
+      } catch (healthError) {
+        mobileDebug(`Backend unreachable: ${healthError.message}`);
+        throw new Error(`Cannot reach backend server: ${healthError.message}`);
+      }
+    }
+
+    // Get token with timeout for mobile
     mobileDebug('Requesting OpenAI token...');
-    const tokenResponse = await fetch(`${__API_URL__}/token`);
-    if (!tokenResponse.ok) throw new Error(`Failed to get token: ${tokenResponse.status}`);
-    const data = await tokenResponse.json();
-    const EPHEMERAL_KEY = data.client_secret.value;
-    mobileDebug('OpenAI token received successfully');
+    const tokenController = new AbortController();
+    const tokenTimeout = setTimeout(() => {
+      tokenController.abort();
+      mobileDebug('Token request timed out after 10 seconds');
+    }, 10000); // 10 second timeout for mobile
+    
+    let EPHEMERAL_KEY;
+    try {
+      const tokenResponse = await fetch(`${__API_URL__}/token`, {
+        signal: tokenController.signal
+      });
+      clearTimeout(tokenTimeout);
+      
+      if (!tokenResponse.ok) {
+        mobileDebug(`Token request failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
+        throw new Error(`Failed to get token: ${tokenResponse.status}`);
+      }
+      
+      mobileDebug('Token response received, parsing JSON...');
+      const data = await tokenResponse.json();
+      EPHEMERAL_KEY = data.client_secret.value;
+      mobileDebug('OpenAI token received and parsed successfully');
+    } catch (tokenError) {
+      clearTimeout(tokenTimeout);
+      if (tokenError.name === 'AbortError') {
+        mobileDebug('Token request was aborted due to timeout');
+        throw new Error('Token request timed out - check network connection');
+      } else {
+        mobileDebug(`Token request failed: ${tokenError.name} - ${tokenError.message}`);
+        throw new Error(`Token request failed: ${tokenError.message}`);
+      }
+    }
 
     // Create PeerConnection
     mobileDebug('Creating WebRTC PeerConnection...');
