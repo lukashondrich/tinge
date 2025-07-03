@@ -53,6 +53,22 @@ const IS_MOBILE = isMobileDevice();
 
 const panelEl = document.getElementById('transcriptContainer');
 
+// Mobile debug logging
+function mobileDebug(message) {
+  if (IS_MOBILE) {
+    const debugPanel = document.getElementById('mobileDebug');
+    const debugOutput = document.getElementById('debugOutput');
+    if (debugPanel && debugOutput) {
+      debugPanel.style.display = 'block';
+      const timestamp = new Date().toLocaleTimeString();
+      debugOutput.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+      debugOutput.scrollTop = debugOutput.scrollHeight;
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[MOBILE] ${message}`);
+}
+
 // timer used to delay bubble finalization per speaker
 const finalizeTimers = { user: null, ai: null };
 
@@ -163,6 +179,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   });
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
+  if (IS_MOBILE) {
+    mobileDebug('Initializing OpenAI Realtime for mobile device');
+  }
   
   initOpenAIRealtime(
     (remoteStream) => {

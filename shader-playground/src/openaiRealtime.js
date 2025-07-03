@@ -31,6 +31,22 @@ const isMobileDevice = () => {
 const MOBILE_DEVICE = isMobileDevice();
 const DEVICE_TYPE = MOBILE_DEVICE ? 'mobile' : 'desktop';
 
+// Mobile debug logging
+function mobileDebug(message) {
+  if (MOBILE_DEVICE) {
+    const debugPanel = document.getElementById('mobileDebug');
+    const debugOutput = document.getElementById('debugOutput');
+    if (debugPanel && debugOutput) {
+      debugPanel.style.display = 'block';
+      const timestamp = new Date().toLocaleTimeString();
+      debugOutput.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+      debugOutput.scrollTop = debugOutput.scrollHeight;
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[MOBILE] ${message}`);
+}
+
 // Toggle to switch between semantic VAD and manual push‑to‑talk control.
 // When false, turn detection will be disabled and the client must
 // explicitly commit audio turns via the PTT button.
@@ -554,6 +570,31 @@ export async function connect() {
     try {
     pttButton.innerText = 'Connecting...';
     pttButton.style.backgroundColor = '#666';
+
+    // Mobile-specific audio initialization first
+    if (MOBILE_DEVICE) {
+      try {
+        mobileDebug('Starting mobile audio initialization...');
+        
+        // Request microphone access with minimal constraints for mobile
+        const mobileStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: true 
+        });
+        
+        mobileDebug('Mobile microphone access granted successfully');
+        
+        // Store for later use
+        audioTrack = mobileStream.getAudioTracks()[0];
+        
+        // Stop the test stream immediately to avoid conflicts
+        mobileStream.getTracks().forEach(track => track.stop());
+        mobileDebug('Mobile audio track stored and test stream stopped');
+        
+      } catch (mobileAudioError) {
+        mobileDebug(`Mobile audio failed: ${mobileAudioError.name} - ${mobileAudioError.message}`);
+        throw new Error(`Mobile microphone error: ${mobileAudioError.message}`);
+      }
+    }
 
     // Get token
     const tokenResponse = await fetch(`${__API_URL__}/token`);
