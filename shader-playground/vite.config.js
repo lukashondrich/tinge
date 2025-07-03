@@ -3,6 +3,17 @@ import { defineConfig } from 'vite';
 import glsl from 'vite-plugin-glsl';
 
 export default defineConfig(({ mode }) => {
+  // Log environment variables during build for debugging
+  console.log('🔧 Vite build mode:', mode);
+  console.log('🔧 VITE_API_URL:', process.env.VITE_API_URL);
+  console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
+  
+  // Ensure we have the correct API URL for production
+  const API_URL = process.env.VITE_API_URL || 
+                  (mode === 'production' ? 'https://tingebackend-production.up.railway.app' : 'http://localhost:3000');
+  
+  console.log('🔧 Final API_URL:', API_URL);
+  
   return {
     plugins: [glsl()],
     /* optional: keeps Three.js sub-modules pre-bundled for faster dev reloads */
@@ -17,8 +28,8 @@ export default defineConfig(({ mode }) => {
       esbuildOptions: { sourcemap: false }
     },
     define: {
-      // Make environment variables available to the frontend
-      __API_URL__: JSON.stringify(process.env.VITE_API_URL || 'http://localhost:3000'),
+      // Make environment variables available to the frontend with fallback
+      __API_URL__: JSON.stringify(API_URL),
       __EMBEDDING_URL__: JSON.stringify(process.env.VITE_EMBEDDING_URL || 'http://localhost:3001'),
     },
     server: {
