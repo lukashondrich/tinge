@@ -600,18 +600,48 @@ export async function connect() {
     if (MOBILE_DEVICE) {
       try {
         mobileDebug('Testing backend connectivity...');
+        mobileDebug(`Backend URL: ${__API_URL__}`);
+        
+        // Try a simple fetch first
         const healthResponse = await fetch(`${__API_URL__}/health`, { 
           method: 'GET',
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(8000),
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+          }
         });
+        
         if (healthResponse.ok) {
           mobileDebug('Backend health check passed');
+          const healthData = await healthResponse.text();
+          mobileDebug(`Health response: ${healthData.substring(0, 50)}...`);
         } else {
           mobileDebug(`Backend health check failed: ${healthResponse.status}`);
+          throw new Error(`Backend health check failed: ${healthResponse.status}`);
         }
       } catch (healthError) {
-        mobileDebug(`Backend unreachable: ${healthError.message}`);
-        throw new Error(`Cannot reach backend server: ${healthError.message}`);
+        mobileDebug(`Backend unreachable: ${healthError.name} - ${healthError.message}`);
+        
+        // Try alternative approach - use window.location to bypass some mobile restrictions
+        try {
+          mobileDebug('Trying alternative connectivity test...');
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          
+          const imgTest = new Promise((resolve, reject) => {
+            img.onload = () => resolve('Image loaded');
+            img.onerror = () => reject(new Error('Image failed'));
+            img.src = `${__API_URL__}/health?_=${Date.now()}`;
+            setTimeout(() => reject(new Error('Image timeout')), 5000);
+          });
+          
+          await imgTest;
+          mobileDebug('Alternative connectivity test passed');
+        } catch (altError) {
+          mobileDebug(`Alternative test also failed: ${altError.message}`);
+          throw new Error(`Cannot reach backend server - try switching networks or using WiFi instead of mobile data`);
+        }
       }
     }
 
