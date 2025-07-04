@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Luminance Normalization Test</title>
+    <style>
+        body { margin: 0; background: #000; font-family: Arial, sans-serif; }
+        #info { 
+            position: absolute; 
+            top: 10px; 
+            left: 10px; 
+            color: white; 
+            background: rgba(0,0,0,0.8); 
+            padding: 10px; 
+            border-radius: 5px; 
+            font-size: 12px;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+        button {
+            padding: 5px 10px;
+            margin: 2px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div>Luminance Normalization Test</div>
+        <div>Current Objects: <span id="objectCount">0</span></div>
+        <div>Target Luminance: <span id="targetLumValue">0.4</span></div>
+        <div>Adaptation Speed: <span id="adaptSpeedValue">0.03</span></div>
+    </div>
+    
+    <div id="controls">
+        <div class="control-group">
+            <label>Target Luminance:</label>
+            <input type="range" id="targetLuminance" min="0.1" max="1.0" step="0.05" value="0.4">
+        </div>
+        <div class="control-group">
+            <label>Adaptation Speed:</label>
+            <input type="range" id="adaptationSpeed" min="0.01" max="0.1" step="0.01" value="0.03">
+        </div>
+        <div class="control-group">
+            <button onclick="addObjects(10)">Add 10 Objects</button>
+            <button onclick="addObjects(50)">Add 50 Objects</button>
+            <button onclick="removeObjects(25)">Remove 25</button>
+            <button onclick="clearObjects()">Clear All</button>
+        </div>
+        <div class="control-group">
+            <button onclick="toggleNormalization()">Toggle Normalization</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.159.0/build/three.module.js';
+        import { EffectComposer } from 'https://unpkg.com/three@0.159.0/examples/jsm/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'https://unpkg.com/three@0.159.0/examples/jsm/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'https://unpkg.com/three@0.159.0/examples/jsm/postprocessing/ShaderPass.js';
+
+        // Simple luminance normalization shader for testing
+        const LuminanceNormalizationShader = {
+            uniforms: {
+                'tDiffuse': { value: null },
+                'targetLuminance': { value: 0.4 },
+                'adaptationSpeed': { value: 0.03 },
+                'minExposure': { value: 0.2 },
+                'maxExposure': { value: 2.5 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float targetLuminance;
+                uniform float adaptationSpeed;
+                uniform float minExposure;
+                uniform float maxExposure;
+                varying vec2 vUv;
+                
+                float getLuminance(vec3 color) {
+                    return dot(color, vec3(0.299, 0.587, 0.114));
+                }
+                
+                float calculateAverageLuminance(sampler2D tex, vec2 uv) {
+                    float totalLuminance = 0.0;
+                    int sampleCount = 0;
+                    
+                    for (int x = 0; x < 4; x++) {
+                        for (int y = 0; y < 4; y++) {
+                            vec2 sampleUV = vec2(float(x) / 3.0, float(y) / 3.0);
+                            vec3 color = texture2D(tex, sampleUV).rgb;
+                            totalLuminance += getLuminance(color);
+                            sampleCount++;
+                        }
+                    }
+                    
+                    return totalLuminance / float(sampleCount);
+                }
+                
+                void main() {
+                    vec3 color = texture2D(tDiffuse, vUv).rgb;
+                    float avgLuminance = calculateAverageLuminance(tDiffuse, vUv);
+                    avgLuminance = max(avgLuminance, 0.001);
+                    
+                    float desiredExposure = targetLuminance / avgLuminance;
+                    desiredExposure = clamp(desiredExposure, minExposure, maxExposure);
+                    
+                    vec3 adjustedColor = color * desiredExposure;
+                    adjustedColor = adjustedColor / (1.0 + adjustedColor); // Tone mapping
+                    
+                    gl_FragColor = vec4(adjustedColor, 1.0);
+                }
+            `
+        };
+
+        // Setup scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x112233);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 10;
+        
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Post-processing
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        
+        const luminancePass = new ShaderPass(LuminanceNormalizationShader);
+        composer.addPass(luminancePass);
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const pointLight = new THREE.PointLight(0xffffff, 1.0, 20);
+        pointLight.position.set(0, 0, 5);
+        scene.add(pointLight);
+
+        // Objects array
+        const objects = [];
+        let normalizationEnabled = true;
+
+        // Add glowing objects function
+        window.addObjects = function(count) {
+            for (let i = 0; i < count; i++) {
+                const geometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: new THREE.Color().setHSL(Math.random(), 0.8, 0.8)
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                
+                sphere.position.set(
+                    (Math.random() - 0.5) * 10,
+                    (Math.random() - 0.5) * 10,
+                    (Math.random() - 0.5) * 10
+                );
+                
+                scene.add(sphere);
+                objects.push(sphere);
+            }
+            document.getElementById('objectCount').textContent = objects.length;
+        };
+
+        // Remove objects function
+        window.removeObjects = function(count) {
+            for (let i = 0; i < Math.min(count, objects.length); i++) {
+                const obj = objects.pop();
+                scene.remove(obj);
+            }
+            document.getElementById('objectCount').textContent = objects.length;
+        };
+
+        // Clear all objects
+        window.clearObjects = function() {
+            objects.forEach(obj => scene.remove(obj));
+            objects.length = 0;
+            document.getElementById('objectCount').textContent = objects.length;
+        };
+
+        // Toggle normalization
+        window.toggleNormalization = function() {
+            normalizationEnabled = !normalizationEnabled;
+            if (normalizationEnabled) {
+                if (composer.passes.indexOf(luminancePass) === -1) {
+                    composer.addPass(luminancePass);
+                }
+            } else {
+                const index = composer.passes.indexOf(luminancePass);
+                if (index > -1) {
+                    composer.passes.splice(index, 1);
+                }
+            }
+        };
+
+        // Controls
+        document.getElementById('targetLuminance').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            luminancePass.uniforms.targetLuminance.value = value;
+            document.getElementById('targetLumValue').textContent = value.toFixed(2);
+        });
+
+        document.getElementById('adaptationSpeed').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            luminancePass.uniforms.adaptationSpeed.value = value;
+            document.getElementById('adaptSpeedValue').textContent = value.toFixed(3);
+        });
+
+        // Add some initial objects
+        addObjects(5);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate objects for visual effect
+            objects.forEach((obj, i) => {
+                obj.rotation.x += 0.01 * (i % 3 + 1);
+                obj.rotation.y += 0.01 * (i % 2 + 1);
+            });
+            
+            if (normalizationEnabled) {
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

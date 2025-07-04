@@ -6,6 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { createRGBShiftPass } from './effects/rgbShiftPass.js';
 import { createVHSCRTPass } from './effects/vhsCrtPass.js';
+import { createLuminanceNormalizationPass } from './effects/luminanceNormalizationPass.js';
 import { createRenderer } from './core/renderer.js';
 import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
@@ -462,6 +463,10 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   const vhsCrtPass = createVHSCRTPass();
   composer.addPass(vhsCrtPass);
   
+  // Add luminance normalization pass to automatically adjust brightness
+  const luminancePass = createLuminanceNormalizationPass();
+  composer.addPass(luminancePass);
+  
 
   async function processWord(word, speaker = "ai") {
     try {
@@ -670,6 +675,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     
     // Update VHS CRT shader time for animated effects
     vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
+    
+    // Update luminance normalization shader time for smooth adaptation
+    luminancePass.uniforms.time.value = performance.now() * 0.001;
     
     composer.render();
   }
