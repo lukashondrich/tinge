@@ -467,6 +467,95 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   const luminancePass = createLuminanceNormalizationPass();
   composer.addPass(luminancePass);
   
+  // Test words for luminance normalization testing
+  const testWords = [
+    'amazing', 'brilliant', 'creative', 'dynamic', 'elegant', 'fantastic', 'gorgeous', 'incredible',
+    'wonderful', 'spectacular', 'magnificent', 'beautiful', 'awesome', 'outstanding', 'remarkable',
+    'exceptional', 'extraordinary', 'marvelous', 'stunning', 'breathtaking', 'impressive', 'dazzling',
+    'radiant', 'luminous', 'glowing', 'shimmering', 'sparkling', 'gleaming', 'brilliant', 'vivid',
+    'vibrant', 'colorful', 'bright', 'illuminated', 'blazing', 'glittering', 'twinkling', 'flashing',
+    'technology', 'innovation', 'creativity', 'imagination', 'inspiration', 'discovery', 'exploration',
+    'adventure', 'journey', 'experience', 'knowledge', 'wisdom', 'understanding', 'insight', 'vision',
+    'dream', 'hope', 'future', 'possibility', 'potential', 'opportunity', 'success', 'achievement',
+    'excellence', 'quality', 'perfection', 'harmony', 'balance', 'peace', 'joy', 'happiness',
+    'love', 'passion', 'energy', 'power', 'strength', 'courage', 'confidence', 'determination',
+    'perseverance', 'dedication', 'commitment', 'focus', 'clarity', 'precision', 'accuracy', 'efficiency',
+    'effectiveness', 'productivity', 'performance', 'results', 'impact', 'influence', 'transformation',
+    'revolution', 'evolution', 'progress', 'advancement', 'development', 'growth', 'improvement', 'enhancement'
+  ];
+  
+  // Add test controls functionality
+  let normalizationEnabled = true;
+  
+  document.getElementById('addTestWords').addEventListener('click', () => {
+    // Add 100 random points directly to the 3D scene (bypass word deduplication)
+    for (let i = 0; i < 100; i++) {
+      const randomWord = testWords[Math.floor(Math.random() * testWords.length)] + '_' + i; // Make unique
+      
+      // Generate random position for the point
+      const newPoint = {
+        x: (Math.random() - 0.5) * 2, // Random between -1 and 1
+        y: (Math.random() - 0.5) * 2, // Random between -1 and 1
+        z: (Math.random() - 0.5) * 2  // Random between -1 and 1
+      };
+      
+      try {
+        // Add point directly to optimizer
+        optimizer.addPoint(newPoint);
+
+        // Add to 3D mesh
+        const id = optimizer.getPositions().length - 1;
+        mesh.count = id + 1; // Ensure the new slot exists
+
+        // Pick a bright color (AI = purple, but make it bright for testing)
+        const colour = new THREE.Color().setHSL(Math.random() * 0.1 + 0.8, 0.8, 0.7); // Bright colors
+        mesh.setColorAt(id, colour);
+        mesh.instanceColor.needsUpdate = true;
+
+        // Add glow effect
+        recentlyAdded.set(id, performance.now());
+        
+        // Add label for tooltip
+        labels[id] = randomWord;
+      } catch (err) {
+        console.error('Error adding test point:', err);
+      }
+    }
+  });
+  
+  document.getElementById('toggleNormalization').addEventListener('click', () => {
+    normalizationEnabled = !normalizationEnabled;
+    document.getElementById('normalizationStatus').textContent = normalizationEnabled ? 'ON' : 'OFF';
+    
+    // Remove or add the luminance pass
+    if (normalizationEnabled) {
+      // Add the pass back if it's not there
+      if (composer.passes.indexOf(luminancePass) === -1) {
+        composer.addPass(luminancePass);
+      }
+    } else {
+      // Remove the pass
+      const index = composer.passes.indexOf(luminancePass);
+      if (index > -1) {
+        composer.passes.splice(index, 1);
+      }
+    }
+  });
+  
+  document.getElementById('clearTestWords').addEventListener('click', () => {
+    // Clear all words by resetting the mesh count
+    mesh.count = 0;
+    usedWords.clear();
+    recentlyAdded.clear();
+    
+    // Clear the transcript panel
+    panelEl.innerHTML = '';
+    
+    // Reset active bubbles
+    activeBubbles.user = null;
+    activeBubbles.ai = null;
+  });
+  
 
   async function processWord(word, speaker = "ai") {
     try {
@@ -601,6 +690,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   }
 
 
+  // Track dynamic scale for display
+  let currentDynamicScale = SCALE;
+
   // Animation loop
   function animate(_t) {
     requestAnimationFrame(animate);
@@ -608,7 +700,27 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   
     const updatedPositions = optimizer.getPositions();
     const now = performance.now();
-    const scale = SCALE;  
+    
+    // Dynamic scale for luminosity normalization - expand the whole visualization
+    const baseScale = SCALE;
+    let dynamicScale = baseScale;
+    
+    if (mesh.count <= 100) {
+      // Few words: keep base scale for visibility
+      dynamicScale = baseScale;
+    } else if (mesh.count <= 1000) {
+      // Moderate growth from 100-1000 words
+      const growthFactor = 1.0 + (mesh.count - 100) / 900 * 1.0; // Up to 2x scale
+      dynamicScale = baseScale * growthFactor;
+    } else {
+      // Strong growth beyond 1000 words  
+      const excessWords = mesh.count - 1000;
+      const additionalGrowth = Math.sqrt(excessWords / 500) * 0.3; // Logarithmic growth
+      dynamicScale = baseScale * (2.0 + additionalGrowth);
+    }
+    
+    currentDynamicScale = dynamicScale; // Store for display
+    const scale = dynamicScale;  
     for (let i = 0; i < updatedPositions.length; i++) {
       const pos = updatedPositions[i].clone().multiplyScalar(scale);
       dummy.position.copy(pos);
@@ -678,6 +790,22 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     
     // Update luminance normalization shader time for smooth adaptation
     luminancePass.uniforms.time.value = performance.now() * 0.001;
+    
+    // Update word count for adaptive normalization
+    luminancePass.uniforms.wordCount.value = mesh.count;
+    
+    // Update word count display
+    const wordCountDisplay = document.getElementById('wordCountDisplay');
+    if (wordCountDisplay) {
+      wordCountDisplay.textContent = mesh.count;
+    }
+    
+    // Update scale display
+    const radiusDisplay = document.getElementById('radiusDisplay');
+    if (radiusDisplay) {
+      const scaleMultiplier = currentDynamicScale / SCALE;
+      radiusDisplay.textContent = scaleMultiplier.toFixed(1);
+    }
     
     composer.render();
   }

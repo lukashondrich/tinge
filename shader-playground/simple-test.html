@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Luminance Test - Simple</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: #000; 
+            font-family: Arial, sans-serif; 
+        }
+        #controls {
+            position: absolute !important;
+            top: 20px !important;
+            left: 20px !important;
+            z-index: 9999 !important;
+            background: red !important;
+            border: 3px solid yellow !important;
+            padding: 20px !important;
+            color: white !important;
+            min-width: 250px !important;
+            max-width: 300px !important;
+        }
+        .btn {
+            display: block !important;
+            width: 100% !important;
+            margin: 8px 0 !important;
+            padding: 12px !important;
+            background: #333 !important;
+            color: white !important;
+            border: 2px solid #666 !important;
+            border-radius: 5px !important;
+            cursor: pointer !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+        }
+        .btn:hover {
+            background: #555 !important;
+        }
+        .info {
+            margin: 10px 0 !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+        }
+        h3 {
+            margin: 0 0 15px 0 !important;
+            color: white !important;
+            font-size: 18px !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Controls will be added by JavaScript -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r159/three.min.js"></script>
+    <script>
+        // CREATE CONTROLS FIRST!
+        console.log("Creating controls with JavaScript...");
+        
+        // Wait for page to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM loaded, creating controls...");
+            
+            // Create the control panel
+            const controlPanel = document.createElement('div');
+            controlPanel.innerHTML = `
+                <h1 style="color: white; margin: 0 0 20px 0;">🔴 CONTROLS HERE 🔴</h1>
+                <p style="color: white; font-size: 20px;">Objects: <span id="count">5</span></p>
+                <button id="add10" style="display: block; width: 100%; padding: 20px; margin: 15px 0; background: blue; color: white; border: 3px solid white; font-size: 20px; cursor: pointer; font-weight: bold;">🔵 Add 10 Spheres</button>
+                <button id="add25" style="display: block; width: 100%; padding: 20px; margin: 15px 0; background: blue; color: white; border: 3px solid white; font-size: 20px; cursor: pointer; font-weight: bold;">🔵 Add 25 Spheres</button>
+                <button id="toggle" style="display: block; width: 100%; padding: 20px; margin: 15px 0; background: green; color: white; border: 3px solid white; font-size: 20px; cursor: pointer; font-weight: bold;">🟢 Toggle Shader</button>
+                <button id="clear" style="display: block; width: 100%; padding: 20px; margin: 15px 0; background: orange; color: white; border: 3px solid white; font-size: 20px; cursor: pointer; font-weight: bold;">🟠 Clear All</button>
+                <p style="color: white; font-size: 20px;">Shader: <span id="shaderStatus">ON</span></p>
+            `;
+            
+            // Style the panel
+            controlPanel.style.cssText = `
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                z-index: 99999 !important;
+                background: red !important;
+                color: white !important;
+                padding: 20px !important;
+                border: 5px solid yellow !important;
+                width: 350px !important;
+                height: 100vh !important;
+                display: block !important;
+                visibility: visible !important;
+            `;
+            
+            // Add to page
+            document.body.appendChild(controlPanel);
+            console.log("Control panel added!");
+            
+            // Add event listeners
+            document.getElementById('add10').addEventListener('click', () => addSpheres(10));
+            document.getElementById('add25').addEventListener('click', () => addSpheres(25));
+            document.getElementById('toggle').addEventListener('click', () => toggleShader());
+            document.getElementById('clear').addEventListener('click', () => clearAll());
+            
+            console.log("Event listeners added!");
+        });
+
+        // DEBUGGING - Create a visible element immediately to test if JavaScript works
+        const debugDiv = document.createElement('div');
+        debugDiv.innerHTML = '🟢 DEBUG: JavaScript is running! If you see this, JS works! 🟢';
+        debugDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: lime;
+            color: black;
+            padding: 30px;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 99998;
+            border: 10px solid black;
+            text-align: center;
+        `;
+        document.body.appendChild(debugDiv);
+        console.log("Debug div added to center of screen");
+
+        // MAKE FUNCTIONS AVAILABLE IN CONSOLE IMMEDIATELY
+        window.testFunction = function() {
+            alert("Functions work! The issue is just UI visibility.");
+        };
+        
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x001122);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 8;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const pointLight = new THREE.PointLight(0xffffff, 1.5, 20);
+        pointLight.position.set(0, 0, 5);
+        scene.add(pointLight);
+
+        // Objects array
+        const spheres = [];
+        let normalizationEnabled = true;
+
+        // Simple normalization shader
+        const normalizationMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                tDiffuse: { value: null },
+                targetLuminance: { value: 0.4 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float targetLuminance;
+                varying vec2 vUv;
+                
+                float getLuminance(vec3 color) {
+                    return dot(color, vec3(0.299, 0.587, 0.114));
+                }
+                
+                void main() {
+                    vec3 color = texture2D(tDiffuse, vUv).rgb;
+                    
+                    // Calculate average luminance (simplified)
+                    float avgLum = 0.0;
+                    for(int x = 0; x < 4; x++) {
+                        for(int y = 0; y < 4; y++) {
+                            vec2 uv = vec2(float(x)/3.0, float(y)/3.0);
+                            avgLum += getLuminance(texture2D(tDiffuse, uv).rgb);
+                        }
+                    }
+                    avgLum /= 16.0;
+                    avgLum = max(avgLum, 0.01);
+                    
+                    // Apply normalization
+                    float exposure = targetLuminance / avgLum;
+                    exposure = clamp(exposure, 0.2, 2.5);
+                    
+                    vec3 result = color * exposure;
+                    result = result / (1.0 + result); // Simple tone mapping
+                    
+                    gl_FragColor = vec4(result, 1.0);
+                }
+            `
+        });
+
+        // Render target for post-processing
+        const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+        const postScene = new THREE.Scene();
+        const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), normalizationMaterial);
+        postScene.add(postQuad);
+
+        // Functions
+        window.addSpheres = function(count) {
+            for(let i = 0; i < count; i++) {
+                const geometry = new THREE.SphereGeometry(0.15, 16, 16);
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(Math.random(), 0.8, 0.9),
+                    emissive: new THREE.Color().setHSL(Math.random(), 0.5, 0.3)
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                
+                sphere.position.set(
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 6
+                );
+                
+                scene.add(sphere);
+                spheres.push(sphere);
+            }
+            updateCount();
+        };
+
+        window.removeSpheres = function(count) {
+            for(let i = 0; i < Math.min(count, spheres.length); i++) {
+                const sphere = spheres.pop();
+                scene.remove(sphere);
+            }
+            updateCount();
+        };
+
+        window.clearAll = function() {
+            spheres.forEach(sphere => scene.remove(sphere));
+            spheres.length = 0;
+            updateCount();
+        };
+
+        window.toggleShader = function() {
+            normalizationEnabled = !normalizationEnabled;
+            document.getElementById('shaderStatus').textContent = normalizationEnabled ? 'ON' : 'OFF';
+        };
+
+        function updateCount() {
+            document.getElementById('count').textContent = spheres.length;
+        }
+
+        // Add initial spheres
+        addSpheres(5);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate spheres
+            spheres.forEach((sphere, i) => {
+                sphere.rotation.x += 0.01;
+                sphere.rotation.y += 0.005;
+            });
+            
+            if (normalizationEnabled) {
+                // Render to texture
+                renderer.setRenderTarget(renderTarget);
+                renderer.render(scene, camera);
+                
+                // Apply normalization shader
+                normalizationMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+                renderer.setRenderTarget(null);
+                renderer.render(postScene, postCamera);
+            } else {
+                // Render directly
+                renderer.render(scene, camera);
+            }
+        }
+
+        animate();
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderTarget.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

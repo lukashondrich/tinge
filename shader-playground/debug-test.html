@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+</head>
+<body style="margin:0; background:#000; font-family:Arial;">
+    
+    <!-- Controls with inline styles for maximum compatibility -->
+    <div style="position:fixed; top:20px; right:20px; z-index:9999; background:red; padding:20px; color:white; border:3px solid yellow;">
+        <h2 style="color:white; margin:0 0 10px 0;">CONTROLS HERE</h2>
+        <button onclick="addMore()" style="display:block; width:200px; height:40px; margin:5px 0; font-size:16px; background:#333; color:white; border:none;">Add 20 Spheres</button>
+        <button onclick="toggleEffect()" style="display:block; width:200px; height:40px; margin:5px 0; font-size:16px; background:#333; color:white; border:none;">Toggle Shader</button>
+        <button onclick="clearScene()" style="display:block; width:200px; height:40px; margin:5px 0; font-size:16px; background:#333; color:white; border:none;">Clear All</button>
+        <div style="margin:10px 0; color:white;">Count: <span id="sphereCount">0</span></div>
+        <div style="margin:10px 0; color:white;">Shader: <span id="shaderState">ON</span></div>
+    </div>
+
+    <!-- Test without any external dependencies first -->
+    <div id="webgl-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r159/three.min.js"></script>
+    <script>
+        console.log("Script starting...");
+        
+        // Check if Three.js loaded
+        if (typeof THREE === 'undefined') {
+            alert('Three.js failed to load!');
+        } else {
+            console.log('Three.js loaded successfully');
+        }
+
+        // Basic scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x001122);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+        
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('webgl-container').appendChild(renderer.domElement);
+
+        // Add some basic lighting
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040, 0.3));
+
+        // Array to hold spheres
+        const allSpheres = [];
+        let shaderEnabled = true;
+
+        // Function to add spheres
+        window.addMore = function() {
+            console.log("Adding spheres...");
+            for(let i = 0; i < 20; i++) {
+                const geometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(Math.random(), 0.8, 0.8),
+                    emissive: new THREE.Color().setHSL(Math.random(), 0.5, 0.2)
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                
+                sphere.position.set(
+                    (Math.random() - 0.5) * 6,
+                    (Math.random() - 0.5) * 6,
+                    (Math.random() - 0.5) * 4
+                );
+                
+                scene.add(sphere);
+                allSpheres.push(sphere);
+            }
+            document.getElementById('sphereCount').textContent = allSpheres.length;
+            console.log("Total spheres:", allSpheres.length);
+        };
+
+        // Function to toggle shader effect
+        window.toggleEffect = function() {
+            shaderEnabled = !shaderEnabled;
+            document.getElementById('shaderState').textContent = shaderEnabled ? 'ON' : 'OFF';
+            console.log("Shader toggled:", shaderEnabled);
+            
+            // Simple brightness simulation
+            if (shaderEnabled) {
+                // Normalize brightness by reducing emissive
+                allSpheres.forEach(sphere => {
+                    sphere.material.emissive.multiplyScalar(0.3);
+                });
+            } else {
+                // Restore full brightness
+                allSpheres.forEach(sphere => {
+                    sphere.material.emissive.multiplyScalar(3.3);
+                });
+            }
+        };
+
+        // Function to clear scene
+        window.clearScene = function() {
+            console.log("Clearing scene...");
+            allSpheres.forEach(sphere => {
+                scene.remove(sphere);
+            });
+            allSpheres.length = 0;
+            document.getElementById('sphereCount').textContent = '0';
+        };
+
+        // Add initial spheres
+        addMore();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate spheres
+            allSpheres.forEach(sphere => {
+                sphere.rotation.x += 0.01;
+                sphere.rotation.y += 0.01;
+            });
+            
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        console.log("Animation started");
+
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        console.log("Setup complete");
+    </script>
+</body>
+</html>

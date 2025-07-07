@@ -79,6 +79,64 @@
       <div id="debugOutput"></div>
     </div>
     
+    <!-- Temporary test controls for luminance normalization -->
+    <div id="testControls" style="
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(255, 0, 0, 0.9);
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      z-index: 1002;
+      border: 2px solid yellow;
+    ">
+      <div style="font-weight: bold; margin-bottom: 10px;">🧪 Luminance Test</div>
+      <button id="addTestWords" style="
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin: 5px 0;
+        background: #0066ff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+      ">Add 100 Test Words</button>
+      <button id="toggleNormalization" style="
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin: 5px 0;
+        background: #00aa00;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+      ">Toggle Normalization</button>
+      <button id="clearTestWords" style="
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin: 5px 0;
+        background: #ff6600;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+      ">Clear All Words</button>
+      <div style="font-size: 12px; margin-top: 10px;">
+        Status: <span id="normalizationStatus">ON</span><br>
+        Words: <span id="wordCountDisplay">0</span><br>
+        Scale: <span id="radiusDisplay">1.0</span>x<br>
+        <span style="color: #ccc; font-size: 10px;">Scale grows → spreads sphere → reduces brightness</span>
+      </div>
+    </div>
+    
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
