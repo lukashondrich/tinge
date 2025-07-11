@@ -20,6 +20,8 @@ let aiRecordingStartTime = null;
 let aiWordOffsets = [];
 let pendingUserRecordPromise = null;
 let pendingUserRecord = null;
+let currentEphemeralKey = null;
+let tokenUsageCallback = null;
 
 // Mobile device detection and settings
 const isMobileDevice = () => {
@@ -62,6 +64,83 @@ async function fetchWordTimings(blob) {
     const { words, fullText } = await res.json();
     return { words, fullText };
   }
+
+// Debounced token estimation to prevent multiple calls per word
+let tokenEstimationTimeout = null;
+let accumulatedText = '';
+let accumulatedAudioDuration = 0;
+
+// Update estimated token usage for real-time feedback
+async function updateEstimatedTokenUsage(text, audioDuration) {
+  if (!currentEphemeralKey) return;
+  
+  // Accumulate text and audio duration
+  if (text) accumulatedText += text;
+  if (audioDuration) accumulatedAudioDuration += audioDuration;
+  
+  // Clear existing timeout
+  if (tokenEstimationTimeout) {
+    clearTimeout(tokenEstimationTimeout);
+  }
+  
+  // Debounce the API call by 200ms
+  tokenEstimationTimeout = setTimeout(async () => {
+    try {
+      const response = await fetch(`${__API_URL__}/token-usage/${currentEphemeralKey}/estimate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          text: accumulatedText, 
+          audioDuration: accumulatedAudioDuration 
+        })
+      });
+      
+      if (response.ok) {
+        const usage = await response.json();
+        if (tokenUsageCallback) {
+          tokenUsageCallback(usage);
+        }
+        
+        // Reset accumulation
+        accumulatedText = '';
+        accumulatedAudioDuration = 0;
+        
+        return usage;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to update estimated token usage:', error);
+    }
+  }, 200);
+}
+
+// Update actual token usage from OpenAI API responses
+async function updateActualTokenUsage(usageData) {
+  if (!currentEphemeralKey) return;
+  
+  try {
+    const response = await fetch(`${__API_URL__}/token-usage/${currentEphemeralKey}/actual`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ usageData })
+    });
+    
+    if (response.ok) {
+      const usage = await response.json();
+      if (tokenUsageCallback) {
+        tokenUsageCallback(usage);
+      }
+      return usage;
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to update actual token usage:', error);
+  }
+}
 
 // Stop recording, fetch timestamps, attach to record, then return it
 function stopAndTranscribe(audioMgr, transcriptText) {
@@ -359,11 +438,12 @@ async function handleUpdateUserProfile(args) {
   }
 }
 
-export async function initOpenAIRealtime(streamCallback, eventCallback) {
+export async function initOpenAIRealtime(streamCallback, eventCallback, usageCallback = null) {
   
   // Store the callback for later use
   onRemoteStreamCallback = streamCallback;
   onEventCallback = eventCallback;
+  tokenUsageCallback = usageCallback;
 
   // Prepare MediaRecorder
   await userAudioMgr.init();
@@ -478,6 +558,15 @@ async function handlePTTPress(_e) {
 
   pendingUserRecordPromise = null;
   pendingUserRecord = null;
+  
+  // Check token limit before allowing new conversation
+  const limitCheck = await checkTokenLimit();
+  if (!limitCheck.allowed) {
+    // eslint-disable-next-line no-console
+    console.warn('Token limit exceeded, blocking PTT press');
+    showTokenLimitMessage();
+    return;
+  }
   
   // Connect if not already connected
   if (!isConnected) {
@@ -695,6 +784,13 @@ export async function connect() {
       mobileDebug('Token response received, parsing JSON...');
       const data = await tokenResponse.json();
       EPHEMERAL_KEY = data.client_secret.value;
+      currentEphemeralKey = EPHEMERAL_KEY;
+      
+      // Initialize token usage tracking
+      if (tokenUsageCallback && data.tokenUsage) {
+        tokenUsageCallback(data.tokenUsage);
+      }
+      
       mobileDebug('OpenAI token received and parsed successfully');
     } catch (tokenError) {
       clearTimeout(tokenTimeout);
@@ -983,6 +1079,10 @@ export async function connect() {
             aiWordOffsets.push({ word: event.delta, offsetMs });
 
             aiTranscript += event.delta;
+            
+            // Update estimated token usage for real-time feedback
+            updateEstimatedTokenUsage(event.delta);
+            
             // Pass delta events directly to UI (no conversion to transcript.word)
             // The UI will handle accumulating deltas into the bubble
         }
@@ -1027,6 +1127,9 @@ export async function connect() {
                 transcriptKey
               });
             }
+            
+            // Update estimated token usage for user speech
+            updateEstimatedTokenUsage(t);
 
             const enhanceRecord = async (record) => {
               record.text = t; // Replace placeholder text with final transcription
@@ -1168,6 +1271,16 @@ export async function connect() {
             };
             dataChannel.send(JSON.stringify(errorResultEvent));
           }
+        }
+        
+        // — Track actual token usage from OpenAI API responses —
+        if (event.type === 'response.done' && event.response && event.response.usage) {
+          updateActualTokenUsage(event.response.usage);
+        }
+        
+        // — Also check for session-level usage updates —
+        if (event.type === 'session.updated' && event.session && event.session.usage) {
+          updateActualTokenUsage(event.session.usage);
         }
       
         // — drop the old “response.done” or “response.audio_transcript.done” blocks entirely —
@@ -1340,6 +1453,132 @@ export function sendTextMessage(text) {
 
 export function isConnectedToOpenAI() {
   return isConnected;
+}
+
+// Check if user can make more requests
+async function checkTokenLimit() {
+  if (!currentEphemeralKey) return { allowed: true, reason: 'no_key' };
+  
+  try {
+    const response = await fetch(`${__API_URL__}/token-usage/${currentEphemeralKey}`);
+    if (response.ok) {
+      const usage = await response.json();
+      
+      if (usage.isAtLimit) {
+        return { 
+          allowed: false, 
+          reason: 'token_limit_exceeded',
+          usage 
+        };
+      }
+      
+      return { allowed: true, usage };
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to check token limit:', error);
+    // Allow request if we can't check the limit (fail open)
+    return { allowed: true, reason: 'check_failed' };
+  }
+}
+
+// Show token limit reached message
+function showTokenLimitMessage() {
+  // Create or update limit message overlay
+  let limitOverlay = document.getElementById('token-limit-overlay');
+  
+  if (!limitOverlay) {
+    limitOverlay = document.createElement('div');
+    limitOverlay.id = 'token-limit-overlay';
+    limitOverlay.innerHTML = `
+      <div class="token-limit-modal">
+        <div class="token-limit-content">
+          <h2>TOKEN LIMIT REACHED</h2>
+          <p>You've reached the token limit for this session.</p>
+          <p>Please refresh the page to start a new conversation.</p>
+          <button onclick="window.location.reload()" class="token-limit-refresh-btn">
+            REFRESH PAGE
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      #token-limit-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'DM Mono', 'Courier New', monospace;
+      }
+      
+      .token-limit-modal {
+        background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+        border: 2px solid #ff0040;
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 400px;
+        text-align: center;
+        box-shadow: 
+          0 0 20px rgba(255, 0, 64, 0.5),
+          inset 0 0 20px rgba(255, 0, 64, 0.1);
+      }
+      
+      .token-limit-content h2 {
+        color: #ff0040;
+        font-size: 24px;
+        margin: 0 0 20px 0;
+        text-shadow: 0 0 10px rgba(255, 0, 64, 0.5);
+        animation: tokenLimitPulse 1s infinite alternate;
+      }
+      
+      .token-limit-content p {
+        color: #ffffff;
+        font-size: 14px;
+        line-height: 1.5;
+        margin: 10px 0;
+      }
+      
+      .token-limit-refresh-btn {
+        background: linear-gradient(145deg, #ff0040 0%, #cc0033 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: bold;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 20px;
+        font-family: 'DM Mono', 'Courier New', monospace;
+        box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+        transition: all 0.3s ease;
+      }
+      
+      .token-limit-refresh-btn:hover {
+        background: linear-gradient(145deg, #ff3366 0%, #ff0040 100%);
+        box-shadow: 0 6px 20px rgba(255, 0, 64, 0.5);
+        transform: translateY(-2px);
+      }
+      
+      @keyframes tokenLimitPulse {
+        0% { opacity: 0.8; }
+        100% { opacity: 1; }
+      }
+    `;
+    
+    document.head.appendChild(style);
+    document.body.appendChild(limitOverlay);
+  }
+  
+  limitOverlay.style.display = 'flex';
 }
 
 export function cleanup() {

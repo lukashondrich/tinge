@@ -12,6 +12,7 @@ import { setupTouchRotation } from './utils/touchInput.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
+import { TokenProgressBar } from './ui/tokenProgressBar.js';
 
 
 
@@ -25,6 +26,9 @@ window.__ANIMATING__ = true;
 
 //DialoguePanel.init();
 const panel = new DialoguePanel('#transcriptContainer');
+
+// Initialize token progress bar
+const tokenProgressBar = new TokenProgressBar();
 
 // Track the currently active chat bubble for each speaker
 const activeBubbles = { user: null, ai: null };
@@ -330,6 +334,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
         }
       }
     }
+  ,
+  // Token usage callback for progress bar
+  (usage) => {
+    tokenProgressBar.updateUsage(usage);
+  }
   )
   // eslint-disable-next-line no-console
   .catch(err => console.error("⚠️ Realtime init error:", err));

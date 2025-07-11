@@ -7,6 +7,8 @@ import multer from 'multer';
 import fetch from 'node-fetch';    // or use global fetch in Node 18+
 
 import FormData from 'form-data';
+import tokenCounter from './src/services/tokenCounter.js';
+
 const upload = multer();
 
 dotenv.config();
@@ -131,7 +133,17 @@ app.get("/token", async (req, res) => {
       });
     }
     
-    res.json(data);
+    // Initialize token counter for this ephemeral key
+    const ephemeralKey = data.client_secret.value;
+    const usage = tokenCounter.initializeKey(ephemeralKey);
+    
+    // Add usage info to response
+    const responseData = {
+      ...data,
+      tokenUsage: usage
+    };
+    
+    res.json(responseData);
   } catch (error) {
     console.error("Token generation error:", error);
     res.status(500).json({ 
@@ -144,6 +156,59 @@ app.get("/token", async (req, res) => {
 // Add a test endpoint to verify server is running
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "Server is running" });
+});
+
+// Token usage endpoints
+app.get("/token-usage/:ephemeralKey", (req, res) => {
+  const { ephemeralKey } = req.params;
+  const usage = tokenCounter.getUsage(ephemeralKey);
+  
+  if (!usage) {
+    return res.status(404).json({ error: "Token not found" });
+  }
+  
+  res.json(usage);
+});
+
+app.post("/token-usage/:ephemeralKey/estimate", express.json(), (req, res) => {
+  const { ephemeralKey } = req.params;
+  const { text, audioDuration } = req.body;
+  
+  let estimatedTokens = 0;
+  
+  if (text) {
+    estimatedTokens += tokenCounter.estimateTokensFromText(text);
+  }
+  
+  if (audioDuration) {
+    estimatedTokens += tokenCounter.estimateTokensFromAudio(audioDuration);
+  }
+  
+  const usage = tokenCounter.updateEstimatedTokens(ephemeralKey, estimatedTokens);
+  
+  if (!usage) {
+    return res.status(404).json({ error: "Token not found" });
+  }
+  
+  res.json(usage);
+});
+
+app.post("/token-usage/:ephemeralKey/actual", express.json(), (req, res) => {
+  const { ephemeralKey } = req.params;
+  const { usageData } = req.body;
+  
+  const usage = tokenCounter.updateActualUsage(ephemeralKey, usageData);
+  
+  if (!usage) {
+    return res.status(404).json({ error: "Token not found" });
+  }
+  
+  res.json(usage);
+});
+
+app.get("/token-stats", (req, res) => {
+  const stats = tokenCounter.getAllUsageStats();
+  res.json(stats);
 });
 
 
