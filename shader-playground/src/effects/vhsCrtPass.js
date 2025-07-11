@@ -131,18 +131,18 @@ const VHSCRTShader = {
 export function createVHSCRTPass() {
   const pass = new ShaderPass(VHSCRTShader);
   
-  // Set default values for very subtle retro look
-  pass.uniforms.scanlineIntensity.value = 0.08;
-  pass.uniforms.noiseIntensity.value = 0.02;
-  pass.uniforms.distortion.value = 0.005;
-  pass.uniforms.colorBleeding.value = 0.04;
-  pass.uniforms.brightness.value = 1.02;
-  pass.uniforms.contrast.value = 1.05;
-  pass.uniforms.saturation.value = 1.08;
-  pass.uniforms.vignetteIntensity.value = 0.95;
-  pass.uniforms.chromaShift.value = 0.001;
+  // Set default values for very subtle retro look - reduced by ~50%
+  pass.uniforms.scanlineIntensity.value = 0.04;
+  pass.uniforms.noiseIntensity.value = 0.01;
+  pass.uniforms.distortion.value = 0.0025;
+  pass.uniforms.colorBleeding.value = 0.02;
+  pass.uniforms.brightness.value = 1.01;
+  pass.uniforms.contrast.value = 1.025;
+  pass.uniforms.saturation.value = 1.04;
+  pass.uniforms.vignetteIntensity.value = 0.975;
+  pass.uniforms.chromaShift.value = 0.0005;
   pass.uniforms.scanlineCount.value = 400.0;
-  pass.uniforms.rollSpeed.value = 0.005;
+  pass.uniforms.rollSpeed.value = 0.0025;
   
   return pass;
 }
