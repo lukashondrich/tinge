@@ -93,8 +93,19 @@ export async function createScene() {
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
   
-  // Start with empty visualization - only set up the mesh but don't show any instances
-  instancedMesh.count = 0; // ✅ Start completely empty - points appear only when spoken
+  // ✅ Initialize all potential points but don't display them yet (for empty start)
+  for (let i = 0; i < numPoints; i++) {
+    dummy.position.copy(positions[i]);
+    const distToCam = camera.position.distanceTo(positions[i]);
+    const scaleFactor = 0.03 * (1 / (1 + distToCam * 0.3));
+    dummy.scale.setScalar(scaleFactor);
+    dummy.updateMatrix();
+    instancedMesh.setMatrixAt(i, dummy.matrix);
+    // initialize colors for existing points
+    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
+  }
+  // Start with empty visualization - points appear only when spoken
+  instancedMesh.count = 0; // ✅ Hide all points initially
   instancedMesh.instanceColor.needsUpdate = true;
 
   instancedMesh.instanceMatrix.needsUpdate = true;

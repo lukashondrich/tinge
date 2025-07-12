@@ -13,6 +13,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
+import { vocabularyStorage } from './utils/vocabularyStorage.js';
 
 
 
@@ -344,6 +345,52 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   .catch(err => console.error("⚠️ Realtime init error:", err));
   const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
+  // Load and visualize existing vocabulary from localStorage
+  async function loadExistingVocabulary() {
+    console.log('📚 Loading existing vocabulary...');
+    const vocabulary = vocabularyStorage.loadVocabulary();
+    const stats = vocabularyStorage.getStats();
+    console.log(`💫 Found ${stats.total} words in vocabulary (${stats.userWords} user, ${stats.aiWords} AI)`);
+    
+    // Add existing words to the visualization
+    for (const item of vocabulary) {
+      const key = item.word.trim().toLowerCase();
+      if (!usedWords.has(key)) {
+        usedWords.add(key);
+        
+        try {
+          // Use stored position directly
+          optimizer.addPoint(item.position);
+          
+          const id = optimizer.getPositions().length - 1;
+          mesh.count = id + 1;
+          
+          // Show gel shell when first word is loaded
+          if (mesh.count === 1) {
+            gel.visible = true;
+          }
+          
+          // Set color based on original speaker
+          const colour = item.speaker === 'user'
+            ? new THREE.Color('#69ea4f')       // green
+            : new THREE.Color(0x5a005a);       // purple
+          
+          mesh.setColorAt(id, colour);
+          mesh.instanceColor.needsUpdate = true;
+          
+          recentlyAdded.set(id, performance.now());
+          labels[id] = item.word;
+          
+          console.log(`✨ Restored word: "${item.word}" (${item.speaker})`);
+        } catch (err) {
+          console.warn('Failed to restore word:', item.word, err);
+        }
+      }
+    }
+    
+    console.log(`🎯 Vocabulary restored: ${vocabulary.length} words visualized`);
+  }
+
   // Queue to preserve word order while async embedding requests complete
   const wordQueue = [];
   let processingWordQueue = false;
@@ -571,6 +618,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
 
           recentlyAdded.set(id, performance.now());
           labels[id] = word;
+          
+          // 💾 Save new word to vocabulary storage for persistence
+          vocabularyStorage.saveWord(word, newPoint, speaker);
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
@@ -688,6 +738,9 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     composer.render();
   }
 
+  // Load existing vocabulary before starting animation
+  await loadExistingVocabulary();
+  
   animate();
   
   // Handle cleanup on page unload
@@ -699,4 +752,6 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
       disposeTouch();
     }
   });
+}).catch(error => {
+  console.error('❌ Scene initialization failed:', error);
 });

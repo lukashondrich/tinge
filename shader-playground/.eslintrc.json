@@ -18,6 +18,8 @@
   },
   "globals": {
     "THREE": "readonly",
+    "__API_URL__": "readonly",
+    "__EMBEDDING_URL__": "readonly",
     "vi": "readonly",
     "describe": "readonly",
     "test": "readonly",
