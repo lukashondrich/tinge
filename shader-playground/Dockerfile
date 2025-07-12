@@ -12,6 +12,9 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Add build timestamp to bust cache and ensure fresh build
+RUN echo "Build timestamp: $(date)" > build-info.txt
+
 # Build the application
 RUN npm run build
 
