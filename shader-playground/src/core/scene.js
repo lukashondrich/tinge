@@ -17,47 +17,15 @@ export async function createScene() {
   );
   camera.position.z = 15;
 
-  // ✅ Load, scale, and center embedding data with fallback
-  let raw;
-  try {
-    raw = await fetch('/embedding.json').then(r => r.json());
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('Failed to load embedding.json, generating random fallback points:', error);
-    // Generate random points between -1 and 1 for each dimension
-    const fallbackWords = [
-      'hello', 'world', 'three', 'javascript', 'shader', 'playground', 'webgl', 'graphics',
-      'computer', 'science', 'artificial', 'intelligence', 'machine', 'learning', 'data',
-      'visualization', 'interactive', 'experience', 'creativity', 'innovation', 'technology',
-      'future', 'digital', 'virtual', 'reality', 'immersive', 'design', 'art', 'beauty'
-    ];
-    
-    raw = fallbackWords.map(word => ({
-      label: word,
-      x: (Math.random() - 0.5) * 2, // Random between -1 and 1
-      y: (Math.random() - 0.5) * 2, // Random between -1 and 1
-      z: (Math.random() - 0.5) * 2  // Random between -1 and 1
-    }));
-  }
+  // ✅ Start with empty scene - no pre-loaded words for clean start
+  const raw = []; // Empty array - words will be added only when spoken
   
-  // Keep labels for hit‑testing
-  const labels = raw.map(p => p.label || '');
+  // Keep labels for hit‑testing - starts empty, will be populated as words are spoken
+  const labels = [];
   const scale = SCALE;
 
 
-  raw.forEach(p => {
-    p.x *= scale;
-    p.y *= scale;
-    p.z *= scale;
-  });
-  const center = new THREE.Vector3();
-  raw.forEach(p => center.add(new THREE.Vector3(p.x, p.y, p.z)));
-  center.divideScalar(raw.length);
-  raw.forEach(p => {
-    p.x -= center.x;
-    p.y -= center.y;
-    p.z -= center.z;
-  });
+  // No initial data to process - raw array is empty
 
   const optimizer = new ViscoElasticOptimizer(raw, {
     learningRate: 0.002,
@@ -73,44 +41,56 @@ export async function createScene() {
   });
 
   const numPoints = raw.length;
-  const geometry = new THREE.SphereGeometry(1, 12, 12);
-  geometry.computeBoundingSphere();
-  geometry.boundingSphere.radius *= 1.5; // further enlarge raycast hit area
+  let geometry;
+  try {
+    geometry = new THREE.SphereGeometry(1, 12, 12);
+    geometry.computeBoundingSphere();
+    geometry.boundingSphere.radius *= 1.5; // further enlarge raycast hit area
   // --- NEW: give every vertex a white colour so the shader’s vertexColor
   // component is (1,1,1) instead of the default (0,0,0) ---
   const nVerts = geometry.attributes.position.count;   // # of vertices
   const white   = new Float32Array(nVerts * 3).fill(1); // 1,1,1 for each
   geometry.setAttribute('color', new THREE.BufferAttribute(white, 3));
+  } catch (error) {
+    console.error('❌ Geometry creation error:', error);
+    throw error;
+  }
 
   // Use an unlit material so per-instance vertex colors display correctly
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    fog:   true,
-    vertexColors: true          // keep this boolean flag for r174
-  });
-
-  const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 2000); // reserve extra space
-  const dummy = new THREE.Object3D();
-  const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
-  
-  // ✅ Initialize all potential points but don't display them yet (for empty start)
-  for (let i = 0; i < numPoints; i++) {
-    dummy.position.copy(positions[i]);
-    const distToCam = camera.position.distanceTo(positions[i]);
-    const scaleFactor = 0.03 * (1 / (1 + distToCam * 0.3));
-    dummy.scale.setScalar(scaleFactor);
-    dummy.updateMatrix();
-    instancedMesh.setMatrixAt(i, dummy.matrix);
-    // initialize colors for existing points
-    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
+  let material;
+  try {
+    material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      fog:   true,
+      vertexColors: true          // keep this boolean flag for r174
+    });
+  } catch (error) {
+    console.error('❌ Material creation error:', error);
+    throw error;
   }
+
+  const instancedMesh = new THREE.InstancedMesh(geometry, material, 5500); // reserve space for 5000+ words
+  const dummy = new THREE.Object3D();
+  
+  // ✅ No initial points to set up - mesh starts completely empty
   // Start with empty visualization - points appear only when spoken
   instancedMesh.count = 0; // ✅ Hide all points initially
-  instancedMesh.instanceColor.needsUpdate = true;
+  
+  // Only update color/matrix flags if the attributes exist
+  if (instancedMesh.instanceColor) {
+    instancedMesh.instanceColor.needsUpdate = true;
+  } else {
+    console.log('⚠️ InstancedMesh instanceColor not available yet');
+  }
 
-  instancedMesh.instanceMatrix.needsUpdate = true;
+  if (instancedMesh.instanceMatrix) {
+    instancedMesh.instanceMatrix.needsUpdate = true;
+  } else {
+    console.log('⚠️ InstancedMesh instanceMatrix not available yet');
+  }
   
   scene.add(instancedMesh);
+  console.log('🎭 Adding scene elements...');
 
   // 🧫 Add gel shell around the point cloud
   const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);

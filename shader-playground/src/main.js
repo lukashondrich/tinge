@@ -1,4 +1,5 @@
 // main.js
+console.log('📱 Main.js loading...');
 import { initOpenAIRealtime } from "./openaiRealtime";
 
 import * as THREE from 'three';
@@ -137,7 +138,9 @@ function startBubble(speaker) {
 }
 
 // Initialize scene and OpenAI Realtime
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels }) => {
+console.log('🚀 Starting scene initialization...');
+createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels }) => {
+  console.log('✅ Scene created successfully');
   const renderer = createRenderer();
 
   // 🏷 Tooltip for hovered words
@@ -188,6 +191,7 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     mobileDebug('Initializing OpenAI Realtime for mobile device');
   }
   
+  console.log('🎤 Initializing OpenAI Realtime...');
   initOpenAIRealtime(
     (remoteStream) => {
       const audio = new Audio();
@@ -341,54 +345,111 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
     tokenProgressBar.updateUsage(usage);
   }
   )
+  .then(() => {
+    console.log('✅ OpenAI Realtime initialized successfully');
+  })
   // eslint-disable-next-line no-console
   .catch(err => console.error("⚠️ Realtime init error:", err));
   const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
-  // Load and visualize existing vocabulary from localStorage
+  // Performance optimization: Load vocabulary in stages for 5000+ words
+  let totalVocabularySize = 0;
+  let loadedWordCount = 0;
+  let isLoadingBatch = false;
+
   async function loadExistingVocabulary() {
-    console.log('📚 Loading existing vocabulary...');
-    const vocabulary = vocabularyStorage.loadVocabulary();
-    const stats = vocabularyStorage.getStats();
-    console.log(`💫 Found ${stats.total} words in vocabulary (${stats.userWords} user, ${stats.aiWords} AI)`);
-    
-    // Add existing words to the visualization
-    for (const item of vocabulary) {
-      const key = item.word.trim().toLowerCase();
-      if (!usedWords.has(key)) {
-        usedWords.add(key);
+    console.log('📚 Loading vocabulary with performance optimization...');
+    try {
+      // Quick check of total vocabulary size
+      const fullVocabulary = vocabularyStorage.loadVocabulary();
+      totalVocabularySize = fullVocabulary.length;
+      
+      if (totalVocabularySize === 0) {
+        console.log('📚 No previous vocabulary found - starting fresh');
+        return;
+      }
+
+      console.log(`📚 Found ${totalVocabularySize} words total - using progressive loading`);
+      
+      // Stage 1: Load recent words immediately (fast startup)
+      const recentWords = vocabularyStorage.loadRecentWords(150);
+      if (recentWords.length > 0) {
+        gel.visible = true;
+        await loadWordsToScene(recentWords, 'recent');
         
-        try {
-          // Use stored position directly
-          optimizer.addPoint(item.position);
+        // Stage 2: Progressive loading of older words in background
+        if (totalVocabularySize > 150) {
+          setTimeout(() => loadOlderWordsBatch(), 1000);
+        }
+      }
+    } catch (error) {
+      console.warn('📚 Error loading vocabulary:', error);
+    }
+  }
+
+  async function loadWordsToScene(words, batchType = 'batch') {
+    console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
+    
+    for (const item of words) {
+      try {
+        const key = item.word.trim().toLowerCase();
+        if (!usedWords.has(key)) {
+          usedWords.add(key);
           
+          // Add to optimizer
+          optimizer.addPoint(item.position);
           const id = optimizer.getPositions().length - 1;
           mesh.count = id + 1;
           
-          // Show gel shell when first word is loaded
-          if (mesh.count === 1) {
-            gel.visible = true;
-          }
-          
-          // Set color based on original speaker
+          // Set color based on speaker
           const colour = item.speaker === 'user'
             ? new THREE.Color('#69ea4f')       // green
             : new THREE.Color(0x5a005a);       // purple
           
           mesh.setColorAt(id, colour);
-          mesh.instanceColor.needsUpdate = true;
           
-          recentlyAdded.set(id, performance.now());
+          // Set label for tooltip
           labels[id] = item.word;
-          
-          console.log(`✨ Restored word: "${item.word}" (${item.speaker})`);
-        } catch (err) {
-          console.warn('Failed to restore word:', item.word, err);
+          loadedWordCount++;
         }
+      } catch (error) {
+        console.warn(`📚 Failed to restore word "${item.word}":`, error);
       }
     }
     
-    console.log(`🎯 Vocabulary restored: ${vocabulary.length} words visualized`);
+    // Batch update for better performance
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.instanceMatrix.needsUpdate = true;
+    
+    console.log(`📚 ${batchType}: Loaded ${loadedWordCount}/${totalVocabularySize} words`);
+  }
+
+  async function loadOlderWordsBatch() {
+    if (isLoadingBatch || loadedWordCount >= totalVocabularySize) return;
+    
+    isLoadingBatch = true;
+    try {
+      const batchSize = 100;
+      const remainingWords = totalVocabularySize - loadedWordCount;
+      const wordsToLoad = Math.min(batchSize, remainingWords);
+      
+      // Load older words (excluding the recent ones already loaded)
+      const offset = Math.max(0, totalVocabularySize - 150 - wordsToLoad);
+      const batch = vocabularyStorage.loadVocabularyBatch(offset, wordsToLoad);
+      
+      if (batch.length > 0) {
+        await loadWordsToScene(batch, 'background');
+        
+        // Continue loading if more words remain
+        if (loadedWordCount < totalVocabularySize) {
+          setTimeout(() => loadOlderWordsBatch(), 500);
+        }
+      }
+    } catch (error) {
+      console.warn('📚 Error loading vocabulary batch:', error);
+    } finally {
+      isLoadingBatch = false;
+    }
   }
 
   // Queue to preserve word order while async embedding requests complete
@@ -660,20 +721,49 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   }
 
 
-  // Animation loop
+  // Performance optimization variables
+  const MAX_RENDER_DISTANCE = 30; // Hide points beyond this distance
+  const LOD_DISTANCES = [10, 20, MAX_RENDER_DISTANCE]; // Different detail levels
+  let frameCount = 0;
+
+  // Animation loop with LOD optimization
   function animate(_t) {
     requestAnimationFrame(animate);
     optimizer.step();
   
     const updatedPositions = optimizer.getPositions();
     const now = performance.now();
-    const scale = SCALE;  
+    const scale = SCALE;
+    frameCount++;
+    
+    // LOD optimization: skip distant point updates on some frames for performance
+    const skipDistantUpdates = frameCount % 3 !== 0; // Update distant points every 3rd frame
+    
     for (let i = 0; i < updatedPositions.length; i++) {
       const pos = updatedPositions[i].clone().multiplyScalar(scale);
       dummy.position.copy(pos);
   
       const distToCam = camera.position.distanceTo(pos);
+      
+      // LOD: Hide very distant points to improve performance
+      if (distToCam > MAX_RENDER_DISTANCE) {
+        dummy.scale.setScalar(0); // Hide point
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        continue;
+      }
+      
+      // LOD: Skip updates for distant points on some frames
+      if (skipDistantUpdates && distToCam > LOD_DISTANCES[1]) {
+        continue; // Keep previous matrix
+      }
+      
       let pointScale = 0.03 * (1 / (1 + distToCam * 0.3));
+      
+      // LOD: Reduce detail for distant points
+      if (distToCam > LOD_DISTANCES[0]) {
+        pointScale *= 0.7; // Smaller scale for distant points
+      }
   
       // 🌟 Apply glow effect to newly added points
       if (recentlyAdded.has(i)) {
@@ -739,8 +829,15 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
   }
 
   // Load existing vocabulary before starting animation
-  await loadExistingVocabulary();
+  console.log('📚 Loading vocabulary...');
+  try {
+    await loadExistingVocabulary();
+    console.log('✅ Vocabulary loaded successfully');
+  } catch (error) {
+    console.error('❌ Vocabulary loading failed:', error);
+  }
   
+  console.log('🎬 Starting animation...');
   animate();
   
   // Handle cleanup on page unload

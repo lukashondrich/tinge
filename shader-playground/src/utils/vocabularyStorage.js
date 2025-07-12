@@ -8,7 +8,7 @@
 export class VocabularyStorage {
   constructor() {
     this.storageKey = 'tinge-vocabulary';
-    this.maxWords = 500; // Prevent localStorage from growing too large
+    this.maxWords = 5000; // Increased limit for larger vocabulary
   }
 
   /**
@@ -25,6 +25,41 @@ export class VocabularyStorage {
       return vocabulary;
     } catch (error) {
       console.warn('Failed to load vocabulary from localStorage:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Load recent words for fast startup (performance optimization)
+   * @param {number} count - Number of recent words to load
+   * @returns {Array} Most recent words
+   */
+  loadRecentWords(count = 100) {
+    try {
+      const vocabulary = this.loadVocabulary();
+      const recent = vocabulary.slice(-count);
+      console.log(`📚 Loaded ${recent.length} recent words for fast startup`);
+      return recent;
+    } catch (error) {
+      console.warn('Failed to load recent vocabulary:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Load words in batches for progressive loading
+   * @param {number} offset - Starting index
+   * @param {number} limit - Number of words to load
+   * @returns {Array} Batch of words
+   */
+  loadVocabularyBatch(offset = 0, limit = 100) {
+    try {
+      const vocabulary = this.loadVocabulary();
+      const batch = vocabulary.slice(offset, offset + limit);
+      console.log(`📚 Loaded batch: ${batch.length} words (${offset}-${offset + limit})`);
+      return batch;
+    } catch (error) {
+      console.warn('Failed to load vocabulary batch:', error);
       return [];
     }
   }

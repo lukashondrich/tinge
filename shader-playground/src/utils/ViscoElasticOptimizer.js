@@ -30,32 +30,51 @@ export class ViscoElasticOptimizer {
     this.stepCount++;
 
     const grads = this.positions.map(() => new THREE.Vector3());
+    
+    // Performance optimization: limit interactions for large datasets
+    const maxInteractions = Math.min(50, this.positions.length); // Limit to 50 nearest neighbors
+    const maxDistance = 3.0; // Only interact with nearby points
 
-    // Semantic attraction
+    // Semantic attraction (optimized for large datasets)
     for (let i = 0; i < this.positions.length; i++) {
-      for (let j = i + 1; j < this.positions.length; j++) {
+      let interactionCount = 0;
+      
+      for (let j = i + 1; j < this.positions.length && interactionCount < maxInteractions; j++) {
         const pi = this.positions[i];
         const pj = this.positions[j];
         const dir = new THREE.Vector3().subVectors(pi, pj);
         const dist = dir.length() + 0.0001;
+        
+        // Skip distant points for performance
+        if (dist > maxDistance) continue;
+        
         const delta = dist - this.original[i].distanceTo(this.original[j]);
         const force = dir.normalize().multiplyScalar(-delta * this.weights.semanticAttraction);
         grads[i].add(force);
         grads[j].sub(force);
+        interactionCount++;
       }
     }
 
-    // Repulsion
+    // Repulsion (optimized for large datasets)
     for (let i = 0; i < this.positions.length; i++) {
-      for (let j = i + 1; j < this.positions.length; j++) {
+      let interactionCount = 0;
+      
+      for (let j = i + 1; j < this.positions.length && interactionCount < maxInteractions; j++) {
         const pi = this.positions[i];
         const pj = this.positions[j];
         const dir = new THREE.Vector3().subVectors(pi, pj);
         const distSq = dir.lengthSq() + 0.0001;
+        const dist = Math.sqrt(distSq);
+        
+        // Skip distant points for performance
+        if (dist > maxDistance) continue;
+        
         const strength = Math.min(this.weights.repulsion / distSq, 8.5);
         dir.normalize().multiplyScalar(strength);
         grads[i].add(dir);
         grads[j].sub(dir);
+        interactionCount++;
       }
     }
 
