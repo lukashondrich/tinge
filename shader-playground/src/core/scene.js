@@ -22,6 +22,7 @@ export async function createScene() {
   try {
     raw = await fetch('/embedding.json').then(r => r.json());
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.warn('Failed to load embedding.json, generating random fallback points:', error);
     // Generate random points between -1 and 1 for each dimension
     const fallbackWords = [
@@ -91,17 +92,9 @@ export async function createScene() {
   const instancedMesh = new THREE.InstancedMesh(geometry, material, numPoints + 2000); // reserve extra space
   const dummy = new THREE.Object3D();
   const positions = optimizer.getPositions().map(p => p.clone().multiplyScalar(scale));
-  for (let i = 0; i < numPoints; i++) {
-    dummy.position.copy(positions[i]);
-    const distToCam = camera.position.distanceTo(positions[i]);
-    const scaleFactor = 0.03 * (1 / (1 + distToCam * 0.3));
-    dummy.scale.setScalar(scaleFactor);
-    dummy.updateMatrix();
-    instancedMesh.setMatrixAt(i, dummy.matrix);
-    // initialize colors for existing points
-    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
-  }
-  instancedMesh.count = numPoints; // ✅ hides unused instances
+  
+  // Start with empty visualization - only set up the mesh but don't show any instances
+  instancedMesh.count = 0; // ✅ Start completely empty - points appear only when spoken
   instancedMesh.instanceColor.needsUpdate = true;
 
   instancedMesh.instanceMatrix.needsUpdate = true;
@@ -127,6 +120,7 @@ export async function createScene() {
   const gel = new THREE.Mesh(gelGeometry, gelMaterial);
   gel.position.set(0, 0, 0);
   gel.renderOrder = 1;
+  gel.visible = false; // ✅ Start hidden - appears when first words are spoken
 
   // Debug origin marker
   const wire = new THREE.Mesh(
@@ -174,6 +168,7 @@ export async function createScene() {
     dummy,
     numPoints,
     lineSegments,
+    gel, // ✅ Return gel object for showing/hiding
     recentlyAdded,
     labels
   };

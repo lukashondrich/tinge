@@ -136,7 +136,7 @@ function startBubble(speaker) {
 }
 
 // Initialize scene and OpenAI Realtime
-createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, controls, recentlyAdded, labels }) => {
+createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels }) => {
   const renderer = createRenderer();
 
   // 🏷 Tooltip for hovered words
@@ -555,6 +555,11 @@ createScene().then(({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoin
           // --- make room first ---
           const id = optimizer.getPositions().length - 1;
           mesh.count = id + 1;                // ensure the new slot exists
+
+          // ✅ Show gel shell when first word is added
+          if (mesh.count === 1) {
+            gel.visible = true;
+          }
 
           // pick the colour
           const colour = speaker === 'user'
