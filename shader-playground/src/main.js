@@ -83,9 +83,38 @@ function scrollToBottom() {
   panelEl.scrollTop = panelEl.scrollHeight;
 }
 
-// simple word playback helper (stubbed until audio timing is known)
-function playAudioFor(_word) {
-  // Stubbed until audio timing is implemented
+// Word to utterance mapping for audio playback
+const wordToUtteranceMap = new Map();
+
+// Audio playback for 3D words
+function playAudioFor(word) {
+  const utteranceData = wordToUtteranceMap.get(word.toLowerCase());
+  
+  if (utteranceData && utteranceData.audioURL) {
+    // Play the original utterance audio
+    const audio = new Audio(utteranceData.audioURL);
+    audio.play().catch(err => {
+      console.warn('Failed to play utterance audio:', err);
+      // Fallback to TTS
+      playTTSFallback(word);
+    });
+  } else {
+    // Fallback to Text-to-Speech
+    playTTSFallback(word);
+  }
+}
+
+// Text-to-Speech fallback for words without utterance audio
+function playTTSFallback(word) {
+  if ('speechSynthesis' in window) {
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.rate = 0.8;
+    utterance.pitch = 1.0;
+    utterance.volume = 0.7;
+    speechSynthesis.speak(utterance);
+  } else {
+    console.warn('Speech synthesis not supported - no audio playback available');
+  }
 }
 
 function startBubble(speaker) {
@@ -270,6 +299,33 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         processedUtterances.add(utteranceKey);
         processedUtterances.add(deviceSpecificKey);
         deviceUtterances.set(contentKey, { deviceType: eventDeviceType, timestamp: Date.now() });
+        
+        // Map words to utterance for audio playback
+        if (event.record.audioURL && event.record.wordTimings) {
+          event.record.wordTimings.forEach(wordTiming => {
+            const word = wordTiming.word.toLowerCase().replace(/[^\w]/g, ''); // Clean word
+            if (word) {
+              wordToUtteranceMap.set(word, {
+                audioURL: event.record.audioURL,
+                wordTiming: wordTiming,
+                utteranceId: id,
+                speaker: speaker
+              });
+            }
+          });
+        } else if (event.record.audioURL && text && text !== '...') {
+          // If no word timings, map entire text for utterance-level playback
+          const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+          words.forEach(word => {
+            if (!wordToUtteranceMap.has(word)) {
+              wordToUtteranceMap.set(word, {
+                audioURL: event.record.audioURL,
+                utteranceId: id,
+                speaker: speaker
+              });
+            }
+          });
+        }
         
         const bubble = activeBubbles[speaker];
 
