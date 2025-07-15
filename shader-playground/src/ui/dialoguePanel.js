@@ -194,12 +194,14 @@ export class DialoguePanel {
         const playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', async () => {
+        const handlePlay = async () => {
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
           await ensureAudioContext();
           new Audio(record.audioURL).play();
-        });
+        };
+        playBtn.addEventListener('click', handlePlay);
+        playBtn.addEventListener('pointerdown', handlePlay);
         bubble.insertBefore(playBtn, bubble.firstChild);
         
         // Decode & cache AudioBuffer
