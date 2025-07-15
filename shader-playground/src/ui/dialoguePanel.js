@@ -2,6 +2,32 @@
 
 // Single AudioContext for playback
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// Ensure AudioContext is resumed before playback to comply with
+// browser autoplay restrictions. Some browsers start the context
+// in a suspended state until a user gesture occurs which would
+// prevent word‑level audio snippets from playing when clicked.
+async function ensureAudioContext() {
+  if (audioCtx.state === 'suspended') {
+    try {
+      await audioCtx.resume();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('AudioContext resume failed:', err);
+    }
+  }
+}
+
+// Helper to play an AudioBuffer segment using the shared AudioContext
+// Optionally specify start and end times in seconds
+async function playAudioSegment(buffer, start = 0, end = null) {
+  await ensureAudioContext();
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audioCtx.destination);
+  const duration = end ? end - start : buffer.duration - start;
+  src.start(0, start, duration);
+}
 const bufferCache = new Map();
 
 export class DialoguePanel {
@@ -75,7 +101,14 @@ export class DialoguePanel {
         playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
+        playBtn.addEventListener('click', async () => {
+          if (audioBuffer) {
+            await playAudioSegment(audioBuffer);
+          } else {
+            await ensureAudioContext();
+            new Audio(record.audioURL).play();
+          }
+        });
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
@@ -119,14 +152,10 @@ export class DialoguePanel {
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
             span.addEventListener('click', () => {
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
+              const playbackBuffer = 0.1; // 100ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              playAudioSegment(audioBuffer, bufferedStart, bufferedEnd);
             });
           }
           w++; // increment word index regardless
@@ -163,7 +192,14 @@ export class DialoguePanel {
         const playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
+        playBtn.addEventListener('click', async () => {
+          if (audioBuffer) {
+            await playAudioSegment(audioBuffer);
+          } else {
+            await ensureAudioContext();
+            new Audio(record.audioURL).play();
+          }
+        });
         bubble.insertBefore(playBtn, bubble.firstChild);
         
         // Decode & cache AudioBuffer
@@ -223,14 +259,10 @@ export class DialoguePanel {
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
             span.addEventListener('click', () => {
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
+              const playbackBuffer = 0.1; // 100ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              playAudioSegment(audioBuffer, bufferedStart, bufferedEnd);
             });
           }
           w++; // increment word index regardless
