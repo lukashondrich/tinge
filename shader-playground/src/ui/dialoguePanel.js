@@ -94,12 +94,14 @@ export class DialoguePanel {
         playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', async () => {
+        const handlePlay = async () => {
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
           await ensureAudioContext();
           new Audio(record.audioURL).play();
-        });
+        };
+        playBtn.addEventListener('click', handlePlay);
+        playBtn.addEventListener('pointerdown', handlePlay);
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
@@ -142,7 +144,7 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', async () => {
+            const handleWord = async () => {
               // eslint-disable-next-line no-console
               console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
               await ensureAudioContext();
@@ -154,7 +156,9 @@ export class DialoguePanel {
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
               src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-            });
+            };
+            span.addEventListener('click', handleWord);
+            span.addEventListener('pointerdown', handleWord);
           }
           w++; // increment word index regardless
           highlightedSpan.appendChild(span);
@@ -254,7 +258,7 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', async () => {
+            const handleWord = async () => {
               // eslint-disable-next-line no-console
               console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
               await ensureAudioContext();
@@ -266,7 +270,9 @@ export class DialoguePanel {
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
               src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-            });
+            };
+            span.addEventListener('click', handleWord);
+            span.addEventListener('pointerdown', handleWord);
           }
           w++; // increment word index regardless
           highlightedSpan.appendChild(span);
