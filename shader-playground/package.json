@@ -12,16 +12,27 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "test:audio": "vitest run --config src/tests/audio/vitest.config.js",
+    "test:audio:watch": "vitest --config src/tests/audio/vitest.config.js",
+    "test:audio:coverage": "vitest run --config src/tests/audio/vitest.config.js --coverage",
+    "test:audio:integration": "jest --testPathPattern=tests/integration/.*audio.*",
+    "test:audio:all": "node scripts/run-audio-tests.js",
+    "test:all": "npm run test:run && npm run test:e2e",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext js,jsx --fix"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
-    "vite": "^6.2.0",
-    "vitest": "^1.2.0",
+    "@playwright/test": "^1.54.1",
     "@vitest/coverage-v8": "^1.2.0",
+    "concurrently": "^9.1.2",
     "eslint": "^8.56.0",
-    "jsdom": "^23.2.0"
+    "jsdom": "^23.2.0",
+    "playwright": "^1.54.1",
+    "vite": "^6.2.0",
+    "vitest": "^1.2.0"
   },
   "dependencies": {
     "dexie": "^4.0.11",
