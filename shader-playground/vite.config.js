@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   console.log('🔧 Vite build mode:', mode);
   console.log('🔧 VITE_API_URL:', process.env.VITE_API_URL);
   console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
+  console.log('🔧 Build timestamp:', new Date().toISOString());
   
   // Ensure we have the correct API URL for production
   const API_URL = process.env.VITE_API_URL || 
