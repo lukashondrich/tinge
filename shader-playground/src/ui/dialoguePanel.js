@@ -17,6 +17,17 @@ async function ensureAudioContext() {
     }
   }
 }
+
+// Helper to play an AudioBuffer segment using the shared AudioContext
+// Optionally specify start and end times in seconds
+async function playAudioSegment(buffer, start = 0, end = null) {
+  await ensureAudioContext();
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audioCtx.destination);
+  const duration = end ? end - start : buffer.duration - start;
+  src.start(0, start, duration);
+}
 const bufferCache = new Map();
 
 export class DialoguePanel {
@@ -91,8 +102,12 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         playBtn.addEventListener('click', async () => {
-          await ensureAudioContext();
-          new Audio(record.audioURL).play();
+          if (audioBuffer) {
+            await playAudioSegment(audioBuffer);
+          } else {
+            await ensureAudioContext();
+            new Audio(record.audioURL).play();
+          }
         });
         bubble.appendChild(playBtn);
 
@@ -136,16 +151,11 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', async () => {
-              await ensureAudioContext();
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
+            span.addEventListener('click', () => {
+              const playbackBuffer = 0.1; // 100ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              playAudioSegment(audioBuffer, bufferedStart, bufferedEnd);
             });
           }
           w++; // increment word index regardless
@@ -183,8 +193,12 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         playBtn.addEventListener('click', async () => {
-          await ensureAudioContext();
-          new Audio(record.audioURL).play();
+          if (audioBuffer) {
+            await playAudioSegment(audioBuffer);
+          } else {
+            await ensureAudioContext();
+            new Audio(record.audioURL).play();
+          }
         });
         bubble.insertBefore(playBtn, bubble.firstChild);
         
@@ -244,16 +258,11 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', async () => {
-              await ensureAudioContext();
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
+            span.addEventListener('click', () => {
+              const playbackBuffer = 0.1; // 100ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              playAudioSegment(audioBuffer, bufferedStart, bufferedEnd);
             });
           }
           w++; // increment word index regardless
