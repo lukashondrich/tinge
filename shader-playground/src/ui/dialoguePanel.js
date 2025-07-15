@@ -2,6 +2,25 @@
 
 // Single AudioContext for playback
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// Ensure AudioContext is resumed before playback to comply with
+// browser autoplay restrictions. Some browsers start the context
+// in a suspended state until a user gesture occurs which would
+// prevent word‑level audio snippets from playing when clicked.
+async function ensureAudioContext() {
+  if (audioCtx.state === 'suspended') {
+    try {
+      // eslint-disable-next-line no-console
+      console.log('🔈 Resuming AudioContext for playback');
+      await audioCtx.resume();
+      // eslint-disable-next-line no-console
+      console.log('✅ AudioContext state:', audioCtx.state);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('AudioContext resume failed:', err);
+    }
+  }
+}
 const bufferCache = new Map();
 
 export class DialoguePanel {
@@ -75,7 +94,12 @@ export class DialoguePanel {
         playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
+        playBtn.addEventListener('click', async () => {
+          // eslint-disable-next-line no-console
+          console.log('▶️ Play utterance', record.id);
+          await ensureAudioContext();
+          new Audio(record.audioURL).play();
+        });
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
@@ -118,7 +142,10 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', () => {
+            span.addEventListener('click', async () => {
+              // eslint-disable-next-line no-console
+              console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+              await ensureAudioContext();
               const src = audioCtx.createBufferSource();
               src.buffer = audioBuffer;
               src.connect(audioCtx.destination);
@@ -163,7 +190,12 @@ export class DialoguePanel {
         const playBtn = document.createElement('button');
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
-        playBtn.addEventListener('click', () => new Audio(record.audioURL).play());
+        playBtn.addEventListener('click', async () => {
+          // eslint-disable-next-line no-console
+          console.log('▶️ Play utterance', record.id);
+          await ensureAudioContext();
+          new Audio(record.audioURL).play();
+        });
         bubble.insertBefore(playBtn, bubble.firstChild);
         
         // Decode & cache AudioBuffer
@@ -222,7 +254,10 @@ export class DialoguePanel {
           // Only add click handler if we have audio timing data
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
-            span.addEventListener('click', () => {
+            span.addEventListener('click', async () => {
+              // eslint-disable-next-line no-console
+              console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+              await ensureAudioContext();
               const src = audioCtx.createBufferSource();
               src.buffer = audioBuffer;
               src.connect(audioCtx.destination);
