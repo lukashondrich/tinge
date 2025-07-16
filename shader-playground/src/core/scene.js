@@ -35,36 +35,41 @@ class TextManager {
 
   // Create a 3D text label at the given position
   createLabel(word, position, speaker) {
-    const textMesh = new Text();
-    textMesh.text = word;
-    textMesh.fontSize = 0.12;
-    textMesh.font = 'monospace'; // Use system monospace font
-    textMesh.color = speaker === 'user' ? 0x69ea4f : 0x8844ff; // Match point colors: green for user, purple for AI
-    textMesh.anchorX = 'center';
-    textMesh.anchorY = 'middle';
-    textMesh.position.copy(position);
-    textMesh.position.y += 0.25; // Offset above the word point
-    
-    // Billboard behavior - always face camera
-    textMesh.lookAt = null; // Will be set in update loop
-    
-    // Add retro glow effect
-    textMesh.outlineWidth = 0.015;
-    textMesh.outlineColor = speaker === 'user' ? 0x2a5a1f : 0x44226f;
-    
-    // VHS-style text effects
-    textMesh.strokeColor = speaker === 'user' ? 0x1a4a0f : 0x22115f;
-    textMesh.strokeWidth = 0.01;
-    
-    // Start with fade-in animation
-    textMesh.material.transparent = true;
-    textMesh.material.opacity = 0;
-    
-    this.scene.add(textMesh);
-    this.activeLabels.set(word, textMesh);
-    
-    // Fade in animation
-    this.fadeIn(textMesh);
+    try {
+      const textMesh = new Text();
+      textMesh.text = word;
+      textMesh.fontSize = 0.12;
+      textMesh.font = 'monospace'; // Use system monospace font
+      textMesh.color = speaker === 'user' ? 0x69ea4f : 0x8844ff; // Match point colors: green for user, purple for AI
+      textMesh.anchorX = 'center';
+      textMesh.anchorY = 'middle';
+      textMesh.position.copy(position);
+      textMesh.position.y += 0.25; // Offset above the word point
+      
+      // Billboard behavior - always face camera
+      textMesh.lookAt = null; // Will be set in update loop
+      
+      // Add retro glow effect
+      textMesh.outlineWidth = 0.015;
+      textMesh.outlineColor = speaker === 'user' ? 0x2a5a1f : 0x44226f;
+      
+      // VHS-style text effects
+      textMesh.strokeColor = speaker === 'user' ? 0x1a4a0f : 0x22115f;
+      textMesh.strokeWidth = 0.01;
+      
+      // Start with fade-in animation
+      textMesh.material.transparent = true;
+      textMesh.material.opacity = 0;
+      
+      this.scene.add(textMesh);
+      this.activeLabels.set(word, textMesh);
+      
+      // Fade in animation
+      this.fadeIn(textMesh);
+    } catch (error) {
+      console.error('❌ Error creating 3D text label for word:', word, error);
+      // Continue without breaking
+    }
   }
 
   // Clear all active labels
@@ -288,13 +293,24 @@ export async function createScene() {
   scene.add(lineSegments);
   scene.add(gel);
 
-  // Controls
-  const controls = new OrbitControls(camera, document.body);
-  controls.target.set(0, 0, 0);
-  controls.update();
+  // Controls will be initialized later in main.js with the renderer
+  let controls = null;
 
   // Initialize 3D text manager
-  const textManager = new TextManager(scene);
+  let textManager;
+  try {
+    textManager = new TextManager(scene);
+    console.log('✅ TextManager initialized successfully');
+  } catch (error) {
+    console.error('❌ TextManager initialization failed:', error);
+    // Create a fallback textManager with no-op methods
+    textManager = {
+      showLabelsForUtterance: () => {},
+      updateLabels: () => {},
+      clearLabels: () => {},
+      dispose: () => {}
+    };
+  }
 
   return {
     scene,

@@ -176,6 +176,12 @@ console.log('🚀 Starting scene initialization...');
 createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels, textManager }) => {
   console.log('✅ Scene created successfully');
   const renderer = createRenderer();
+  
+  // Initialize controls with the renderer's DOM element
+  const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
+  const orbitControls = new OrbitControls(camera, renderer.domElement);
+  orbitControls.target.set(0, 0, 0);
+  orbitControls.update();
 
   // 🏷 Tooltip for hovered words
   const tooltip = document.createElement('div');
@@ -361,12 +367,17 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         
         // 🏷️ Track last utterance for 3D text labels
         if (text && text !== '...') {
-          const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-          lastUtteranceWords = words;
-          lastUtteranceSpeaker = speaker;
-          
-          // Show 3D text labels for the last utterance
-          textManager.showLabelsForUtterance(words, speaker, wordPositions);
+          try {
+            const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+            lastUtteranceWords = words;
+            lastUtteranceSpeaker = speaker;
+            
+            // Show 3D text labels for the last utterance
+            textManager.showLabelsForUtterance(words, speaker, wordPositions);
+          } catch (error) {
+            console.error('❌ 3D text label error:', error);
+            // Don't break utterance processing
+          }
         }
         
         panel.add(event.record); // DialoguePanel should now find and replace the existing bubble
@@ -891,7 +902,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
     
-    controls.update();
+    orbitControls.update();
 
     // eslint-disable-next-line no-unused-vars
     const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
@@ -904,7 +915,12 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
     
     // 🏷️ Update 3D text labels to face camera
-    textManager.updateLabels(camera);
+    try {
+      textManager.updateLabels(camera);
+    } catch (error) {
+      console.error('❌ TextManager update error:', error);
+      // Don't break the animation loop
+    }
     
     composer.render();
   }

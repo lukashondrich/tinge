@@ -79,6 +79,15 @@ jobs:
           echo "No test script found in frontend"
         fi
     
+    - name: Run audio unit tests
+      run: |
+        cd shader-playground
+        if grep -q "test:audio" package.json; then
+          npm run test:audio
+        else
+          echo "No audio tests found"
+        fi
+    
     - name: Run embedding service tests
       run: |
         cd embedding-service
@@ -101,6 +110,11 @@ jobs:
         cd shader-playground
         npm run build
     
+    - name: Install Playwright browsers
+      run: |
+        cd shader-playground
+        npx playwright install --with-deps
+    
     - name: Test Docker builds
       run: |
         # Retry Docker builds up to 3 times to handle transient network issues
@@ -119,6 +133,48 @@ jobs:
             sleep 30
           fi
         done
+
+  audio-tests:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install frontend dependencies
+      run: |
+        cd shader-playground
+        npm install
+    
+    - name: Install Playwright browsers
+      run: |
+        cd shader-playground
+        npx playwright install --with-deps ${{ matrix.browser }}
+    
+    - name: Run audio E2E tests
+      run: |
+        cd shader-playground
+        npx playwright test --project=${{ matrix.browser }} --reporter=html
+      env:
+        CI: true
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: playwright-report-${{ matrix.browser }}
+        path: shader-playground/playwright-report/
+        retention-days: 30
 
   security:
     runs-on: ubuntu-latest
