@@ -45,6 +45,11 @@ let pendingDeltaText = '';
 const processedUtterances = new Set();
 const deviceUtterances = new Map(); // Track utterances by device type
 
+// Track last utterance for 3D text labels
+let lastUtteranceWords = [];
+let lastUtteranceSpeaker = null;
+const wordPositions = new Map(); // word -> THREE.Vector3 position
+
 // Mobile device detection
 const isMobileDevice = () => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
@@ -168,7 +173,7 @@ function startBubble(speaker) {
 
 // Initialize scene and OpenAI Realtime
 console.log('🚀 Starting scene initialization...');
-createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels }) => {
+createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels, textManager }) => {
   console.log('✅ Scene created successfully');
   const renderer = createRenderer();
 
@@ -354,6 +359,16 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           bubble.dataset.utteranceId = id;
         }
         
+        // 🏷️ Track last utterance for 3D text labels
+        if (text && text !== '...') {
+          const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+          lastUtteranceWords = words;
+          lastUtteranceSpeaker = speaker;
+          
+          // Show 3D text labels for the last utterance
+          textManager.showLabelsForUtterance(words, speaker, wordPositions);
+        }
+        
         panel.add(event.record); // DialoguePanel should now find and replace the existing bubble
         scrollToBottom();
         
@@ -466,6 +481,10 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           
           // Set label for tooltip
           labels[id] = item.word;
+          
+          // 📍 Track word position for 3D text labels
+          wordPositions.set(key, new THREE.Vector3(item.position.x * SCALE, item.position.y * SCALE, item.position.z * SCALE));
+          
           loadedWordCount++;
         }
       } catch (error) {
@@ -736,6 +755,9 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           recentlyAdded.set(id, performance.now());
           labels[id] = word;
           
+          // 📍 Track word position for 3D text labels
+          wordPositions.set(key, new THREE.Vector3(newPoint.x * scale, newPoint.y * scale, newPoint.z * scale));
+          
           // 💾 Save new word to vocabulary storage for persistence
           vocabularyStorage.saveWord(word, newPoint, speaker);
         } catch (err) {
@@ -880,6 +902,9 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     
     // Update VHS CRT shader time for animated effects
     vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
+    
+    // 🏷️ Update 3D text labels to face camera
+    textManager.updateLabels(camera);
     
     composer.render();
   }

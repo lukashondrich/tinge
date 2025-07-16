@@ -1,8 +1,151 @@
 import * as THREE from 'three';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Text } from 'troika-three-text';
 export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
+
+// 3D Text Manager for last utterance labels
+// This system displays 3D text labels for words from the most recent utterance
+// (spoken by either user or AI) to make the connection between spoken language
+// and the 3D vocabulary visualization clear.
+class TextManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.activeLabels = new Map(); // word -> text mesh
+    this.lastUtteranceWords = new Set(); // track current utterance words
+    this.fadeAnimations = new Map(); // track fade animations
+  }
+
+  // Show 3D text labels for words from the last utterance
+  showLabelsForUtterance(words, speaker, wordPositions) {
+    // Clear previous utterance labels
+    this.clearLabels();
+    
+    // Add new labels for current utterance
+    words.forEach(word => {
+      const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+      if (cleanWord && wordPositions.has(cleanWord)) {
+        const position = wordPositions.get(cleanWord);
+        this.createLabel(cleanWord, position, speaker);
+        this.lastUtteranceWords.add(cleanWord);
+      }
+    });
+  }
+
+  // Create a 3D text label at the given position
+  createLabel(word, position, speaker) {
+    const textMesh = new Text();
+    textMesh.text = word;
+    textMesh.fontSize = 0.12;
+    textMesh.font = 'monospace'; // Use system monospace font
+    textMesh.color = speaker === 'user' ? 0x69ea4f : 0x8844ff; // Match point colors: green for user, purple for AI
+    textMesh.anchorX = 'center';
+    textMesh.anchorY = 'middle';
+    textMesh.position.copy(position);
+    textMesh.position.y += 0.25; // Offset above the word point
+    
+    // Billboard behavior - always face camera
+    textMesh.lookAt = null; // Will be set in update loop
+    
+    // Add retro glow effect
+    textMesh.outlineWidth = 0.015;
+    textMesh.outlineColor = speaker === 'user' ? 0x2a5a1f : 0x44226f;
+    
+    // VHS-style text effects
+    textMesh.strokeColor = speaker === 'user' ? 0x1a4a0f : 0x22115f;
+    textMesh.strokeWidth = 0.01;
+    
+    // Start with fade-in animation
+    textMesh.material.transparent = true;
+    textMesh.material.opacity = 0;
+    
+    this.scene.add(textMesh);
+    this.activeLabels.set(word, textMesh);
+    
+    // Fade in animation
+    this.fadeIn(textMesh);
+  }
+
+  // Clear all active labels
+  clearLabels() {
+    this.activeLabels.forEach((textMesh, word) => {
+      this.fadeOut(textMesh, () => {
+        this.scene.remove(textMesh);
+        textMesh.dispose();
+      });
+    });
+    this.activeLabels.clear();
+    this.lastUtteranceWords.clear();
+  }
+
+  // Update labels to face camera with distance-based optimization
+  updateLabels(camera) {
+    this.activeLabels.forEach(textMesh => {
+      // Distance-based culling for performance
+      const distance = camera.position.distanceTo(textMesh.position);
+      const maxDistance = 20; // Hide labels beyond this distance
+      
+      if (distance > maxDistance) {
+        textMesh.visible = false;
+        return;
+      }
+      
+      textMesh.visible = true;
+      textMesh.lookAt(camera.position);
+      
+      // Distance-based scaling for better readability
+      const scale = Math.max(0.8, Math.min(1.2, 1.0 + (distance - 10) * 0.02));
+      textMesh.scale.setScalar(scale);
+    });
+  }
+
+  // Fade in animation
+  fadeIn(textMesh) {
+    const startTime = Date.now();
+    const duration = 500; // 500ms fade in
+    
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      textMesh.material.opacity = progress;
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    animate();
+  }
+
+  // Fade out animation
+  fadeOut(textMesh, callback) {
+    const startTime = Date.now();
+    const duration = 300; // 300ms fade out
+    const startOpacity = textMesh.material.opacity;
+    
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      textMesh.material.opacity = startOpacity * (1 - progress);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        if (callback) callback();
+      }
+    };
+    
+    animate();
+  }
+
+  // Clean up
+  dispose() {
+    this.clearLabels();
+  }
+}
 
 export async function createScene() {
   const scene = new THREE.Scene();
@@ -150,6 +293,9 @@ export async function createScene() {
   controls.target.set(0, 0, 0);
   controls.update();
 
+  // Initialize 3D text manager
+  const textManager = new TextManager(scene);
+
   return {
     scene,
     camera,
@@ -161,6 +307,7 @@ export async function createScene() {
     lineSegments,
     gel, // ✅ Return gel object for showing/hiding
     recentlyAdded,
-    labels
+    labels,
+    textManager // ✅ Return text manager for 3D utterance labels
   };
 }
