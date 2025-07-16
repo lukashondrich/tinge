@@ -6,107 +6,198 @@ export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
 
 // 3D Text Manager for last utterance labels
-// This system displays 3D text labels for words from the most recent utterance
-// (spoken by either user or AI) to make the connection between spoken language
+// This system displays 3D text labels for words from the last utterances
+// (both AI and user) to make the connection between spoken language
 // and the 3D vocabulary visualization clear.
 class TextManager {
   constructor(scene) {
     this.scene = scene;
     this.activeLabels = new Map(); // word -> text mesh
-    this.lastUtteranceWords = new Set(); // track current utterance words
+    this.lastUserWords = new Set(); // track current user utterance words
+    this.lastAIWords = new Set(); // track current AI utterance words
     this.fadeAnimations = new Map(); // track fade animations
   }
 
   // Show 3D text labels for words from the last utterance
   showLabelsForUtterance(words, speaker, wordPositions) {
-    // Clear previous utterance labels
-    this.clearLabels();
+    console.log('🏷️ TextManager.showLabelsForUtterance called:', { words, speaker, wordPositionsSize: wordPositions.size });
+    
+    // Clear only the labels for this speaker
+    this.clearLabelsForSpeaker(speaker);
+    
+    let labelsCreated = 0;
     
     // Add new labels for current utterance
     words.forEach(word => {
       const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+      console.log('🏷️ Processing word:', { word, cleanWord, hasPosition: wordPositions.has(cleanWord) });
+      
       if (cleanWord && wordPositions.has(cleanWord)) {
         const position = wordPositions.get(cleanWord);
-        this.createLabel(cleanWord, position, speaker);
-        this.lastUtteranceWords.add(cleanWord);
+        console.log('🏷️ Creating label for:', cleanWord, 'at position:', position);
+        
+        // Use speaker-specific key to allow same word for both speakers
+        const labelKey = `${speaker}-${cleanWord}`;
+        this.createLabel(labelKey, cleanWord, position, speaker);
+        
+        // Track words by speaker
+        if (speaker === 'user') {
+          this.lastUserWords.add(cleanWord);
+        } else {
+          this.lastAIWords.add(cleanWord);
+        }
+        labelsCreated++;
       }
     });
+    
+    console.log('🏷️ Total labels created:', labelsCreated);
   }
 
   // Create a 3D text label at the given position
-  createLabel(word, position, speaker) {
+  createLabel(labelKey, word, position, speaker) {
+    console.log('🏷️ createLabel called for:', word, 'at position:', position, 'key:', labelKey);
     try {
-      const textMesh = new Text();
-      textMesh.text = word;
-      textMesh.fontSize = 0.12;
-      textMesh.font = 'monospace'; // Use system monospace font
-      textMesh.color = speaker === 'user' ? 0x69ea4f : 0x8844ff; // Match point colors: green for user, purple for AI
-      textMesh.anchorX = 'center';
-      textMesh.anchorY = 'middle';
-      textMesh.position.copy(position);
-      textMesh.position.y += 0.25; // Offset above the word point
+      // Create a group to hold the text
+      const textGroup = new THREE.Group();
+      textGroup.position.copy(position);
+      textGroup.position.y += 0.05; // Much closer to the word point
       
-      // Billboard behavior - always face camera
-      textMesh.lookAt = null; // Will be set in update loop
+      // Create canvas-based 3D text
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = speaker === 'user' ? '#69ea4f' : '#8844ff'; // Green for user, purple for AI
+      ctx.font = '64px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(word, 256, 80);
       
-      // Add retro glow effect
-      textMesh.outlineWidth = 0.015;
-      textMesh.outlineColor = speaker === 'user' ? 0x2a5a1f : 0x44226f;
+      const texture = new THREE.CanvasTexture(canvas);
+      const planeMaterial = new THREE.MeshBasicMaterial({ 
+        map: texture, 
+        transparent: true,
+        depthTest: false,
+        side: THREE.DoubleSide
+      });
+      const planeGeometry = new THREE.PlaneGeometry(1.5, 0.375);
+      const textPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+      textPlane.position.set(0, 0.1, 0);
       
-      // VHS-style text effects
-      textMesh.strokeColor = speaker === 'user' ? 0x1a4a0f : 0x22115f;
-      textMesh.strokeWidth = 0.01;
+      console.log('🏷️ Text plane created for:', word);
       
-      // Start with fade-in animation
-      textMesh.material.transparent = true;
-      textMesh.material.opacity = 0;
+      // Add only the text plane to group
+      textGroup.add(textPlane);
       
-      this.scene.add(textMesh);
-      this.activeLabels.set(word, textMesh);
+      // Add group to scene
+      this.scene.add(textGroup);
+      this.activeLabels.set(labelKey, textGroup);
       
-      // Fade in animation
-      this.fadeIn(textMesh);
+      console.log('🏷️ Text group added to scene. Scene children count:', this.scene.children.length);
+      console.log('🏷️ Text setup complete. Visible:', textGroup.visible);
     } catch (error) {
       console.error('❌ Error creating 3D text label for word:', word, error);
       // Continue without breaking
     }
   }
 
+  // Clear labels for a specific speaker
+  clearLabelsForSpeaker(speaker) {
+    const labelsToRemove = [];
+    
+    this.activeLabels.forEach((textGroup, labelKey) => {
+      // Check if this label belongs to the speaker by checking the key prefix
+      if (labelKey.startsWith(`${speaker}-`)) {
+        this.scene.remove(textGroup);
+        // Dispose of the text mesh inside the group
+        textGroup.children.forEach(child => {
+          if (child.dispose) {
+            child.dispose();
+          }
+        });
+        labelsToRemove.push(labelKey);
+      }
+    });
+    
+    // Remove from active labels
+    labelsToRemove.forEach(labelKey => {
+      this.activeLabels.delete(labelKey);
+    });
+    
+    // Clear speaker-specific word sets
+    if (speaker === 'user') {
+      this.lastUserWords.clear();
+    } else {
+      this.lastAIWords.clear();
+    }
+  }
+
   // Clear all active labels
   clearLabels() {
-    this.activeLabels.forEach((textMesh, word) => {
-      this.fadeOut(textMesh, () => {
-        this.scene.remove(textMesh);
-        textMesh.dispose();
+    this.activeLabels.forEach((textGroup, word) => {
+      this.scene.remove(textGroup);
+      // Dispose of the text mesh inside the group
+      textGroup.children.forEach(child => {
+        if (child.dispose) {
+          child.dispose();
+        }
       });
     });
     this.activeLabels.clear();
-    this.lastUtteranceWords.clear();
+    this.lastUserWords.clear();
+    this.lastAIWords.clear();
+  }
+
+  // Update positions of text labels to follow moving points
+  updatePositions(currentPositions) {
+    this.activeLabels.forEach((textGroup, labelKey) => {
+      // Extract the word from the speaker-word key format
+      const word = labelKey.split('-').slice(1).join('-'); // Handle words with hyphens
+      if (currentPositions.has(word)) {
+        const newPosition = currentPositions.get(word);
+        textGroup.position.copy(newPosition);
+        textGroup.position.y += 0.05; // Much closer to the word point
+      }
+    });
   }
 
   // Update labels to face camera with distance-based optimization
   updateLabels(camera) {
-    this.activeLabels.forEach(textMesh => {
+    if (this.activeLabels.size > 0) {
+      console.log('🏷️ Updating', this.activeLabels.size, 'text labels');
+    }
+    
+    this.activeLabels.forEach((textGroup, labelKey) => {
       // Distance-based culling for performance
-      const distance = camera.position.distanceTo(textMesh.position);
+      const distance = camera.position.distanceTo(textGroup.position);
       const maxDistance = 20; // Hide labels beyond this distance
       
       if (distance > maxDistance) {
-        textMesh.visible = false;
+        textGroup.visible = false;
         return;
       }
       
-      textMesh.visible = true;
-      textMesh.lookAt(camera.position);
+      textGroup.visible = true;
+      
+      // Billboard behavior - make text plane face camera
+      textGroup.children.forEach(child => {
+        if (child.material?.map) { // canvas plane
+          child.lookAt(camera.position);
+        }
+      });
       
       // Distance-based scaling for better readability
       const scale = Math.max(0.8, Math.min(1.2, 1.0 + (distance - 10) * 0.02));
-      textMesh.scale.setScalar(scale);
+      textGroup.scale.setScalar(scale);
+      
+      if (this.activeLabels.size <= 3) { // Only log first few to avoid spam
+        console.log('🏷️ Updated label:', labelKey, 'distance:', distance.toFixed(2), 'visible:', textGroup.visible);
+      }
     });
   }
 
   // Fade in animation
   fadeIn(textMesh) {
+    console.log('🏷️ Starting fade-in animation for text mesh');
     const startTime = Date.now();
     const duration = 500; // 500ms fade in
     
@@ -118,6 +209,8 @@ class TextManager {
       
       if (progress < 1) {
         requestAnimationFrame(animate);
+      } else {
+        console.log('🏷️ Fade-in animation complete. Final opacity:', textMesh.material.opacity);
       }
     };
     

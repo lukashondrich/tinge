@@ -49,6 +49,7 @@ const deviceUtterances = new Map(); // Track utterances by device type
 let lastUtteranceWords = [];
 let lastUtteranceSpeaker = null;
 const wordPositions = new Map(); // word -> THREE.Vector3 position
+const wordIndices = new Map(); // word -> index in optimizer
 
 // Mobile device detection
 const isMobileDevice = () => {
@@ -372,8 +373,28 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
             lastUtteranceWords = words;
             lastUtteranceSpeaker = speaker;
             
-            // Show 3D text labels for the last utterance
-            textManager.showLabelsForUtterance(words, speaker, wordPositions);
+            console.log('🏷️ Processing utterance for 3D labels:', { text, words, speaker });
+            console.log('🏷️ WordPositions map size:', wordPositions.size);
+            console.log('🏷️ Available positions:', Array.from(wordPositions.keys()).slice(0, 10));
+            
+            // Get current positions from optimizer
+            const currentPositions = new Map();
+            words.forEach(word => {
+              const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+              if (cleanWord && wordIndices.has(cleanWord)) {
+                const index = wordIndices.get(cleanWord);
+                const optimizedPositions = optimizer.getPositions();
+                if (optimizedPositions[index]) {
+                  const pos = optimizedPositions[index].clone().multiplyScalar(SCALE);
+                  currentPositions.set(cleanWord, pos);
+                }
+              }
+            });
+            
+            console.log('📍 Current positions for utterance:', currentPositions.size, 'words');
+            
+            // Show 3D text labels for the last utterance with current positions
+            textManager.showLabelsForUtterance(words, speaker, currentPositions);
           } catch (error) {
             console.error('❌ 3D text label error:', error);
             // Don't break utterance processing
@@ -493,8 +514,11 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           // Set label for tooltip
           labels[id] = item.word;
           
-          // 📍 Track word position for 3D text labels
-          wordPositions.set(key, new THREE.Vector3(item.position.x * SCALE, item.position.y * SCALE, item.position.z * SCALE));
+          // 📍 Track word position and index for 3D text labels
+          const position = new THREE.Vector3(item.position.x * SCALE, item.position.y * SCALE, item.position.z * SCALE);
+          wordPositions.set(key, position);
+          wordIndices.set(key, id); // Track the index in the optimizer
+          console.log('📍 Loaded word position:', key, position, 'index:', id);
           
           loadedWordCount++;
         }
@@ -766,8 +790,11 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           recentlyAdded.set(id, performance.now());
           labels[id] = word;
           
-          // 📍 Track word position for 3D text labels
-          wordPositions.set(key, new THREE.Vector3(newPoint.x * scale, newPoint.y * scale, newPoint.z * scale));
+          // 📍 Track word position and index for 3D text labels
+          const position = new THREE.Vector3(newPoint.x * SCALE, newPoint.y * SCALE, newPoint.z * SCALE);
+          wordPositions.set(key, position);
+          wordIndices.set(key, id); // Track the index in the optimizer
+          console.log('📍 Tracked word position:', key, position, 'index:', id);
           
           // 💾 Save new word to vocabulary storage for persistence
           vocabularyStorage.saveWord(word, newPoint, speaker);
@@ -775,6 +802,30 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
           // Don't rethrow - UI update was successful
+        }
+      } else {
+        // Word already exists - make sure it's tracked for 3D text labels
+        if (!wordIndices.has(key)) {
+          // Find the existing word in the labels array
+          for (let i = 0; i < labels.length; i++) {
+            if (labels[i] && labels[i].toLowerCase() === key) {
+              wordIndices.set(key, i);
+              
+              // Also get the current position from the optimizer
+              const optimizedPositions = optimizer.getPositions();
+              if (optimizedPositions[i]) {
+                const position = new THREE.Vector3(
+                  optimizedPositions[i].x * SCALE,
+                  optimizedPositions[i].y * SCALE,
+                  optimizedPositions[i].z * SCALE
+                );
+                wordPositions.set(key, position);
+              }
+              
+              console.log('📍 Found existing word index:', key, 'index:', i);
+              break;
+            }
+          }
         }
       }
     } catch (err) {
@@ -914,8 +965,29 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     // Update VHS CRT shader time for animated effects
     vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
     
-    // 🏷️ Update 3D text labels to face camera
+    // 🏷️ Update 3D text labels to face camera and follow moving points
     try {
+      // Update positions of text labels to follow the optimized positions
+      if (lastUtteranceWords.length > 0) {
+        const currentPositions = new Map();
+        
+        // Get positions for all active labels (both user and AI)
+        textManager.activeLabels.forEach((textGroup, word) => {
+          const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+          if (cleanWord && wordIndices.has(cleanWord)) {
+            const index = wordIndices.get(cleanWord);
+            const optimizedPositions = optimizer.getPositions();
+            if (optimizedPositions[index]) {
+              const pos = optimizedPositions[index].clone().multiplyScalar(SCALE);
+              currentPositions.set(cleanWord, pos);
+            }
+          }
+        });
+        
+        // Update text manager with current positions
+        textManager.updatePositions(currentPositions);
+      }
+      
       textManager.updateLabels(camera);
     } catch (error) {
       console.error('❌ TextManager update error:', error);
