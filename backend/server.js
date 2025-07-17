@@ -58,7 +58,12 @@ app.use(cors(corsOptions));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    service: 'backend',
+    env: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Serve static files from public directory (if needed)
@@ -151,11 +156,6 @@ app.get("/token", async (req, res) => {
       detail: error.message 
     });
   }
-});
-
-// Add a test endpoint to verify server is running
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", message: "Server is running" });
 });
 
 // Token usage endpoints
