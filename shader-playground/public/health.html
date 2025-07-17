@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Health Check</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <script>
+        // Health check endpoint for frontend
+        const healthData = {
+            status: 'OK',
+            timestamp: new Date().toISOString(),
+            service: 'frontend',
+            env: 'production'
+        };
+        
+        // If accessed directly, show JSON
+        if (window.location.pathname === '/health' || window.location.pathname === '/health.html') {
+            document.write('<pre>' + JSON.stringify(healthData, null, 2) + '</pre>');
+        }
+    </script>
+</body>
+</html>

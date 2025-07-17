@@ -1,14 +1,150 @@
-name: Deploy to Railway
+name: Multi-Environment Deployment
 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 
 jobs:
-  deploy:
+  # Stage 1: Deploy to Staging (Automatic)
+  deploy-staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      staging-url: ${{ steps.deploy-staging.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy Frontend to Staging
+        id: deploy-staging
+        run: |
+          railway service frontend-staging
+          railway up --detach
+          echo "url=https://frontend-staging-production.up.railway.app" >> $GITHUB_OUTPUT
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Backend to Staging
+        run: |
+          cd ../backend
+          railway service backend-staging
+          railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Run Staging Health Check
+        run: |
+          sleep 30
+          curl -f ${{ steps.deploy-staging.outputs.url }}/health || exit 1
+          curl -f https://backend-staging-production.up.railway.app/health || exit 1
+
+      - name: Comment on PR with Staging URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Staging deployment successful! Review at: ${{ steps.deploy-staging.outputs.url }}'
+            })
+
+  # Stage 2: Request Production Approval
+  request-production-approval:
+    name: Request Production Approval
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Create Production Approval Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚀 Production Deployment Request - ${context.sha.substring(0, 7)}`,
+              body: `
+            ## Production Deployment Request
+            
+            **Commit**: ${context.sha}
+            **Branch**: ${context.ref}
+            **Staging URL**: ${{ needs.deploy-staging.outputs.staging-url }}
+            
+            ### Review Checklist
+            - [ ] Staging environment tested
+            - [ ] No breaking changes
+            - [ ] Performance is acceptable
+            - [ ] Ready for production
+            
+            **To approve**: Comment with \`approved\`
+            **To reject**: Comment with \`rejected\`
+            
+            @lukashondrich
+            `,
+              assignees: ['lukashondrich']
+            })
+            
+            // Store issue number for the approval job
+            console.log('Issue created:', issue.number)
+
+  # Stage 3: Manual Approval Gate
+  production-approval:
+    name: Production Approval Gate
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, request-production-approval]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Manual Approval
+        uses: trstringer/manual-approval@v1
+        timeout-minutes: 60
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: lukashondrich
+          minimum-approvals: 1
+          issue-title: "🚀 Production Deployment Approval Required"
+          issue-body: |
+            **Staging URL**: ${{ needs.deploy-staging.outputs.staging-url }}
+            **Commit**: ${{ github.sha }}
+            
+            Please review the staging deployment and approve for production.
+            
+            Reply with "approved" to proceed with production deployment.
+
+  # Stage 4: Deploy to Production (After Approval)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [deploy-staging, production-approval]
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,7 +157,76 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy to Railway
-        run: railway up --detach
+      - name: Deploy Frontend to Production
+        run: |
+          railway service tinge_frontend
+          railway up --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Backend to Production
+        run: |
+          cd ../backend
+          railway service tinge_backend
+          railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Run Production Health Check
+        run: |
+          sleep 30
+          curl -f https://tingefrontend-production.up.railway.app/health || exit 1
+          curl -f https://tingebackend-production.up.railway.app/health || exit 1
+
+      - name: Notify Production Deployment Success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `✅ Production Deployment Successful - ${context.sha.substring(0, 7)}`,
+              body: `
+            ## Production Deployment Successful! 🎉
+            
+            **Commit**: ${context.sha}
+            **Production URL**: https://tingefrontend-production.up.railway.app
+            **Deployment Time**: ${new Date().toISOString()}
+            
+            The deployment has been completed successfully and health checks passed.
+            `
+            })
+
+  # Rollback job (manual trigger only)
+  rollback-production:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'rollback'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Rollback Production
+        run: |
+          railway service tinge_frontend
+          railway rollback
+          cd ../backend
+          railway service tinge_backend
+          railway rollback
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Notify Rollback
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔄 Production Rollback Completed - ${context.sha.substring(0, 7)}`,
+              body: `Production has been rolled back to the previous deployment.`
+            })
