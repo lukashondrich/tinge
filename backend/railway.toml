@@ -11,12 +11,11 @@ healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
 
-# Disable automatic GitHub deployments - use GitHub Actions workflow instead
-# [source]
-# repo = "lukashondrich/tinge"
-# branch = "main"
-# rootDirectory = "backend"
-# watchPatterns = ["backend/**"]
+[source]
+repo = "lukashondrich/tinge"
+branch = "main"
+rootDirectory = "backend"
+watchPatterns = ["backend/**"]
 
 [variables]
 NODE_ENV = "production"

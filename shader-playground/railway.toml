@@ -10,9 +10,8 @@ healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
 
-# Disable automatic GitHub deployments - use GitHub Actions workflow instead
-# [source]
-# repo = "lukashondrich/tinge"
-# branch = "main"
-# rootDirectory = "shader-playground"
-# watchPatterns = ["shader-playground/**"]
+[source]
+repo = "lukashondrich/tinge"
+branch = "main"
+rootDirectory = "shader-playground"
+watchPatterns = ["shader-playground/**"]
