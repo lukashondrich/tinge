@@ -10,8 +10,5 @@ healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
 
-[source]
-repo = "lukashondrich/tinge"
-branch = "main"
-rootDirectory = "shader-playground"
-watchPatterns = ["shader-playground/**"]
+# Remove GitHub integration entirely - use only GitHub Actions workflow
+# No [source] section - Railway will not auto-deploy

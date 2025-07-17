@@ -1,0 +1,2 @@
+# This file should prevent automatic Railway deployments
+# Deploy only via Railway CLI

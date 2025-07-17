@@ -51,7 +51,22 @@ jobs:
           cd shader-playground
           # Force Railway to use Dockerfile by uploading manually
           railway service frontend-staging
-          railway up --detach
+          # Add retry logic for Railway deployments
+          for i in 1 2 3; do
+            echo "Deployment attempt $i..."
+            if railway up --detach; then
+              echo "Deployment successful on attempt $i"
+              break
+            else
+              echo "Deployment failed on attempt $i"
+              if [ $i -eq 3 ]; then
+                echo "All deployment attempts failed"
+                exit 1
+              fi
+              echo "Retrying in 30 seconds..."
+              sleep 30
+            fi
+          done
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -61,7 +76,22 @@ jobs:
           cd backend
           # Force Railway to use Dockerfile by uploading manually
           railway service backend-staging
-          railway up --detach
+          # Add retry logic for Railway deployments
+          for i in 1 2 3; do
+            echo "Deployment attempt $i..."
+            if railway up --detach; then
+              echo "Deployment successful on attempt $i"
+              break
+            else
+              echo "Deployment failed on attempt $i"
+              if [ $i -eq 3 ]; then
+                echo "All deployment attempts failed"
+                exit 1
+              fi
+              echo "Retrying in 30 seconds..."
+              sleep 30
+            fi
+          done
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
