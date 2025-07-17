@@ -13,7 +13,10 @@ const dom = new JSDOM(`
 
 globalThis.document = dom.window.document;
 globalThis.window = dom.window;
-globalThis.navigator = dom.window.navigator;
+Object.defineProperty(globalThis, 'navigator', {
+  value: dom.window.navigator,
+  writable: true
+});
 
 // Mock AudioContext
 const mockAudioContext = {

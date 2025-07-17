@@ -1,5 +1,5 @@
-const { describe, test, expect, beforeEach, beforeAll, afterAll } = require('@jest/globals');
-const { JSDOM } = require('jsdom');
+import { describe, test, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 
 // Mock DOM environment
 const dom = new JSDOM(`
@@ -23,27 +23,27 @@ let mockObjectStore;
 beforeEach(() => {
   // Create fresh mock instances for each test
   mockObjectStore = {
-    add: jest.fn(() => ({ onsuccess: null, onerror: null })),
-    get: jest.fn(() => ({ onsuccess: null, onerror: null, result: null })),
-    put: jest.fn(() => ({ onsuccess: null, onerror: null })),
-    delete: jest.fn(() => ({ onsuccess: null, onerror: null })),
-    getAll: jest.fn(() => ({ onsuccess: null, onerror: null, result: [] })),
-    createIndex: jest.fn(),
-    count: jest.fn(() => ({ onsuccess: null, onerror: null, result: 0 }))
+    add: vi.fn(() => ({ onsuccess: null, onerror: null })),
+    get: vi.fn(() => ({ onsuccess: null, onerror: null, result: null })),
+    put: vi.fn(() => ({ onsuccess: null, onerror: null })),
+    delete: vi.fn(() => ({ onsuccess: null, onerror: null })),
+    getAll: vi.fn(() => ({ onsuccess: null, onerror: null, result: [] })),
+    createIndex: vi.fn(),
+    count: vi.fn(() => ({ onsuccess: null, onerror: null, result: 0 }))
   };
 
   mockTransaction = {
-    objectStore: jest.fn(() => mockObjectStore),
+    objectStore: vi.fn(() => mockObjectStore),
     oncomplete: null,
     onerror: null,
     onabort: null
   };
 
   mockDB = {
-    transaction: jest.fn(() => mockTransaction),
-    createObjectStore: jest.fn(() => mockObjectStore),
-    deleteObjectStore: jest.fn(),
-    close: jest.fn(),
+    transaction: vi.fn(() => mockTransaction),
+    createObjectStore: vi.fn(() => mockObjectStore),
+    deleteObjectStore: vi.fn(),
+    close: vi.fn(),
     version: 1,
     objectStoreNames: ['utterances']
   };
@@ -57,8 +57,8 @@ beforeEach(() => {
 
   Object.defineProperty(global, 'indexedDB', {
     value: {
-      open: jest.fn(() => mockOpenRequest),
-      deleteDatabase: jest.fn()
+      open: vi.fn(() => mockOpenRequest),
+      deleteDatabase: vi.fn()
     },
     writable: true
   });
@@ -66,27 +66,27 @@ beforeEach(() => {
 
 // Mock URL.createObjectURL
 Object.defineProperty(global.URL, 'createObjectURL', {
-  value: jest.fn(() => 'blob:mock-url'),
+  value: vi.fn(() => 'blob:mock-url'),
   writable: true
 });
 
 // Mock crypto.randomUUID
 Object.defineProperty(global.crypto, 'randomUUID', {
-  value: jest.fn(() => 'mock-uuid-1234'),
+  value: vi.fn(() => 'mock-uuid-1234'),
   writable: true
 });
 
 describe('Utterance Storage Integration Tests', () => {
   beforeAll(() => {
     // Mock console methods
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   beforeEach(() => {
     // Reset all mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('StorageService Implementation', () => {

@@ -1,5 +1,5 @@
-const { describe, test, expect, beforeEach, beforeAll, afterAll } = require('@jest/globals');
-const { JSDOM } = require('jsdom');
+import { describe, test, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 
 // Mock DOM environment
 const dom = new JSDOM(`
@@ -22,14 +22,14 @@ global.navigator = dom.window.navigator;
 // Mock AudioContext
 const mockAudioContext = {
   state: 'suspended',
-  resume: jest.fn(() => Promise.resolve()),
-  createBufferSource: jest.fn(() => ({
-    start: jest.fn(),
-    stop: jest.fn(),
-    connect: jest.fn(),
+  resume: vi.fn(() => Promise.resolve()),
+  createBufferSource: vi.fn(() => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+    connect: vi.fn(),
     buffer: null
   })),
-  decodeAudioData: jest.fn(() => Promise.resolve({
+  decodeAudioData: vi.fn(() => Promise.resolve({
     duration: 2.5,
     sampleRate: 44100
   })),
@@ -37,20 +37,20 @@ const mockAudioContext = {
 };
 
 Object.defineProperty(global, 'AudioContext', {
-  value: jest.fn(() => mockAudioContext),
+  value: vi.fn(() => mockAudioContext),
   writable: true
 });
 
 Object.defineProperty(global, 'webkitAudioContext', {
-  value: jest.fn(() => mockAudioContext),
+  value: vi.fn(() => mockAudioContext),
   writable: true
 });
 
 // Mock MediaRecorder
 const mockMediaRecorder = {
-  start: jest.fn(),
-  stop: jest.fn(),
-  addEventListener: jest.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  addEventListener: vi.fn(),
   state: 'inactive',
   mimeType: 'audio/webm',
   ondataavailable: null,
@@ -58,55 +58,55 @@ const mockMediaRecorder = {
 };
 
 Object.defineProperty(global, 'MediaRecorder', {
-  value: jest.fn(() => mockMediaRecorder),
+  value: vi.fn(() => mockMediaRecorder),
   writable: true
 });
 
 // Mock getUserMedia
 const mockStream = {
-  getTracks: jest.fn(() => [{ stop: jest.fn() }]),
-  getAudioTracks: jest.fn(() => [{ stop: jest.fn() }])
+  getTracks: vi.fn(() => [{ stop: vi.fn() }]),
+  getAudioTracks: vi.fn(() => [{ stop: vi.fn() }])
 };
 
 Object.defineProperty(global.navigator, 'mediaDevices', {
   value: {
-    getUserMedia: jest.fn(() => Promise.resolve(mockStream))
+    getUserMedia: vi.fn(() => Promise.resolve(mockStream))
   },
   writable: true
 });
 
 // Mock URL.createObjectURL
 Object.defineProperty(global.URL, 'createObjectURL', {
-  value: jest.fn(() => 'blob:mock-url'),
+  value: vi.fn(() => 'blob:mock-url'),
   writable: true
 });
 
 // Mock crypto.randomUUID
 Object.defineProperty(global.crypto, 'randomUUID', {
-  value: jest.fn(() => 'mock-uuid-1234'),
+  value: vi.fn(() => 'mock-uuid-1234'),
   writable: true
 });
 
 // Mock Audio constructor
 const mockAudio = {
-  play: jest.fn(() => Promise.resolve()),
-  pause: jest.fn(),
+  play: vi.fn(() => Promise.resolve()),
+  pause: vi.fn(),
   currentTime: 0,
   duration: 2.5
 };
 
 Object.defineProperty(global, 'Audio', {
-  value: jest.fn(() => mockAudio),
+  value: vi.fn(() => mockAudio),
   writable: true
 });
 
 // Mock SpeechSynthesis
 const mockSpeechSynthesis = {
-  speak: jest.fn(),
-  cancel: jest.fn()
+  speak: vi.fn(),
+  cancel: vi.fn()
 };
 
-const mockSpeechSynthesisUtterance = jest.fn(function(text) {
+const mockSpeechSynthesisUtterance = vi.fn(function(text) {
   this.text = text;
   this.rate = 1.0;
   this.pitch = 1.0;
@@ -125,17 +125,17 @@ Object.defineProperty(global, 'SpeechSynthesisUtterance', {
 
 // Mock IndexedDB
 const mockIndexedDB = {
-  open: jest.fn(() => ({
+  open: vi.fn(() => ({
     onsuccess: null,
     onerror: null,
     onupgradeneeded: null,
     result: {
-      transaction: jest.fn(() => ({
-        objectStore: jest.fn(() => ({
-          add: jest.fn(),
-          get: jest.fn(),
-          put: jest.fn(),
-          delete: jest.fn()
+      transaction: vi.fn(() => ({
+        objectStore: vi.fn(() => ({
+          add: vi.fn(),
+          get: vi.fn(),
+          put: vi.fn(),
+          delete: vi.fn()
         }))
       }))
     }
@@ -150,14 +150,14 @@ Object.defineProperty(global, 'indexedDB', {
 describe('Audio Integration Tests', () => {
   beforeAll(() => {
     // Mock console methods
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   beforeEach(() => {
     // Reset all mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Reset DOM state
     document.getElementById('transcriptContainer').innerHTML = '';
@@ -455,7 +455,7 @@ describe('Audio Integration Tests', () => {
     });
 
     test('should handle AudioContext creation failures', () => {
-      global.AudioContext = jest.fn(() => {
+      global.AudioContext = vi.fn(() => {
         throw new Error('AudioContext creation failed');
       });
 
