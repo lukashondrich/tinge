@@ -4,6 +4,6 @@ import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 
 export function createRGBShiftPass() {
   const pass = new ShaderPass(RGBShiftShader);
-  pass.uniforms['amount'].value = 0.1; // tweak to control strength
+  pass.uniforms['amount'].value = 0.2; // tweak to control strength
   return pass;
 }
