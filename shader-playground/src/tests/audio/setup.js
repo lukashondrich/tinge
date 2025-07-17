@@ -4,9 +4,9 @@ import { setupAudioMocks, setupDOMEnvironment } from './utils/audio-test-helpers
 
 // Setup DOM environment
 const dom = new JSDOM(setupDOMEnvironment());
-global.document = dom.window.document;
-global.window = dom.window;
-global.navigator = dom.window.navigator;
+globalThis.document = dom.window.document;
+globalThis.window = dom.window;
+globalThis.navigator = dom.window.navigator;
 
 // Mock console methods to avoid noise in tests
 beforeAll(() => {
@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   
   // Setup comprehensive audio mocks
-  setupAudioMocks(global, {
+  setupAudioMocks(globalThis, {
     audioContext: {
       initialState: 'suspended',
       sampleRate: 44100,
@@ -63,7 +63,7 @@ beforeEach(() => {
   });
   
   // Mock performance.now for consistent timing
-  global.performance = {
+  globalThis.performance = {
     now: vi.fn(() => Date.now()),
     timing: {},
     navigation: {},
@@ -75,8 +75,8 @@ beforeEach(() => {
   };
   
   // Mock requestAnimationFrame
-  global.requestAnimationFrame = vi.fn(cb => setTimeout(cb, 16));
-  global.cancelAnimationFrame = vi.fn();
+  globalThis.requestAnimationFrame = vi.fn(cb => setTimeout(cb, 16));
+  globalThis.cancelAnimationFrame = vi.fn();
   
   // Mock setTimeout/setInterval for consistent timing
   vi.useFakeTimers();
@@ -94,12 +94,12 @@ afterEach(() => {
   document.body.innerHTML = '';
   
   // Clear any global state
-  if (global.window) {
-    delete global.window.panel;
-    delete global.window.audioCtx;
-    delete global.window.wordToUtteranceMap;
-    delete global.window.playAudioFor;
-    delete global.window.mobileDebug;
+  if (globalThis.window) {
+    delete globalThis.window.panel;
+    delete globalThis.window.audioCtx;
+    delete globalThis.window.wordToUtteranceMap;
+    delete globalThis.window.playAudioFor;
+    delete globalThis.window.mobileDebug;
   }
 });
 
@@ -108,8 +108,8 @@ process.env.NODE_ENV = 'test';
 process.env.VITEST = 'true';
 
 // Global test utilities
-global.flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
-global.waitFor = (condition, timeout = 5000) => {
+globalThis.flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
+globalThis.waitFor = (condition, timeout = 5000) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     const check = () => {

@@ -388,7 +388,7 @@ describe('AudioContext Management', () => {
   describe('Buffer Cache Management', () => {
     test('should implement buffer caching', () => {
       const bufferCache = new Map();
-      const _audioCtx = new AudioContext();
+      // const _audioCtx = new AudioContext();
       
       // Simulate DialoguePanel buffer caching
       const recordId = 'test-record-1';

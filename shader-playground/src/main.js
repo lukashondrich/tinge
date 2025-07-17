@@ -371,7 +371,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           try {
             const words = text.toLowerCase().match(/\b\w+\b/g) || [];
             lastUtteranceWords = words;
-            lastUtteranceSpeaker = speaker;
+            // lastUtteranceSpeaker = speaker;
             
             console.log('🏷️ Processing utterance for 3D labels:', { text, words, speaker });
             console.log('🏷️ WordPositions map size:', wordPositions.size);

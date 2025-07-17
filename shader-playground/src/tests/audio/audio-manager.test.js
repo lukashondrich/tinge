@@ -315,7 +315,7 @@ describe('AudioManager', () => {
       };
       
       // Simulate empty data event - only add to chunks if size > 0
-      const dataEvent = { data: emptyData };
+      // const dataEvent = { data: emptyData };
       if (emptyData.size > 0) {
         audioManager.chunks.push(emptyData);
       }
