@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { createRGBShiftPass } from './effects/rgbShiftPass.js';
-import { createVHSCRTPass } from './effects/vhsCrtPass.js';
+// import { createVHSCRTPass } from './effects/vhsCrtPass.js';
 import { createRenderer } from './core/renderer.js';
 import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
@@ -47,7 +47,7 @@ const deviceUtterances = new Map(); // Track utterances by device type
 
 // Track last utterance for 3D text labels
 let lastUtteranceWords = [];
-let lastUtteranceSpeaker = null;
+// let lastUtteranceSpeaker = null;
 const wordPositions = new Map(); // word -> THREE.Vector3 position
 const wordIndices = new Map(); // word -> index in optimizer
 
@@ -174,7 +174,7 @@ function startBubble(speaker) {
 
 // Initialize scene and OpenAI Realtime
 console.log('🚀 Starting scene initialization...');
-createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls, recentlyAdded, labels, textManager }) => {
+createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls: _controls, recentlyAdded, labels, textManager }) => {
   console.log('✅ Scene created successfully');
   const renderer = createRenderer();
   

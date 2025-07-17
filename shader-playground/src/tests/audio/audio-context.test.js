@@ -104,7 +104,7 @@ describe('AudioContext Management', () => {
       const originalAudioContext = globalThis.AudioContext;
       globalThis.AudioContext = undefined;
       
-      const audioCtx = new webkitAudioContext();
+      const audioCtx = new globalThis.webkitAudioContext();
       
       expect(globalThis.webkitAudioContext).toHaveBeenCalledTimes(1);
       expect(audioCtx.state).toBe('suspended');
@@ -388,7 +388,7 @@ describe('AudioContext Management', () => {
   describe('Buffer Cache Management', () => {
     test('should implement buffer caching', () => {
       const bufferCache = new Map();
-      const audioCtx = new AudioContext();
+      const _audioCtx = new AudioContext();
       
       // Simulate DialoguePanel buffer caching
       const recordId = 'test-record-1';

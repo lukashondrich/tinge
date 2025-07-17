@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Text } from 'troika-three-text';
+// import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+// import { Text } from 'troika-three-text';
 export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
 
@@ -133,7 +133,7 @@ class TextManager {
 
   // Clear all active labels
   clearLabels() {
-    this.activeLabels.forEach((textGroup, word) => {
+    this.activeLabels.forEach((textGroup, _word) => {
       this.scene.remove(textGroup);
       // Dispose of the text mesh inside the group
       textGroup.children.forEach(child => {
@@ -263,7 +263,7 @@ export async function createScene() {
   
   // Keep labels for hit‑testing - starts empty, will be populated as words are spoken
   const labels = [];
-  const scale = SCALE;
+  // const scale = SCALE;
 
 
   // No initial data to process - raw array is empty
@@ -387,7 +387,7 @@ export async function createScene() {
   scene.add(gel);
 
   // Controls will be initialized later in main.js with the renderer
-  let controls = null;
+  const controls = null;
 
   // Initialize 3D text manager
   let textManager;
