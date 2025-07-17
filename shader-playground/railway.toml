@@ -9,6 +9,7 @@ restartPolicyType = "ON_FAILURE"
 numReplicas = 1
 
 [source]
-repo = "user01/threejs_playground"
+repo = "lukashondrich/tinge"
 branch = "main"
-watchPatterns = ["**"]
+rootDirectory = "shader-playground"
+watchPatterns = ["shader-playground/**"]

@@ -9,6 +9,12 @@ healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1
 
+[source]
+repo = "lukashondrich/tinge"
+branch = "main"
+rootDirectory = "backend"
+watchPatterns = ["backend/**"]
+
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
