@@ -686,8 +686,8 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   composer.addPass(rgbShiftPass);
 
   // Add VHS CRT shader pass for retro 80s aesthetic
-  const vhsCrtPass = createVHSCRTPass();
-  composer.addPass(vhsCrtPass);
+  // const vhsCrtPass = createVHSCRTPass();
+  // composer.addPass(vhsCrtPass);
   
 
   async function processWord(word, speaker = "ai") {
@@ -963,7 +963,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;
     
     // Update VHS CRT shader time for animated effects
-    vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
+    // vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
     
     // 🏷️ Update 3D text labels to face camera and follow moving points
     try {
