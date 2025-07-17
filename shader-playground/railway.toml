@@ -1,6 +1,8 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
+# Disable automatic detection
+provider = "dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
