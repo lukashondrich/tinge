@@ -33,10 +33,14 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          cd shader-playground
+          npm ci
 
       - name: Run tests
-        run: npm run test:run || true
+        run: |
+          cd shader-playground
+          npm run test:run || true
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
@@ -44,6 +48,7 @@ jobs:
       - name: Deploy Frontend to Staging
         id: deploy-staging
         run: |
+          cd shader-playground
           railway service frontend-staging
           railway up --detach
           echo "url=https://frontend-staging-production.up.railway.app" >> $GITHUB_OUTPUT
@@ -52,7 +57,7 @@ jobs:
 
       - name: Deploy Backend to Staging
         run: |
-          cd ../backend
+          cd backend
           railway service backend-staging
           railway up --detach
         env:
@@ -159,6 +164,7 @@ jobs:
 
       - name: Deploy Frontend to Production
         run: |
+          cd shader-playground
           railway service tinge_frontend
           railway up --detach
         env:
@@ -166,7 +172,7 @@ jobs:
 
       - name: Deploy Backend to Production
         run: |
-          cd ../backend
+          cd backend
           railway service tinge_backend
           railway up --detach
         env:
@@ -212,6 +218,7 @@ jobs:
 
       - name: Rollback Production
         run: |
+          cd shader-playground
           railway service tinge_frontend
           railway rollback
           cd ../backend
