@@ -49,8 +49,10 @@ This is a multi-service application consisting of:
    ```
 
 4. **(Optional) Install fastText and language model:**
+   Run this command from the repository root so the package is installed inside
+   the `shader-playground` folder:
    ```bash
-   npm install fasttext.js --prefix shader-playground
+   (cd shader-playground && npm install fasttext.js)
    # download the lid.176.ftz model and place it in shader-playground/public/models
    ```
    If this step is skipped, the app will still run but language detection will fallback to a simple heuristic.
