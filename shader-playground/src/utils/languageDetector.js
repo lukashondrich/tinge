@@ -1,7 +1,19 @@
-import FastText from 'fasttext.js';
-
+let FastTextModule;
 let modelPromise;
 const MODEL_PATH = '/models/lid.176.ftz';
+
+async function getFastText() {
+  if (!FastTextModule) {
+    try {
+      const mod = await import('fasttext.js');
+      FastTextModule = mod.default || mod;
+    } catch (err) {
+      console.warn('fasttext.js not available:', err);
+      return null;
+    }
+  }
+  return FastTextModule ? new FastTextModule() : null;
+}
 
 /**
  * Lazily load the fastText language identification model.
@@ -10,7 +22,8 @@ const MODEL_PATH = '/models/lid.176.ftz';
  */
 async function loadModel() {
   if (!modelPromise) {
-    const ft = new FastText();
+    const ft = await getFastText();
+    if (!ft) return null;
     modelPromise = ft.loadModel(MODEL_PATH).catch(err => {
       console.warn('Failed to load fastText model:', err);
       modelPromise = null;
