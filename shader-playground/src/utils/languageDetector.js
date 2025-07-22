@@ -44,21 +44,58 @@ async function loadModel() {
 export async function detectLanguage(word, candidateLanguages = []) {
   try {
     const model = await loadModel();
-    if (!model) return 'unknown';
-    const predictions = await model.predict(word, 1);
-    if (!predictions || !predictions.length) return 'unknown';
-    let lang = predictions[0].label.replace(/^__label__/, '').toLowerCase();
-    if (candidateLanguages.length) {
-      const allowed = candidateLanguages.map(l => l.toLowerCase());
-      if (!allowed.includes(lang)) {
-        return 'unknown';
+    if (model) {
+      const predictions = await model.predict(word, 1);
+      if (predictions && predictions.length) {
+        const lang = predictions[0].label.replace(/^__label__/, '').toLowerCase();
+        if (candidateLanguages.length) {
+          const allowed = candidateLanguages.map(l => l.toLowerCase());
+          if (allowed.includes(lang)) {
+            return lang;
+          }
+          return heuristicDetect(word, candidateLanguages);
+        }
+        return lang;
       }
     }
-    return lang;
+    return heuristicDetect(word, candidateLanguages);
   } catch (err) {
     console.warn('Language detection failed:', err);
-    return 'unknown';
+    return heuristicDetect(word, candidateLanguages);
   }
+}
+
+/**
+ * Very basic heuristic language detection based on character sets.
+ * @param {string} word - word to analyse
+ * @param {string[]} candidateLanguages - candidate languages from user profile
+ * @returns {string} guessed language or 'unknown'
+ */
+function heuristicDetect(word, candidateLanguages = []) {
+  if (!word) return 'unknown';
+  const scripts = {
+    zh: /[\u4e00-\u9fff]/,
+    ja: /[\u3040-\u30ff]/,
+    ko: /[\uac00-\ud7a3]/,
+    ru: /[а-яё]/i,
+    el: /[α-ωάέίόύήώ]/i,
+    ar: /[\u0600-\u06ff]/,
+    he: /[\u0590-\u05ff]/,
+    de: /[äöüß]/i,
+    fr: /[éèêëàçùôûîôÿ]/i,
+    es: /[ñáéíóúü]/i
+  };
+  const langs = candidateLanguages.length ? candidateLanguages : Object.keys(scripts);
+  for (const lang of langs) {
+    const regex = scripts[lang.toLowerCase()];
+    if (regex && regex.test(word)) {
+      return lang.toLowerCase();
+    }
+  }
+  if (candidateLanguages.length === 1) {
+    return candidateLanguages[0].toLowerCase();
+  }
+  return 'unknown';
 }
 
 /**

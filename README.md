@@ -55,7 +55,9 @@ This is a multi-service application consisting of:
    (cd shader-playground && npm install fasttext.js)
    # download the lid.176.ftz model and place it in shader-playground/public/models
    ```
-   If this step is skipped, the app will still run but language detection will fallback to a simple heuristic.
+   If this step is skipped, the app will still run but language detection will
+   fall back to a basic heuristic that guesses based on the languages configured
+   in your profile.
 5. **Start development servers:**
    ```bash
    npm run dev
