@@ -15,6 +15,11 @@ on:
           - staging
           - production
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   # Stage 1: Deploy to Staging (Automatic)
   deploy-staging:
