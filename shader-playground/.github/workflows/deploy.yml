@@ -99,7 +99,7 @@ jobs:
         run: |
           sleep 30
           curl -f ${{ steps.deploy-staging.outputs.url }}/health || exit 1
-          curl -f https://backend-staging-production.up.railway.app/health || exit 1
+          curl -f https://backend-staging-production-bb3d.up.railway.app/health || exit 1
 
       - name: Comment on PR with Staging URL
         if: github.event_name == 'pull_request'
@@ -113,44 +113,64 @@ jobs:
               body: '🚀 Staging deployment successful! Review at: ${{ steps.deploy-staging.outputs.url }}'
             })
 
-  # Stage 2: Manual Approval Gate
-  production-approval:
-    name: Production Approval Gate  
+  # Stage 2: Create Production Approval Issue
+  request-production-approval:
+    name: Create Production Approval Issue
     runs-on: ubuntu-latest
     needs: deploy-staging
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Manual Approval
-        uses: trstringer/manual-approval@v1
-        timeout-minutes: 60
+      - name: Create Production Approval Issue
+        uses: actions/github-script@v7
         with:
-          secret: ${{ secrets.GITHUB_TOKEN }}
-          approvers: lukashondrich
-          minimum-approvals: 1
-          issue-title: "🚀 Production Deployment Approval Required - ${{ github.sha }}"
-          issue-body: |
-            ## Production Deployment Request
+          script: |
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚀 Production Deployment Approval Required - ${context.sha.substring(0, 7)}`,
+              body: `## Production Deployment Request
             
-            **Commit**: ${{ github.sha }}
-            **Branch**: ${{ github.ref }}
-            **Staging URL**: ${{ needs.deploy-staging.outputs.staging-url }}
+            **Commit**: ${context.sha}
+            **Branch**: ${context.ref}
+            **Staging URL**: ${{ needs.deploy-staging.outputs.url }}
             
             ### Review Checklist
             - [ ] Staging environment tested
-            - [ ] No breaking changes  
+            - [ ] No breaking changes
             - [ ] Performance is acceptable
             - [ ] VHS shader disabled for user testing
             - [ ] Ready for production
             
-            **To approve**: Reply with "approved"
-            **To reject**: Reply with "rejected"
+            **To approve**: Comment with \`approved\`
+            **To reject**: Comment with \`rejected\`
             
             @lukashondrich
             
             ---
-            *This issue was created to approve the production deployment. Please review the staging environment and reply "approved" to proceed.*
+            *This issue was created to approve the production deployment. Please review the staging environment and comment "approved" to proceed with production deployment.*`,
+              assignees: ['lukashondrich']
+            })
+            
+            console.log('Production approval issue created:', issue.number)
+            console.log('Issue URL:', issue.html_url)
 
-  # Stage 3: Deploy to Production (After Approval)
+  # Stage 3: Wait for Manual Approval (separate workflow trigger)
+  production-approval:
+    name: Wait for Production Approval
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, request-production-approval]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Manual Approval Gate
+        uses: trstringer/manual-approval@v1
+        timeout-minutes: 1440  # 24 hours
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: lukashondrich
+          minimum-approvals: 1
+          issue-title: "Production Deployment Approval - ${{ github.sha }}"
+
+  # Stage 4: Deploy to Production (After Approval)
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
