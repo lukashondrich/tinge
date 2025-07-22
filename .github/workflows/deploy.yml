@@ -27,7 +27,19 @@ jobs:
       - name: Deploy Frontend
         run: |
           cd shader-playground
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la | head -10
+          echo "Checking for Dockerfile..."
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile found"
+          else
+            echo "❌ Dockerfile not found"
+            exit 1
+          fi
+          echo "Connecting to Railway service..."
           railway service frontend-staging
+          echo "Railway service connected, deploying..."
           railway up --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -35,7 +47,19 @@ jobs:
       - name: Deploy Backend
         run: |
           cd backend
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la | head -10
+          echo "Checking for Dockerfile..."
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile found"
+          else
+            echo "❌ Dockerfile not found"
+            exit 1
+          fi
+          echo "Connecting to Railway backend service..."
           railway service backend-staging
+          echo "Railway backend service connected, deploying..."
           railway up --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
