@@ -1,0 +1,38 @@
+name: Test Railway Authentication
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-railway-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Railway CLI
+        run: |
+          echo "Installing Railway CLI..."
+          npm install -g @railway/cli
+          railway --version
+          
+      - name: Test Railway Authentication
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Testing Railway authentication..."
+          if railway whoami; then
+            echo "✅ Railway authentication successful"
+          else
+            echo "❌ Railway authentication failed"
+            echo "Token length: ${#RAILWAY_TOKEN}"
+            echo "Token starts with: ${RAILWAY_TOKEN:0:10}..."
+          fi
+          
+      - name: Test Service Connection
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Testing service connections..."
+          cd ${{ github.workspace }}
+          
+          # Test if we can connect to services
+          echo "Checking available projects..."
+          railway list || echo "Failed to list projects"
