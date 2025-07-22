@@ -2,16 +2,36 @@ let FastTextModule;
 let modelPromise;
 const MODEL_PATH = '/models/lid.176.ftz';
 
+async function loadFastTextScript() {
+  return new Promise(resolve => {
+    const existing = document.querySelector('script[data-fasttext]');
+    if (existing) return existing.addEventListener('load', () => resolve());
+
+    const script = document.createElement('script');
+    script.src = '/vendor/fasttext.js';
+    script.async = true;
+    script.dataset.fasttext = 'true';
+    script.addEventListener('load', () => resolve());
+    script.addEventListener('error', () => resolve());
+    document.head.appendChild(script);
+  });
+}
+
 async function getFastText() {
   if (!FastTextModule) {
     try {
-      // Use @vite-ignore so the build succeeds even when fasttext.js is absent
-      // This allows running the app without the optional dependency installed
-      const mod = await import(/* @vite-ignore */ 'fasttext.js');
-      FastTextModule = mod.default || mod;
+      // Prefer require() for non-ESM environments if available
+      if (typeof require !== 'undefined') {
+        FastTextModule = require('fasttext.js');
+      } else {
+        // Use @vite-ignore so the build works when fasttext.js isn't installed
+        const mod = await import(/* @vite-ignore */ 'fasttext.js');
+        FastTextModule = mod.default || mod;
+      }
     } catch (err) {
-      console.warn('fasttext.js not available:', err);
-      return null;
+      console.warn('fasttext.js module not available, trying script load:', err);
+      await loadFastTextScript();
+      FastTextModule = window.FastText || window.fastText;
     }
   }
   return FastTextModule ? new FastTextModule() : null;

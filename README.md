@@ -54,7 +54,9 @@ This is a multi-service application consisting of:
    ```bash
    (cd shader-playground && npm install fasttext.js)
    # download the lid.176.ftz model and place it in shader-playground/public/models
+   # copy the fasttext.js browser bundle to shader-playground/public/vendor
    ```
+   The browser bundle allows loading `fasttext.js` without using ESM modules.
    If this step is skipped, the app will still run but language detection will
    fall back to a basic heuristic that guesses based on the languages configured
    in your profile.
