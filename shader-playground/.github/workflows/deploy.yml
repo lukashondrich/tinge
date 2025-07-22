@@ -43,14 +43,29 @@ jobs:
           npm run test:run || true
 
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: |
+          npm install -g @railway/cli
+          echo "Railway CLI installed successfully"
+          railway --version
+
+      - name: Authenticate Railway CLI
+        run: |
+          echo "Authenticating Railway CLI..."
+          railway whoami || echo "Railway authentication failed"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Frontend to Staging
         id: deploy-staging
         run: |
           cd shader-playground
-          # Force Railway to use Dockerfile by uploading manually
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          echo "Connecting to Railway service..."
           railway service frontend-staging
+          echo "Railway service connection successful"
+          railway status
           # Add retry logic for Railway deployments
           for i in 1 2 3; do
             echo "Deployment attempt $i..."
@@ -74,18 +89,23 @@ jobs:
       - name: Deploy Backend to Staging
         run: |
           cd backend
-          # Force Railway to use Dockerfile by uploading manually
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          echo "Connecting to Railway backend service..."
           railway service backend-staging
+          echo "Railway backend service connection successful"
+          railway status
           # Add retry logic for Railway deployments
           for i in 1 2 3; do
-            echo "Deployment attempt $i..."
+            echo "Backend deployment attempt $i..."
             if railway up --detach; then
-              echo "Deployment successful on attempt $i"
+              echo "Backend deployment successful on attempt $i"
               break
             else
-              echo "Deployment failed on attempt $i"
+              echo "Backend deployment failed on attempt $i"
               if [ $i -eq 3 ]; then
-                echo "All deployment attempts failed"
+                echo "All backend deployment attempts failed"
                 exit 1
               fi
               echo "Retrying in 30 seconds..."
