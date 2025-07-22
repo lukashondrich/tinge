@@ -5,7 +5,9 @@ const MODEL_PATH = '/models/lid.176.ftz';
 async function getFastText() {
   if (!FastTextModule) {
     try {
-      const mod = await import('fasttext.js');
+      // Use @vite-ignore so the build succeeds even when fasttext.js is absent
+      // This allows running the app without the optional dependency installed
+      const mod = await import(/* @vite-ignore */ 'fasttext.js');
       FastTextModule = mod.default || mod;
     } catch (err) {
       console.warn('fasttext.js not available:', err);
