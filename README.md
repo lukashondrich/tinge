@@ -48,7 +48,12 @@ This is a multi-service application consisting of:
    npm run install:all
    ```
 
-4. **Start development servers:**
+4. **Install fastText and language model (frontend):**
+   ```bash
+   npm install fasttext.js --prefix shader-playground
+   # download the lid.176.ftz model and place it in shader-playground/public/models
+   ```
+5. **Start development servers:**
    ```bash
    npm run dev
    ```

@@ -40,6 +40,7 @@
     "qrcode-terminal": "^0.12.0",
     "three": "^0.174.0",
     "troika-three-text": "^0.52.4",
-    "vite-plugin-glsl": "^1.3.3"
+    "vite-plugin-glsl": "^1.3.3",
+    "fasttext.js": "^0.6.0"
   }
 }
