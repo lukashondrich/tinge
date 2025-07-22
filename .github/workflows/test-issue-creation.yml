@@ -1,0 +1,81 @@
+name: Test Issue Creation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test-issue-*
+
+permissions:
+  issues: write
+  contents: read
+  
+jobs:
+  test-create-issue:
+    name: Test GitHub Issue Creation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Token Permissions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Checking GITHUB_TOKEN permissions...')
+            try {
+              // Test repository access
+              const repo = await github.rest.repos.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              })
+              console.log('✅ Repository access: OK')
+              console.log('Repository:', repo.data.full_name)
+              
+              // Test if we can list issues (read permission)
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 1
+              })
+              console.log('✅ Issues read permission: OK')
+              console.log('Found', issues.data.length, 'recent issues')
+              
+            } catch (error) {
+              console.error('❌ Permission test failed:', error.message)
+              console.error('Error status:', error.status)
+            }
+      - name: Test Create Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Testing GitHub issue creation...')
+            console.log('Repository:', context.repo.owner + '/' + context.repo.repo)
+            console.log('GITHUB_TOKEN available:', !!context.payload)
+            
+            try {
+              const { data: issue } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🧪 Test Issue Creation - ${new Date().toISOString()}`,
+                body: `## Test Issue
+                
+                This is a test issue to verify GitHub issue creation permissions.
+                
+                **Created at**: ${new Date().toISOString()}
+                **Commit**: ${context.sha}
+                **Triggered by**: ${context.eventName}
+                
+                If you see this issue, GitHub issue creation is working correctly!
+                
+                You can safely close this issue.`,
+                labels: ['test', 'automation']
+              })
+              
+              console.log('✅ Issue created successfully!')
+              console.log('Issue number:', issue.number)
+              console.log('Issue URL:', issue.html_url)
+              console.log('Issue ID:', issue.id)
+              
+            } catch (error) {
+              console.error('❌ Failed to create issue:', error.message)
+              console.error('Error details:', error)
+              throw error
+            }

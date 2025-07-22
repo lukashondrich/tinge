@@ -1,0 +1,56 @@
+name: Simple Issue Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  create-test-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug Context
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "SHA: ${{ github.sha }}"
+      
+      - name: Create Issue with curl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Testing issue creation with curl..."
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues \
+            -d '{
+              "title": "🧪 Manual Test Issue - '"$(date)"'",
+              "body": "This is a test issue created via curl in GitHub Actions to test issue creation permissions.\n\nCreated at: '"$(date)"'\n\nYou can safely close this issue."
+            }' || echo "Failed to create issue with curl"
+      
+      - name: Create Issue with github-script
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Creating issue with github-script...')
+            try {
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🧪 GitHub Script Test Issue - ${new Date().toISOString()}`,
+                body: `Test issue created with github-script action.
+                
+                Created at: ${new Date().toISOString()}
+                
+                You can safely close this issue.`
+              })
+              console.log('✅ Issue created:', issue.data.html_url)
+            } catch (error) {
+              console.error('❌ Failed to create issue:', error)
+              throw error
+            }
