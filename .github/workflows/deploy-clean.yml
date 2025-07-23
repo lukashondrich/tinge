@@ -34,11 +34,8 @@ jobs:
           echo "Railway CLI installed successfully"
           railway --version || echo "Railway CLI version check failed"
           echo "Testing Railway authentication..."
+          export RAILWAY_TOKEN=$RAILWAY_TOKEN
           railway whoami || echo "Railway authentication failed"
-          echo "Listing available projects..."
-          railway project list || echo "Failed to list projects"
-          echo "Listing available services..."
-          railway service list || echo "Failed to list services"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
@@ -58,11 +55,10 @@ jobs:
             exit 1
           fi
           echo "Connecting to Railway project first..."
-          railway login --token $RAILWAY_TOKEN || echo "Login failed"
-          echo "Listing projects after login..."
-          railway project list || echo "Failed to list projects after login"
-          echo "Attempting to link to project..."
-          railway link 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Project link with ID failed"
+          echo "Setting up Railway environment..."
+          export RAILWAY_TOKEN=$RAILWAY_TOKEN
+          echo "Attempting to connect to project..."
+          railway connect 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Project connect failed"
           echo "Connecting to Railway service..."
           railway service frontend-staging || echo "Service connection failed"
           echo "Railway service connection status: $?"
@@ -83,8 +79,8 @@ jobs:
           cd backend
           echo "Current directory: $(pwd)"
           ls -la | head -10
-          echo "Linking to Railway project for backend..."
-          railway link 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Backend project link failed"
+          echo "Connecting to Railway project for backend..."
+          railway connect 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Backend project connect failed"
           echo "Connecting to Railway backend service..."
           railway service backend-staging || echo "Failed to connect to Railway backend service"
           echo "Railway backend service connected, deploying..."
