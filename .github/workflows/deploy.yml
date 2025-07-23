@@ -131,20 +131,23 @@ jobs:
             console.log('🚀 Creating production approval issue...')
             
             try {
+              const stagingUrl = process.env.STAGING_URL || 'https://frontend-staging-production-3876.up.railway.app';
+              const deploymentId = process.env.DEPLOYMENT_ID || 'unknown';
+              
               const { data: issue } = await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: `🚀 Production Deployment Approval Required - ${context.sha.substring(0, 7)}`,
-                body: \`## Production Deployment Request
+                body: `## Production Deployment Request
 
-**Commit**: \\\`\${context.sha}\\\`
-**Branch**: \\\`\${context.ref}\\\`
-**Staging URL**: \${process.env.STAGING_URL}
-**Deployment ID**: \${process.env.DEPLOYMENT_ID}
+**Commit**: \`${context.sha}\`
+**Branch**: \`${context.ref}\`
+**Staging URL**: ${stagingUrl}
+**Deployment ID**: ${deploymentId}
 
 ### 🧪 Staging Environment
 Please test the staging environment before approving production deployment:
-- **Frontend**: \${process.env.STAGING_URL}
+- **Frontend**: ${stagingUrl}
 - **Backend**: https://backend-staging-production-bb3d.up.railway.app
 
 ### ✅ Review Checklist
@@ -155,16 +158,16 @@ Please test the staging environment before approving production deployment:
 - [ ] Ready for production deployment
 
 ### 🚀 Approval Instructions
-**To approve**: Comment \\\`approved\\\` on this issue
-**To reject**: Comment \\\`rejected\\\` on this issue
+**To approve**: Comment \`approved\` on this issue
+**To reject**: Comment \`rejected\` on this issue
 
 ### 📝 Recent Changes
-\${context.payload.head_commit ? context.payload.head_commit.message : 'Manual deployment'}
+${context.payload.head_commit ? context.payload.head_commit.message : 'Manual deployment'}
 
 @lukashondrich
 
 ---
-*This issue was created automatically after successful staging deployment. Please review and approve for production deployment.*\`,
+*This issue was created automatically after successful staging deployment. Please review and approve for production deployment.*`,
                 assignees: ['lukashondrich'],
                 labels: ['deployment', 'production-approval']
               })
