@@ -1,0 +1,106 @@
+name: Deploy Working
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Railway CLI
+        run: |
+          echo "Installing Railway CLI..."
+          npm install -g @railway/cli
+          railway --version
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Frontend to Staging
+        run: |
+          echo "Starting frontend deployment..."
+          cd shader-playground
+          mkdir -p ~/.railway
+          cat > ~/.railway/config.json << EOF
+          {
+            "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+            "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+            "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
+          }
+          EOF
+          railway up --service frontend-staging --detach --verbose
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, 'approved')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Railway CLI
+        run: |
+          echo "Installing Railway CLI..."
+          npm install -g @railway/cli
+          railway --version
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Frontend to Production
+        run: |
+          echo "Starting production frontend deployment..."
+          cd shader-playground
+          mkdir -p ~/.railway
+          cat > ~/.railway/config.json << EOF
+          {
+            "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+            "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+            "serviceId": "tinge_frontend"
+          }
+          EOF
+          railway up --service tinge_frontend --detach --verbose
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Close Approval Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '## ✅ Production Deployment Completed!\n\nThe production deployment has been completed successfully.'
+            })
+            
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            })
