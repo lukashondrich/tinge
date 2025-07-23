@@ -57,8 +57,15 @@ jobs:
             echo "❌ Dockerfile not found"
             exit 1
           fi
+          echo "Connecting to Railway project first..."
+          railway login --token $RAILWAY_TOKEN || echo "Login failed"
+          echo "Listing projects after login..."
+          railway project list || echo "Failed to list projects after login"
+          echo "Attempting to link to project..."
+          railway link --project-id ${{ secrets.RAILWAY_PROJECT_ID }} || echo "Project link failed - trying interactive link"
+          railway link || echo "Interactive link also failed"
           echo "Connecting to Railway service..."
-          railway service frontend-staging
+          railway service frontend-staging || echo "Service connection failed"
           echo "Railway service connection status: $?"
           echo "Checking current Railway context..."
           railway status || echo "Railway status failed"
