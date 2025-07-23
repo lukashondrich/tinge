@@ -39,13 +39,13 @@ jobs:
           echo "Starting frontend deployment..."
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << EOF
-          {
-            "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-            "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-            "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
-          }
-          EOF
+          cat > ~/.railway/config.json << 'EOF'
+{
+  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+  "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
+}
+EOF
           railway up --service frontend-staging --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -76,13 +76,13 @@ jobs:
           echo "Starting production frontend deployment..."
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << EOF
-          {
-            "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-            "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-            "serviceId": "tinge_frontend"
-          }
-          EOF
+          cat > ~/.railway/config.json << 'EOF'
+{
+  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+  "serviceId": "tinge_frontend"
+}
+EOF
           railway up --service tinge_frontend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -92,13 +92,13 @@ jobs:
           echo "Starting production backend deployment..."
           cd backend
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << EOF
-          {
-            "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
-            "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-            "serviceId": "tinge_backend"
-          }
-          EOF
+          cat > ~/.railway/config.json << 'EOF'
+{
+  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
+  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+  "serviceId": "tinge_backend"
+}
+EOF
           railway up --service tinge_backend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
