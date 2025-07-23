@@ -55,7 +55,16 @@ jobs:
             exit 1
           fi
           echo "Starting Railway deployment..."
-          echo "Using Railway up with explicit service and environment..."
+          echo "Creating Railway project configuration..."
+          mkdir -p ~/.railway
+          cat > ~/.railway/config.json << EOF
+{
+  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+  "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
+}
+EOF
+          echo "Railway config created, attempting deployment..."
           railway up --service frontend-staging --detach --verbose
           echo "Deployment command exit code: $?"
           echo "Frontend deployment completed"
@@ -71,6 +80,16 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -la | head -10
           echo "Starting Railway backend deployment..."
+          echo "Creating Railway backend project configuration..."
+          mkdir -p ~/.railway
+          cat > ~/.railway/config.json << EOF
+{
+  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
+  "serviceId": "backend-staging-service-id"
+}
+EOF
+          echo "Railway backend config created, attempting deployment..."
           railway up --service backend-staging --detach --verbose
           echo "Backend deployment completed"
         env:
