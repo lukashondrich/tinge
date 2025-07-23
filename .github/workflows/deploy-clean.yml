@@ -84,7 +84,7 @@ EOF
           mkdir -p ~/.railway
           cat > ~/.railway/config.json << EOF
 {
-  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
+  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
   "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
   "serviceId": "backend-staging-service-id"
 }
