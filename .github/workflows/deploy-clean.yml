@@ -54,18 +54,9 @@ jobs:
             echo "❌ Dockerfile not found"
             exit 1
           fi
-          echo "Connecting to Railway project first..."
-          echo "Setting up Railway environment..."
-          export RAILWAY_TOKEN=$RAILWAY_TOKEN
-          echo "Attempting to connect to project..."
-          railway connect 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Project connect failed"
-          echo "Connecting to Railway service..."
-          railway service frontend-staging || echo "Service connection failed"
-          echo "Railway service connection status: $?"
-          echo "Checking current Railway context..."
-          railway status || echo "Railway status failed"
-          echo "Attempting deployment..."
-          railway up --detach --verbose
+          echo "Starting Railway deployment..."
+          echo "Using Railway up with explicit service and environment..."
+          railway up --service frontend-staging --detach --verbose
           echo "Deployment command exit code: $?"
           echo "Frontend deployment completed"
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
@@ -79,12 +70,8 @@ jobs:
           cd backend
           echo "Current directory: $(pwd)"
           ls -la | head -10
-          echo "Connecting to Railway project for backend..."
-          railway connect 7d38c550-e4c4-4cc0-83af-c1b705a990cb || echo "Backend project connect failed"
-          echo "Connecting to Railway backend service..."
-          railway service backend-staging || echo "Failed to connect to Railway backend service"
-          echo "Railway backend service connected, deploying..."
-          railway up --detach || echo "Railway backend deployment failed"
+          echo "Starting Railway backend deployment..."
+          railway up --service backend-staging --detach --verbose
           echo "Backend deployment completed"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
