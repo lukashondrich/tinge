@@ -46,6 +46,10 @@ jobs:
           else
             echo "✅ RAILWAY_TOKEN is set"
           fi
+          echo "Testing Railway authentication..."
+          railway whoami || echo "❌ Railway authentication failed"
+          echo "Listing Railway services..."
+          railway service list || echo "❌ Failed to list Railway services"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
