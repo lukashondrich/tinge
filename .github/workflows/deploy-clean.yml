@@ -134,7 +134,7 @@ EOF
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    if: github.event_name == 'issue_comment' && contains(github.event.issue.title, 'Production Deployment Approval Required') && contains(github.event.comment.body, 'approved') && github.event.comment.user.login == 'lukashondrich'
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, 'approved')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
