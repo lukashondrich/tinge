@@ -35,6 +35,10 @@ jobs:
           railway --version || echo "Railway CLI version check failed"
           echo "Testing Railway authentication..."
           railway whoami || echo "Railway authentication failed"
+          echo "Listing available projects..."
+          railway project list || echo "Failed to list projects"
+          echo "Listing available services..."
+          railway service list || echo "Failed to list services"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
@@ -45,10 +49,22 @@ jobs:
           cd shader-playground
           echo "Current directory: $(pwd)"
           ls -la | head -10
+          echo "Checking for Dockerfile..."
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile found"
+            cat Dockerfile | head -5
+          else
+            echo "❌ Dockerfile not found"
+            exit 1
+          fi
           echo "Connecting to Railway service..."
-          railway service frontend-staging || echo "Failed to connect to Railway service"
-          echo "Railway service connected, deploying..."
-          railway up --detach || echo "Railway deployment failed"
+          railway service frontend-staging
+          echo "Railway service connection status: $?"
+          echo "Checking current Railway context..."
+          railway status || echo "Railway status failed"
+          echo "Attempting deployment..."
+          railway up --detach --verbose
+          echo "Deployment command exit code: $?"
           echo "Frontend deployment completed"
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
           echo "deployment-id=frontend-$(date +%s)" >> $GITHUB_OUTPUT
