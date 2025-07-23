@@ -35,9 +35,19 @@ jobs:
 
       - name: Install Railway CLI
         run: |
+          echo "Installing Railway CLI..."
           npm install -g @railway/cli
           echo "Railway CLI installed successfully"
-          railway --version
+          railway --version || echo "Railway CLI version check failed"
+          echo "Checking Railway token..."
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "❌ RAILWAY_TOKEN is not set"
+            exit 1
+          else
+            echo "✅ RAILWAY_TOKEN is set"
+          fi
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Frontend to Staging
         id: deploy-staging
