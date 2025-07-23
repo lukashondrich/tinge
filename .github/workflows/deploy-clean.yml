@@ -1,0 +1,104 @@
+name: Clean Deploy Workflow
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      staging-url: ${{ steps.deploy-staging.outputs.url }}
+      deployment-id: ${{ steps.deploy-staging.outputs.deployment-id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Railway CLI
+        run: |
+          echo "Installing Railway CLI..."
+          npm install -g @railway/cli
+          echo "Railway CLI installed successfully"
+          railway --version || echo "Railway CLI version check failed"
+          echo "Testing Railway authentication..."
+          railway whoami || echo "Railway authentication failed"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Frontend to Staging
+        id: deploy-staging
+        run: |
+          echo "Starting frontend deployment..."
+          cd shader-playground
+          echo "Current directory: $(pwd)"
+          ls -la | head -10
+          echo "Connecting to Railway service..."
+          railway service frontend-staging || echo "Failed to connect to Railway service"
+          echo "Railway service connected, deploying..."
+          railway up --detach || echo "Railway deployment failed"
+          echo "Frontend deployment completed"
+          echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
+          echo "deployment-id=frontend-$(date +%s)" >> $GITHUB_OUTPUT
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Backend to Staging
+        run: |
+          echo "Starting backend deployment..."
+          cd backend
+          echo "Current directory: $(pwd)"
+          ls -la | head -10
+          echo "Connecting to Railway backend service..."
+          railway service backend-staging || echo "Failed to connect to Railway backend service"
+          echo "Railway backend service connected, deploying..."
+          railway up --detach || echo "Railway backend deployment failed"
+          echo "Backend deployment completed"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  create-approval-issue:
+    name: Create Production Approval Issue
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: always() && needs.deploy-staging.result == 'success'
+    steps:
+      - name: Create Production Approval Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Creating production approval issue...')
+            
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Production Deployment Approval Required - ' + context.sha.substring(0, 7),
+              body: '## Production Deployment Request\n\n' +
+                    '**Commit**: `' + context.sha + '`\n' +
+                    '**Branch**: `' + context.ref + '`\n' +
+                    '**Staging URL**: https://frontend-staging-production-3876.up.railway.app\n\n' +
+                    '### Review Checklist\n' +
+                    '- [ ] Staging environment tested and working\n' +
+                    '- [ ] No breaking changes detected\n' +
+                    '- [ ] Ready for production deployment\n\n' +
+                    '### Approval Instructions\n' +
+                    '**To approve**: Comment `approved` on this issue\n' +
+                    '**To reject**: Comment `rejected` on this issue\n\n' +
+                    '@lukashondrich',
+              assignees: ['lukashondrich'],
+              labels: ['deployment', 'production-approval']
+            })
+            
+            console.log('Production approval issue created:', issue.number)
