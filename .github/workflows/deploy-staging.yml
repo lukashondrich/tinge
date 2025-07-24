@@ -34,19 +34,16 @@ jobs:
           echo "RAILWAY_TOKEN length: ${#RAILWAY_TOKEN}"
           echo "Explicitly exporting RAILWAY_TOKEN..."
           export RAILWAY_TOKEN="$RAILWAY_TOKEN"
-          echo "Testing Railway authentication..."
-          railway whoami
-          echo "Attempting deployment..."
-          railway up --detach
+          echo "Attempting deployment with project token..."
+          railway up --service frontend-staging --detach
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
 
       - name: Deploy Backend to Staging
         run: |
           cd backend
-          echo "Testing Railway authentication for backend..."
-          railway whoami
-          echo "Attempting backend deployment..."
-          railway up --detach
+          echo "Attempting backend deployment with project token..."
+          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
+          railway up --service backend-staging --detach
 
   create-approval-issue:
     name: Create Production Approval Issue
