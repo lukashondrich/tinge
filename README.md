@@ -124,13 +124,49 @@ The application is containerized and can be deployed to any Docker-compatible pl
    docker-compose -f docker-compose.prod.yml up -d
    ```
 
-### Production Deployment
+### Railway Deployment
 
 **Current Live Deployment**: Railway.app
 
-The application is currently deployed on Railway with the following services:
+The application is deployed on Railway with the following services:
 - **Frontend**: https://tingefrontend-production.up.railway.app
 - **Backend API**: https://tingebackend-production.up.railway.app
+
+#### Manual Deployment via Railway CLI
+
+**Prerequisites**: 
+- Railway CLI installed: `npm install -g @railway/cli`
+- Authenticated: `railway login` (one-time setup)
+
+**Deploy to Staging**:
+```bash
+# Frontend staging
+cd shader-playground
+railway up --service frontend-staging --detach
+
+# Backend staging  
+cd backend
+railway up --service backend-staging --detach
+```
+
+**Deploy to Production**:
+```bash
+# Frontend production
+cd shader-playground
+railway up --service tinge_frontend --detach
+
+# Backend production
+cd backend
+railway up --service tinge_backend --detach
+```
+
+**Key Notes**:
+- Directory context matters - Railway uses your local directory to determine which project to deploy
+- Use `railway status` to check which project/service context you're in
+- `--detach` flag runs deployment in background
+- Staging URLs: 
+  - Frontend: https://frontend-staging-production-3876.up.railway.app
+  - Backend: https://backend-staging-production-bb3d.up.railway.app
 
 **Alternative Deployment Platforms**:
 - AWS ECS/Fargate
