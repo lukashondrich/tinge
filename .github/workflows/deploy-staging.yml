@@ -43,7 +43,7 @@ jobs:
           cd backend
           echo "Attempting backend deployment with project token..."
           export RAILWAY_TOKEN="$RAILWAY_TOKEN"
-          railway up --service 882c35cc-b512-49db-916f-28c0ba58bc7b --detach
+          railway up --service backend-staging --detach
 
   create-approval-issue:
     name: Create Production Approval Issue
