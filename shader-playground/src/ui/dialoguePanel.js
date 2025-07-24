@@ -3,6 +3,9 @@
 // Single AudioContext for playback
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+// Track active audio sources for cleanup
+let activeSources = [];
+
 // Ensure AudioContext is resumed before playback to comply with
 // browser autoplay restrictions. Some browsers start the context
 // in a suspended state until a user gesture occurs which would
@@ -22,6 +25,31 @@ async function ensureAudioContext() {
   }
 }
 const bufferCache = new Map();
+
+// Stop all active audio sources
+function stopActiveAudio() {
+  activeSources.forEach(source => {
+    try {
+      source.stop();
+    } catch (e) {
+      // Source may already be stopped
+    }
+  });
+  activeSources = [];
+}
+
+// Debounce mechanism to prevent rapid successive clicks
+let lastClickTime = 0;
+const CLICK_DEBOUNCE_MS = 100;
+
+function isDebounced() {
+  const now = Date.now();
+  if (now - lastClickTime < CLICK_DEBOUNCE_MS) {
+    return true;
+  }
+  lastClickTime = now;
+  return false;
+}
 
 export class DialoguePanel {
     constructor(containerSelector) {
@@ -95,13 +123,16 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         const handlePlay = async () => {
+          if (isDebounced()) return;
+          
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
+          
+          stopActiveAudio();
           await ensureAudioContext();
           new Audio(record.audioURL).play();
         };
         playBtn.addEventListener('click', handlePlay);
-        playBtn.addEventListener('pointerdown', handlePlay);
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
@@ -145,20 +176,35 @@ export class DialoguePanel {
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
             const handleWord = async () => {
+              if (isDebounced()) return;
+              
               // eslint-disable-next-line no-console
               console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+              
+              stopActiveAudio();
               await ensureAudioContext();
               const src = audioCtx.createBufferSource();
               src.buffer = audioBuffer;
               src.connect(audioCtx.destination);
+              
+              // Track this source for cleanup
+              activeSources.push(src);
+              
               // Add 200ms buffer before and after word timing
               const playbackBuffer = 0.1; // 200ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
               src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              
+              // Remove from active sources when done
+              src.onended = () => {
+                const index = activeSources.indexOf(src);
+                if (index > -1) {
+                  activeSources.splice(index, 1);
+                }
+              };
             };
             span.addEventListener('click', handleWord);
-            span.addEventListener('pointerdown', handleWord);
           }
           w++; // increment word index regardless
           highlightedSpan.appendChild(span);
@@ -195,13 +241,16 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         const handlePlay = async () => {
+          if (isDebounced()) return;
+          
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
+          
+          stopActiveAudio();
           await ensureAudioContext();
           new Audio(record.audioURL).play();
         };
         playBtn.addEventListener('click', handlePlay);
-        playBtn.addEventListener('pointerdown', handlePlay);
         bubble.insertBefore(playBtn, bubble.firstChild);
         
         // Decode & cache AudioBuffer
@@ -261,20 +310,35 @@ export class DialoguePanel {
           if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
             const { start, end } = record.wordTimings[w];
             const handleWord = async () => {
+              if (isDebounced()) return;
+              
               // eslint-disable-next-line no-console
               console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+              
+              stopActiveAudio();
               await ensureAudioContext();
               const src = audioCtx.createBufferSource();
               src.buffer = audioBuffer;
               src.connect(audioCtx.destination);
+              
+              // Track this source for cleanup
+              activeSources.push(src);
+              
               // Add 200ms buffer before and after word timing
               const playbackBuffer = 0.1; // 200ms in seconds
               const bufferedStart = Math.max(0, start - playbackBuffer);
               const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
               src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+              
+              // Remove from active sources when done
+              src.onended = () => {
+                const index = activeSources.indexOf(src);
+                if (index > -1) {
+                  activeSources.splice(index, 1);
+                }
+              };
             };
             span.addEventListener('click', handleWord);
-            span.addEventListener('pointerdown', handleWord);
           }
           w++; // increment word index regardless
           highlightedSpan.appendChild(span);

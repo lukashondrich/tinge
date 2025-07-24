@@ -169,28 +169,6 @@ describe('DialoguePanel Audio Functionality', () => {
       expect(mockAudio.play).toHaveBeenCalledTimes(1);
     });
 
-    test('should handle play button pointerdown events', async () => {
-      const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
-      const record = {
-        id: 'test-id',
-        speaker: 'user',
-        text: 'Hello world',
-        audioBlob: mockBlob,
-        audioURL: 'blob:mock-url'
-      };
-
-      await panel.add(record);
-
-      const playButton = container.querySelector('.play-utterance');
-      
-      // Simulate pointerdown
-      const pointerEvent = new dom.window.PointerEvent('pointerdown');
-      playButton.dispatchEvent(pointerEvent);
-
-      expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
-      expect(globalThis.Audio).toHaveBeenCalledWith('blob:mock-url');
-      expect(mockAudio.play).toHaveBeenCalledTimes(1);
-    });
 
     test('should resume AudioContext when suspended', async () => {
       mockAudioContext.state = 'suspended';
@@ -298,39 +276,6 @@ describe('DialoguePanel Audio Functionality', () => {
       expect(bufferSource.start).toHaveBeenCalledWith(0, -0.1, 0.6); // buffered start/end
     });
 
-    test('should handle word pointerdown events for audio playback', async () => {
-      const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
-      const mockBuffer = {
-        duration: 2.5,
-        sampleRate: 44100
-      };
-      
-      mockAudioContext.decodeAudioData.mockResolvedValue(mockBuffer);
-      
-      const record = {
-        id: 'test-id',
-        speaker: 'user',
-        text: 'Hello world',
-        audioBlob: mockBlob,
-        audioURL: 'blob:mock-url',
-        wordTimings: [
-          { word: 'Hello', start: 0.0, end: 0.5 },
-          { word: 'world', start: 0.6, end: 1.0 }
-        ]
-      };
-
-      await panel.add(record);
-
-      const wordSpans = container.querySelectorAll('.word');
-      const firstWord = wordSpans[0];
-      
-      // Simulate pointerdown on first word
-      const pointerEvent = new dom.window.PointerEvent('pointerdown');
-      firstWord.dispatchEvent(pointerEvent);
-
-      expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
-      expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
-    });
 
     test('should not add click handlers to words without timing data', async () => {
       const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
