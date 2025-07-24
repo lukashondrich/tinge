@@ -37,13 +37,11 @@ jobs:
         run: |
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
-}
-EOF
+          echo "{" > ~/.railway/config.json
+          echo '  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",' >> ~/.railway/config.json
+          echo '  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",' >> ~/.railway/config.json
+          echo '  "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"' >> ~/.railway/config.json
+          echo "}" >> ~/.railway/config.json
           railway up --service frontend-staging --detach --verbose
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
         env:
@@ -53,13 +51,11 @@ EOF
         run: |
           cd backend
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "backend-staging"
-}
-EOF
+          echo "{" > ~/.railway/config.json
+          echo '  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",' >> ~/.railway/config.json
+          echo '  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",' >> ~/.railway/config.json
+          echo '  "serviceId": "backend-staging"' >> ~/.railway/config.json
+          echo "}" >> ~/.railway/config.json
           railway up --service backend-staging --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

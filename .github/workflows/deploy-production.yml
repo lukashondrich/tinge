@@ -33,13 +33,11 @@ jobs:
         run: |
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "tinge_frontend"
-}
-EOF
+          echo "{" > ~/.railway/config.json
+          echo '  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",' >> ~/.railway/config.json
+          echo '  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",' >> ~/.railway/config.json
+          echo '  "serviceId": "tinge_frontend"' >> ~/.railway/config.json
+          echo "}" >> ~/.railway/config.json
           railway up --service tinge_frontend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -48,13 +46,11 @@ EOF
         run: |
           cd backend
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "tinge_backend"
-}
-EOF
+          echo "{" > ~/.railway/config.json
+          echo '  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",' >> ~/.railway/config.json
+          echo '  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",' >> ~/.railway/config.json
+          echo '  "serviceId": "tinge_backend"' >> ~/.railway/config.json
+          echo "}" >> ~/.railway/config.json
           railway up --service tinge_backend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
