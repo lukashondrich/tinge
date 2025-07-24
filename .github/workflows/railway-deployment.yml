@@ -1,4 +1,4 @@
-name: Deploy Working
+name: Railway Deployment
 
 on:
   push:
@@ -17,6 +17,9 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      staging-url: ${{ steps.deploy-staging.outputs.url }}
+      deployment-id: ${{ steps.deploy-staging.outputs.deployment-id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,27 +31,60 @@ jobs:
 
       - name: Install Railway CLI
         run: |
-          echo "Installing Railway CLI..."
           npm install -g @railway/cli
           railway --version
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Frontend to Staging
+        id: deploy-staging
         run: |
-          echo "Starting frontend deployment..."
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "fb761291-19e0-453a-8d2f-941eaba7fff6"
-}
-EOF
+          echo '{"projectId":"7d38c550-e4c4-4cc0-83af-c1b705a990cb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"fb761291-19e0-453a-8d2f-941eaba7fff6"}' > ~/.railway/config.json
           railway up --service frontend-staging --detach --verbose
+          echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
+          echo "deployment-id=frontend-$(date +%s)" >> $GITHUB_OUTPUT
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Backend to Staging
+        run: |
+          cd backend
+          mkdir -p ~/.railway
+          echo '{"projectId":"c78dee4b-24f7-4750-b23a-998c620bf6eb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"backend-staging"}' > ~/.railway/config.json
+          railway up --service backend-staging --detach --verbose
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  create-approval-issue:
+    name: Create Production Approval Issue
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: always() && needs.deploy-staging.result == 'success'
+    steps:
+      - name: Create Production Approval Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Production Deployment Approval Required - ' + context.sha.substring(0, 7),
+              body: '## Production Deployment Request\n\n' +
+                    '**Commit**: `' + context.sha + '`\n' +
+                    '**Staging URL**: https://frontend-staging-production-3876.up.railway.app\n\n' +
+                    '### Review Checklist\n' +
+                    '- [ ] Staging environment tested and working\n' +
+                    '- [ ] No breaking changes detected\n' +
+                    '- [ ] Ready for production deployment\n\n' +
+                    '### Approval Instructions\n' +
+                    '**To approve**: Comment `approved` on this issue\n\n' +
+                    '@lukashondrich',
+              assignees: ['lukashondrich'],
+              labels: ['deployment', 'production-approval']
+            })
+            console.log('Production approval issue created:', issue.number)
 
   deploy-production:
     name: Deploy to Production
@@ -65,7 +101,6 @@ EOF
 
       - name: Install Railway CLI
         run: |
-          echo "Installing Railway CLI..."
           npm install -g @railway/cli
           railway --version
         env:
@@ -73,32 +108,18 @@ EOF
 
       - name: Deploy Frontend to Production
         run: |
-          echo "Starting production frontend deployment..."
           cd shader-playground
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "tinge_frontend"
-}
-EOF
+          echo '{"projectId":"7d38c550-e4c4-4cc0-83af-c1b705a990cb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"tinge_frontend"}' > ~/.railway/config.json
           railway up --service tinge_frontend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Backend to Production
         run: |
-          echo "Starting production backend deployment..."
           cd backend
           mkdir -p ~/.railway
-          cat > ~/.railway/config.json << 'EOF'
-{
-  "projectId": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
-  "environmentId": "32d964ff-c497-4a04-b181-db754a3c7504",
-  "serviceId": "tinge_backend"
-}
-EOF
+          echo '{"projectId":"c78dee4b-24f7-4750-b23a-998c620bf6eb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"tinge_backend"}' > ~/.railway/config.json
           railway up --service tinge_backend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
