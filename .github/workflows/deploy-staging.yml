@@ -32,6 +32,8 @@ jobs:
           echo "Checking environment variables..."
           echo "RAILWAY_TOKEN is set: $([ -n "$RAILWAY_TOKEN" ] && echo 'YES' || echo 'NO')"
           echo "RAILWAY_TOKEN length: ${#RAILWAY_TOKEN}"
+          echo "Explicitly exporting RAILWAY_TOKEN..."
+          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
           echo "Testing Railway authentication..."
           railway whoami
           echo "Attempting deployment..."
