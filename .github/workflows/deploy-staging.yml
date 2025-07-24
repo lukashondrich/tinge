@@ -29,13 +29,19 @@ jobs:
         id: deploy-staging
         run: |
           cd shader-playground
-          RAILWAY_PROJECT_ID=7d38c550-e4c4-4cc0-83af-c1b705a990cb railway up --service frontend-staging --detach
+          echo "Testing Railway authentication..."
+          railway whoami
+          echo "Attempting deployment..."
+          railway up --detach
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
 
       - name: Deploy Backend to Staging
         run: |
           cd backend
-          RAILWAY_PROJECT_ID=c78dee4b-24f7-4750-b23a-998c620bf6eb railway up --service backend-staging --detach
+          echo "Testing Railway authentication for backend..."
+          railway whoami
+          echo "Attempting backend deployment..."
+          railway up --detach
 
   create-approval-issue:
     name: Create Production Approval Issue
