@@ -14,6 +14,8 @@ jobs:
   deploy-staging:
     name: Deploy to Railway Staging
     runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     outputs:
       staging-url: ${{ steps.deploy-staging.outputs.url }}
     steps:
@@ -27,17 +29,13 @@ jobs:
         id: deploy-staging
         run: |
           cd shader-playground
-          railway up --service=fb761291-19e0-453a-8d2f-941eaba7fff6 --detach
+          railway up --service frontend-staging --project 7d38c550-e4c4-4cc0-83af-c1b705a990cb --detach
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Backend to Staging
         run: |
           cd backend
-          railway up --service=882c35cc-b512-49db-916f-28c0ba58bc7b --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          railway up --service backend-staging --project c78dee4b-24f7-4750-b23a-998c620bf6eb --detach
 
   create-approval-issue:
     name: Create Production Approval Issue
