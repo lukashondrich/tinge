@@ -205,11 +205,11 @@ body{background:var(--canvas);}      /* or panel */
 }
 
 .bubble.user .transcript .highlighted-text {
-  background-color: #fecdd3; /* rose-200 */
+  background-color: #4ade80; /* vibrant green */
 }
 
 .bubble.ai .transcript .highlighted-text {
-  background-color: #a7f3d0; /* emerald-200 */
+  background-color: #f87171; /* vibrant red */
 }
 
 /* Ensure clickable words inherit highlighting */
