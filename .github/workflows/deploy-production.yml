@@ -32,14 +32,16 @@ jobs:
       - name: Deploy Frontend to Production
         run: |
           cd shader-playground
-          RAILWAY_PROJECT_ID=7d38c550-e4c4-4cc0-83af-c1b705a990cb railway up --service tinge_frontend --detach --verbose
+          railway link -p 7d38c550-e4c4-4cc0-83af-c1b705a990cb -e production
+          railway up --service tinge_frontend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Backend to Production
         run: |
           cd backend
-          RAILWAY_PROJECT_ID=c78dee4b-24f7-4750-b23a-998c620bf6eb railway up --service tinge_backend --detach --verbose
+          railway link -p c78dee4b-24f7-4750-b23a-998c620bf6eb -e production
+          railway up --service tinge_backend --detach --verbose
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
