@@ -1,12 +1,10 @@
-name: Railway Deployment
+name: Deploy to Staging
 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: read
@@ -14,12 +12,10 @@ permissions:
 
 jobs:
   deploy-staging:
-    name: Deploy to Staging
+    name: Deploy to Railway Staging
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
       staging-url: ${{ steps.deploy-staging.outputs.url }}
-      deployment-id: ${{ steps.deploy-staging.outputs.deployment-id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,7 +40,6 @@ jobs:
           echo '{"projectId":"7d38c550-e4c4-4cc0-83af-c1b705a990cb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"fb761291-19e0-453a-8d2f-941eaba7fff6"}' > ~/.railway/config.json
           railway up --service frontend-staging --detach --verbose
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
-          echo "deployment-id=frontend-$(date +%s)" >> $GITHUB_OUTPUT
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
@@ -85,64 +80,3 @@ jobs:
               labels: ['deployment', 'production-approval']
             })
             console.log('Production approval issue created:', issue.number)
-
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, 'approved')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install Railway CLI
-        run: |
-          npm install -g @railway/cli
-          railway --version
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy Frontend to Production
-        run: |
-          cd shader-playground
-          mkdir -p ~/.railway
-          echo '{"projectId":"7d38c550-e4c4-4cc0-83af-c1b705a990cb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"tinge_frontend"}' > ~/.railway/config.json
-          railway up --service tinge_frontend --detach --verbose
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy Backend to Production
-        run: |
-          cd backend
-          mkdir -p ~/.railway
-          echo '{"projectId":"c78dee4b-24f7-4750-b23a-998c620bf6eb","environmentId":"32d964ff-c497-4a04-b181-db754a3c7504","serviceId":"tinge_backend"}' > ~/.railway/config.json
-          railway up --service tinge_backend --detach --verbose
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Close Approval Issue
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: '## ✅ Production Deployment Completed!\n\n' +
-                    '**Deployment Status**: Successful\n' +
-                    '**Production Frontend**: https://tingefrontend-production.up.railway.app\n' +
-                    '**Production Backend**: https://tingebackend-production.up.railway.app\n' +
-                    '**Deployed at**: ' + new Date().toISOString() + '\n\n' +
-                    'The production deployment has been completed and this issue is now closed.'
-            })
-            
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              state: 'closed'
-            })
