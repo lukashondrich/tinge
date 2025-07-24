@@ -20,61 +20,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Install Railway CLI
-        run: |
-          npm install -g @railway/cli
-          railway --version
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: npm install -g @railway/cli
 
       - name: Deploy Frontend to Staging
         id: deploy-staging
         run: |
-          mkdir -p ~/.railway
-          cat > ~/.railway/config.json << EOF
-{
-  "projects": {
-    "$(pwd)/shader-playground": {
-      "project": "7d38c550-e4c4-4cc0-83af-c1b705a990cb",
-      "environment": "32d964ff-c497-4a04-b181-db754a3c7504",
-      "service": "fb761291-19e0-453a-8d2f-941eaba7fff6"
-    }
-  },
-  "user": {
-    "token": "$RAILWAY_TOKEN"
-  }
-}
-EOF
           cd shader-playground
-          railway up --service frontend-staging --detach --verbose
+          railway up --service=fb761291-19e0-453a-8d2f-941eaba7fff6 --detach
           echo "url=https://frontend-staging-production-3876.up.railway.app" >> $GITHUB_OUTPUT
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Backend to Staging
         run: |
-          mkdir -p ~/.railway
-          cat > ~/.railway/config.json << EOF
-{
-  "projects": {
-    "$(pwd)/backend": {
-      "project": "c78dee4b-24f7-4750-b23a-998c620bf6eb",
-      "environment": "24484212-7283-4d69-a94a-3c9996172840",
-      "service": "882c35cc-b512-49db-916f-28c0ba58bc7b"
-    }
-  },
-  "user": {
-    "token": "$RAILWAY_TOKEN"
-  }
-}
-EOF
           cd backend
-          railway up --service backend-staging --detach --verbose
+          railway up --service=882c35cc-b512-49db-916f-28c0ba58bc7b --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
