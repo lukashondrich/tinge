@@ -211,7 +211,9 @@ def detect_language(text, lang_model=None):
             print(f"FastText language detection error: {e}", file=sys.stderr)
     
     # Fallback to simple detection
-    return detect_language_simple(text)
+    result = detect_language_simple(text)
+    print(f"Language detection result: {result}", file=sys.stderr)
+    return result
 
 
 def main():

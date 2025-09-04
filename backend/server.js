@@ -96,6 +96,7 @@ function detectLanguage(text) {
       reject(new Error('Python process not initialized'));
       return;
     }
+    console.log(`Sending to Python: LANG:${text}`);
     pending.push({ resolve, reject });
     python.stdin.write(`LANG:${text}\n`);
   });
@@ -216,6 +217,7 @@ app.get('/detect-language', (req, res) => {
 
   detectLanguage(text)
     .then(data => {
+      console.log(`Language detection response: ${JSON.stringify(data)}`);
       res.json(data);
     })
     .catch(err => {
