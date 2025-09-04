@@ -159,7 +159,7 @@ def detect_language_simple(text):
     text_lower = text.lower()
     
     # Common words by language (for single word detection)
-    spanish_words = {'gracias', 'hola', 'si', 'no', 'por', 'favor', 'que', 'como', 'donde', 'cuando', 'buenos', 'dias', 'noches'}
+    spanish_words = {'gracias', 'hola', 'si', 'no', 'por', 'favor', 'que', 'como', 'donde', 'cuando', 'buenos', 'dias', 'noches', 'resulta', 'pero', 'con', 'una', 'este', 'esta', 'para', 'son', 'los', 'las', 'del', 'muy', 'mas', 'todo', 'bien', 'puede', 'hacer', 'tiempo', 'trabajo', 'casa', 'vida', 'mundo', 'año', 'dia', 'vez', 'parte', 'lugar'}
     french_words = {'bonjour', 'merci', 'oui', 'non', 'comment', 'allez', 'vous', 'je', 'tu', 'il', 'elle', 'nous', 'bonsoir'}
     german_words = {'hallo', 'danke', 'ja', 'nein', 'wie', 'geht', 'ihnen', 'guten', 'tag', 'morgen', 'abend', 'bitte'}
     italian_words = {'ciao', 'grazie', 'prego', 'come', 'sta', 'bene', 'male', 'buongiorno', 'buonasera', 'arrivederci'}
@@ -174,9 +174,11 @@ def detect_language_simple(text):
     elif text_lower in italian_words:
         return {"language": "it", "confidence": 0.9}
     
-    # Fall back to character-based detection
+    # Fall back to pattern-based detection
     if any(char in text for char in 'áéíóúñüç'):
-        return {"language": "es", "confidence": 0.7}  # Spanish
+        return {"language": "es", "confidence": 0.7}  # Spanish accents
+    elif text_lower.endswith(('ción', 'sión', 'mente', 'ando', 'endo', 'anza', 'encia')):
+        return {"language": "es", "confidence": 0.6}  # Spanish endings
     elif any(char in text for char in 'àâäèéêëîïôöùûüÿç'):
         return {"language": "fr", "confidence": 0.7}  # French
     elif any(char in text for char in 'äöüß'):
