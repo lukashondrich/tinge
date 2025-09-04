@@ -1,13 +1,20 @@
-# Backend Dockerfile
+# Backend Dockerfile  
 FROM node:18-alpine
+
+# Install Python and pip
+RUN apk add --no-cache python3 py3-pip python3-dev build-base
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY requirements.txt ./
 
-# Install dependencies
+# Install Node.js dependencies
 RUN npm install --only=production
+
+# Install Python dependencies
+RUN pip3 install -r requirements.txt
 
 # Copy source code
 COPY . .
