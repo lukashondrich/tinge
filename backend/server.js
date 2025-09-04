@@ -206,6 +206,7 @@ app.get('/detect-language', (req, res) => {
 
   if (!python) {
     // Fallback if Python process not available
+    console.warn('Language detection fallback: Python process not available');
     return res.json({ 
       language: 'en', 
       confidence: 0.5,
