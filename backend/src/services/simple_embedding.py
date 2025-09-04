@@ -1,22 +1,11 @@
 import sys
 import json
 import os
-import numpy as np
 import hashlib
 from pathlib import Path
 
-# Try to import optional dependencies
-try:
-    import umap
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
-
-try:
-    import fasttext
-    FASTTEXT_AVAILABLE = True
-except ImportError:
-    FASTTEXT_AVAILABLE = False
+# FastText removed due to compilation issues on Alpine Linux in Docker
+FASTTEXT_AVAILABLE = False
 
 
 def load_words(path=None):
@@ -73,7 +62,7 @@ def simple_word_hash(word):
     y *= (0.5 + length_factor * 0.5)
     z *= (0.5 + length_factor * 0.5)
     
-    return np.array([x, y, z])
+    return [x, y, z]
 
 
 def improved_semantic_embedding(word, base_words):
@@ -87,31 +76,31 @@ def improved_semantic_embedding(word, base_words):
     semantic_clusters = {
         # Technology cluster (positive x)
         'tech': {
-            'center': np.array([2.0, 0.0, 0.0]),
+            'center': [2.0, 0.0, 0.0],
             'words': ['computer', 'software', 'algorithm', 'data', 'network', 'system', 
                      'code', 'programming', 'technology', 'digital', 'artificial', 'machine']
         },
         # Natural/organic cluster (negative x)
         'natural': {
-            'center': np.array([-2.0, 0.0, 0.0]),
+            'center': [-2.0, 0.0, 0.0],
             'words': ['natural', 'organic', 'human', 'nature', 'life', 'biological',
                      'earth', 'tree', 'animal', 'plant', 'water', 'air']
         },
         # Action/verb cluster (positive y)
         'action': {
-            'center': np.array([0.0, 2.0, 0.0]),
+            'center': [0.0, 2.0, 0.0],
             'words': ['run', 'walk', 'jump', 'think', 'learn', 'create', 'build',
                      'process', 'analyze', 'compute', 'generate', 'execute']
         },
         # Abstract concepts (positive z)
         'abstract': {
-            'center': np.array([0.0, 0.0, 2.0]),
+            'center': [0.0, 0.0, 2.0],
             'words': ['intelligence', 'knowledge', 'wisdom', 'understanding', 'concept',
                      'theory', 'principle', 'philosophy', 'logic', 'reasoning']
         },
         # Communication cluster (negative y)
         'communication': {
-            'center': np.array([0.0, -2.0, 0.0]),
+            'center': [0.0, -2.0, 0.0],
             'words': ['language', 'speech', 'text', 'word', 'communication', 'talk',
                      'say', 'speak', 'write', 'read', 'message', 'information']
         }
@@ -139,7 +128,12 @@ def improved_semantic_embedding(word, base_words):
     # Blend base position with semantic cluster
     if best_cluster and max_similarity > 0:
         cluster_weight = min(max_similarity / 3.0, 0.7)  # Max 70% cluster influence
-        base_pos = (1 - cluster_weight) * base_pos + cluster_weight * best_cluster['center']
+        center = best_cluster['center']
+        base_pos = [
+            (1 - cluster_weight) * base_pos[0] + cluster_weight * center[0],
+            (1 - cluster_weight) * base_pos[1] + cluster_weight * center[1], 
+            (1 - cluster_weight) * base_pos[2] + cluster_weight * center[2]
+        ]
     
     return base_pos
 
