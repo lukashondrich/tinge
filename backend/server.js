@@ -41,7 +41,7 @@ const pending = [];
 
 function initializePythonProcess() {
   try {
-    python = spawn('python3', [pythonScript, '--server']);
+    python = spawn('python', [pythonScript, '--server']);
     
     python.stdout.on('data', data => {
       pyBuffer += data.toString();

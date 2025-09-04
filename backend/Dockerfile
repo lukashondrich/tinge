@@ -18,8 +18,7 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install -r requirements.txt
 
-# Create symlink so python3 command works in venv
-RUN ln -sf /opt/venv/bin/python /opt/venv/bin/python3
+# Python is available as 'python' in the venv, Node.js will use this
 
 # Copy source code
 COPY . .
