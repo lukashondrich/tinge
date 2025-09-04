@@ -5,10 +5,6 @@ import cors from "cors"; // Install with: npm install cors
 
 import multer from 'multer';
 import fetch from 'node-fetch';    // or use global fetch in Node 18+
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 import FormData from 'form-data';
 import tokenCounter from './src/services/tokenCounter.js';
@@ -19,91 +15,6 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.OPENAI_API_KEY;
-
-// Get current directory for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Embedding service setup
-const embeddingFile = path.join(__dirname, '../shader-playground/public/embedding.json');
-let embeddings = [];
-try {
-  embeddings = JSON.parse(fs.readFileSync(embeddingFile, 'utf8'));
-} catch {
-  console.warn('Embedding file not found, starting with empty set');
-}
-
-// FastText Python process management
-const pythonScript = path.join(__dirname, 'src/services/simple_embedding.py');
-let python = null;
-let pyBuffer = '';
-const pending = [];
-
-function initializePythonProcess() {
-  try {
-    python = spawn('python3', [pythonScript, '--server']);
-    
-    python.stdout.on('data', data => {
-      pyBuffer += data.toString();
-      const lines = pyBuffer.split('\n');
-      pyBuffer = lines.pop();
-      for (const line of lines) {
-        const req = pending.shift();
-        if (!req) continue;
-        try {
-          const result = JSON.parse(line);
-          req.resolve(result);
-        } catch (err) {
-          req.reject(err);
-        }
-      }
-    });
-
-    python.stderr.on('data', data => {
-      console.error('Embedding process error:', data.toString());
-    });
-
-    python.on('exit', (code) => {
-      console.warn(`Embedding Python process exited with code ${code}, reinitializing...`);
-      python = null;
-      setTimeout(initializePythonProcess, 1000);
-    });
-
-    python.on('error', (err) => {
-      console.error('Failed to start Python process:', err);
-      python = null;
-    });
-  } catch (err) {
-    console.error('Error initializing Python process:', err);
-    python = null;
-  }
-}
-
-function embedWord(word) {
-  return new Promise((resolve, reject) => {
-    if (!python) {
-      reject(new Error('Python process not initialized'));
-      return;
-    }
-    pending.push({ resolve, reject });
-    python.stdin.write(`EMBED:${word}\n`);
-  });
-}
-
-function detectLanguage(text) {
-  return new Promise((resolve, reject) => {
-    if (!python) {
-      reject(new Error('Python process not initialized'));
-      return;
-    }
-    pending.push({ resolve, reject });
-    python.stdin.write(`LANG:${text}\n`);
-  });
-}
-
-// Initialize Python process on startup
-console.log('🐍 Initializing FastText embedding process...');
-initializePythonProcess();
 
 // Configure CORS for production
 const corsOptions = {
@@ -144,88 +55,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// FASTTEXT EMBEDDING ENDPOINTS (after CORS)
-app.get('/embed-word', (req, res) => {
-  const word = req.query.word;
-  if (!word) return res.status(400).json({ error: 'Missing word parameter' });
-
-  console.log(`FastText embedding request for: ${word}`);
-
-  // Check cache first
-  const match = embeddings.find(e => e.label.toLowerCase() === word.toLowerCase());
-  if (match) {
-    console.log(`Found cached embedding for: ${word}`);
-    return res.json(match);
-  }
-
-  if (!python) {
-    // Fallback if Python process not available
-    console.log(`Using fallback embedding for: ${word}`);
-    const fallback = {
-      label: word,
-      x: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-      y: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-      z: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-      source: 'fallback'
-    };
-    return res.json(fallback);
-  }
-
-  embedWord(word)
-    .then(data => {
-      if (!data.error) {
-        embeddings.push(data);
-        try {
-          fs.writeFileSync(embeddingFile, JSON.stringify(embeddings, null, 2));
-          console.log(`Cached FastText embedding for: ${word}`);
-        } catch (writeErr) {
-          console.warn('Failed to cache embedding:', writeErr);
-        }
-      }
-      res.json(data);
-    })
-    .catch(err => {
-      console.error('Failed to embed word:', err);
-      const fallback = {
-        label: word,
-        x: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-        y: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-        z: Math.round(((Math.random() - 0.5) * 4) * 100) / 100,
-        source: 'fallback-error'
-      };
-      res.json(fallback);
-    });
-});
-
-app.get('/detect-language', (req, res) => {
-  const text = req.query.text;
-  if (!text) return res.status(400).json({ error: 'Missing text parameter' });
-
-  console.log(`FastText language detection for: ${text.substring(0, 50)}...`);
-
-  if (!python) {
-    // Fallback if Python process not available
-    return res.json({ 
-      language: 'en', 
-      confidence: 0.5,
-      source: 'fallback'
-    });
-  }
-
-  detectLanguage(text)
-    .then(data => {
-      res.json(data);
-    })
-    .catch(err => {
-      console.error('Failed to detect language:', err);
-      res.json({ 
-        language: 'en', 
-        confidence: 0.5,
-        source: 'fallback-error'
-      });
-    });
-});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -413,9 +242,6 @@ app.post('/transcribe', upload.single('file'), async (req, res) => {
   }
 });
 
-
-
-
 // Note: Profile management removed - now using client-side localStorage
 
 app.listen(port, () => {
@@ -426,6 +252,4 @@ app.listen(port, () => {
   console.log(`Health check: http://localhost:${port}/health`);
   console.log(`Token endpoint: http://localhost:${port}/token`);
   console.log(`Transcribe endpoint: http://localhost:${port}/transcribe`);
-  console.log(`Embedding endpoint: http://localhost:${port}/embed-word`);
-  console.log(`Language detection: http://localhost:${port}/detect-language`);
 });

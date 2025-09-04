@@ -45,7 +45,8 @@ export default defineConfig(({ mode }) => {
           '/transcribe': process.env.VITE_API_URL || 'http://localhost:3000',
           '/token-usage': process.env.VITE_API_URL || 'http://localhost:3000',
           '/token-stats': process.env.VITE_API_URL || 'http://localhost:3000',
-          '/embed-word': process.env.VITE_EMBEDDING_URL || 'http://localhost:3001'
+          '/embed-word': process.env.VITE_API_URL || 'http://localhost:3000',
+          '/detect-language': process.env.VITE_API_URL || 'http://localhost:3000'
           // Note: /profiles removed - now using localStorage instead of backend
           // Remove the WebSocket proxy since we're using WebRTC, not WebSockets
         }

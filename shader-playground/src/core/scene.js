@@ -150,10 +150,13 @@ class TextManager {
   // Update positions of text labels to follow moving points
   updatePositions(currentPositions) {
     this.activeLabels.forEach((textGroup, labelKey) => {
-      // Extract the word from the speaker-word key format
+      // Extract the word from the speaker-word key format (e.g., "ai-para" -> "para")
       const word = labelKey.split('-').slice(1).join('-'); // Handle words with hyphens
-      if (currentPositions.has(word)) {
-        const newPosition = currentPositions.get(word);
+      // Clean the word the same way as in main.js
+      const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+      
+      if (cleanWord && currentPositions.has(cleanWord)) {
+        const newPosition = currentPositions.get(cleanWord);
         textGroup.position.copy(newPosition);
         textGroup.position.y += 0.05; // Much closer to the word point
       }

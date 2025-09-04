@@ -15,6 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
+import { detectLanguageWithCache } from './utils/languageDetection.js';
 
 
 
@@ -796,8 +797,17 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           wordIndices.set(key, id); // Track the index in the optimizer
           console.log('📍 Tracked word position:', key, position, 'index:', id);
           
-          // 💾 Save new word to vocabulary storage for persistence
-          vocabularyStorage.saveWord(word, newPoint, speaker);
+          // 💾 Save new word to vocabulary storage with language detection
+          // Detect language asynchronously and save when ready
+          detectLanguageWithCache(word)
+            .then(languageData => {
+              vocabularyStorage.saveWord(word, newPoint, speaker, languageData);
+              console.log(`💾 Saved word "${word}" with language: ${languageData.detected} (${languageData.confidence.toFixed(2)})`);
+            })
+            .catch(err => {
+              console.warn('Language detection failed, saving word without language data:', err);
+              vocabularyStorage.saveWord(word, newPoint, speaker);
+            });
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
@@ -972,8 +982,10 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         const currentPositions = new Map();
         
         // Get positions for all active labels (both user and AI)
-        textManager.activeLabels.forEach((textGroup, word) => {
+        textManager.activeLabels.forEach((textGroup, labelKey) => {
+          const word = labelKey.split('-').slice(1).join('-'); // Extract word from "ai-word" or "user-word"
           const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
+          
           if (cleanWord && wordIndices.has(cleanWord)) {
             const index = wordIndices.get(cleanWord);
             const optimizedPositions = optimizer.getPositions();
