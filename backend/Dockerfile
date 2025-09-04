@@ -13,8 +13,10 @@ COPY requirements.txt ./
 # Install Node.js dependencies
 RUN npm install --only=production
 
-# Install Python dependencies
-RUN pip3 install -r requirements.txt
+# Install Python dependencies in virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install -r requirements.txt
 
 # Copy source code
 COPY . .
