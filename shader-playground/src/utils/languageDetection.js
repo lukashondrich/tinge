@@ -6,8 +6,8 @@
 
 import { vocabularyStorage } from './vocabularyStorage.js';
 
-// Get API URL from environment or default to localhost
-const __API_URL__ = window.__API_URL__ || 'http://localhost:3000';
+// Get API URL from Vite build-time constant (same as other files)
+// __API_URL__ is defined by Vite at build time from environment variables
 
 /**
  * Detect language for a word with caching
