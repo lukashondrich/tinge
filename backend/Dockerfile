@@ -18,6 +18,9 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install -r requirements.txt
 
+# Create symlink so python3 command works in venv
+RUN ln -sf /opt/venv/bin/python /opt/venv/bin/python3
+
 # Copy source code
 COPY . .
 
