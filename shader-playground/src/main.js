@@ -1,6 +1,6 @@
 // main.js
 console.log('📱 Main.js loading...');
-import { initOpenAIRealtime } from "./openaiRealtime";
+import { initOpenAIRealtime, sendTextMessage } from "./openaiRealtime";
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -450,6 +450,10 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   )
   .then(() => {
     console.log('✅ OpenAI Realtime initialized successfully');
+    // Expose helper for injecting hidden text utterances via console (dev only)
+    if (import.meta.env.DEV) {
+      window.__sendTestMessage = sendTextMessage;
+    }
   })
   // eslint-disable-next-line no-console
   .catch(err => console.error("⚠️ Realtime init error:", err));
