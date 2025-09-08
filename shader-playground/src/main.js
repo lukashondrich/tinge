@@ -15,6 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
+import { detectLanguage, getUserLanguages } from './utils/languageDetector.js';
 
 
 
@@ -796,8 +797,10 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           wordIndices.set(key, id); // Track the index in the optimizer
           console.log('📍 Tracked word position:', key, position, 'index:', id);
           
-          // 💾 Save new word to vocabulary storage for persistence
-          vocabularyStorage.saveWord(word, newPoint, speaker);
+          // 💾 Save new word to vocabulary storage for persistence with language metadata
+          const langs = getUserLanguages();
+          const language = await detectLanguage(word, langs);
+          vocabularyStorage.saveWord(word, newPoint, speaker, language);
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
