@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "eval": {
+    "task": "tinge-tutoring-evaluation",
+    "dataset": "tinge-persona-conversations"
+  },
+  "samples": [],
+  "error": "No inspect logs found in batch results"
+}

@@ -1,0 +1,29 @@
+{
+  "conversation": [
+    {
+      "speaker": "user",
+      "message": "I love languages and I'm hoping to become fluent eventually. Can you help me get started?",
+      "timestamp": "2025-09-10T15:10:51.836Z"
+    },
+    {
+      "speaker": "assistant",
+      "message": "That's fantastic! What language are you aiming to become fluent in, and what's your native language? Let's get you started on the right foot!",
+      "timestamp": "2025-09-10T15:11:00.598Z"
+    },
+    {
+      "speaker": "user",
+      "message": "I think I'm getting it - let me try using it in a sentence.",
+      "timestamp": "2025-09-10T15:11:29.353Z"
+    },
+    {
+      "speaker": "assistant",
+      "message": "Awesome, let's dive into Spanish, then! To kick things off, can you tell me what interests you about learning Spanish and if you have any specific goals? It'll help me tailor our sessions to your needs.Absolutely, go ahead! I'm here to help. That sounds wonderful! Please, go ahead. I'm all ears!",
+      "timestamp": "2025-09-10T15:11:40.003Z"
+    }
+  ],
+  "summary": {
+    "user_messages": 2,
+    "ai_responses": 2,
+    "success": true
+  }
+}

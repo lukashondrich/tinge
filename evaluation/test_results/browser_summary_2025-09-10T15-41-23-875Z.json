@@ -1,0 +1,16 @@
+{
+  "batchId": "browser_eval_1757518883875",
+  "timestamp": "2025-09-10T15:41:23.875Z",
+  "evaluationType": "browser_production_silent_audio",
+  "totalConversations": 2,
+  "successRate": 0.5,
+  "personasEvaluated": [
+    "eager_learner",
+    "struggling_student"
+  ],
+  "metadata": {
+    "usedSilentAudio": true,
+    "usedProductionSystem": true,
+    "evaluationMethod": "browser_automation_with_ptt"
+  }
+}
