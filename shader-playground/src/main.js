@@ -19,6 +19,10 @@ import { TEXT_MODE } from './utils/env.js';
 
 
 
+window.__registerTranscriptHandler = (cb) => {
+  window.addEventListener('chat-message', (e) => cb(e.detail));
+};
+
 // Check if animation is already running
 if (window.__ANIMATING__) {
   // eslint-disable-next-line no-console
@@ -407,7 +411,11 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         
         panel.add(event.record); // DialoguePanel should now find and replace the existing bubble
         scrollToBottom();
-        
+
+        if (event.record && text && text !== '...') {
+          window.dispatchEvent(new CustomEvent('chat-message', { detail: event.record }));
+        }
+
         // For AI responses, don't set a short finalization timer since we're handling it in output_audio_buffer.stopped
         // For user responses, set a short timer since they don't have buffer events
         if (speaker === 'user') {
