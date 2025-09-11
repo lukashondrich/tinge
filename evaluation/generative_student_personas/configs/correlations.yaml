@@ -1,0 +1,13 @@
+# Optional override for pairwise correlations in [-1,1]
+# keys are tuples "a,b"
+conscientiousness,srl: 0.45
+self_efficacy,expectancy_value: 0.50
+self_efficacy,test_anxiety: -0.45
+prior_knowledge,self_efficacy: 0.30
+prior_knowledge,language_reading: 0.20
+load_tolerance,prior_knowledge: 0.20
+affective_resilience,test_anxiety: -0.25
+affective_resilience,self_efficacy: 0.20
+time_on_task,expectancy_value: 0.30
+time_on_task,conscientiousness: 0.25
+srl,self_efficacy: 0.30
