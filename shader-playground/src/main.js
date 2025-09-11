@@ -15,9 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
-//import { TEXT_MODE } from './utils/env.js';
-
-const TEXT_MODE = window.TEXT_MODE || import.meta.env.DEV;
+import { TEXT_MODE } from './utils/env.js';
 
 if (TEXT_MODE) {
   window.__connectRealtime = connect;
