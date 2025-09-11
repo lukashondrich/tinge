@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "student-personas"
+version = "0.1.0"
+description = "Coverage-optimized, LLM-ready student personas"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.22",
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+student-personas = "student_personas.cli:main"
