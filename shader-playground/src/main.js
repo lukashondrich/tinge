@@ -1,6 +1,6 @@
 // main.js
 console.log('📱 Main.js loading...');
-import { initOpenAIRealtime } from "./openaiRealtime";
+import { initOpenAIRealtime, connect, sendTextMessage } from "./openaiRealtime";
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -16,7 +16,12 @@ import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
 
+const TEXT_MODE = window.TEXT_MODE || import.meta.env.DEV;
 
+if (TEXT_MODE) {
+  window.__connectRealtime = connect;
+  window.__sendTestMessage = sendTextMessage;
+}
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
@@ -232,16 +237,16 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     mobileDebug('Initializing OpenAI Realtime for mobile device');
   }
   
-  console.log('🎤 Initializing OpenAI Realtime...');
-  initOpenAIRealtime(
-    (remoteStream) => {
-      const audio = new Audio();
-      audio.srcObject = remoteStream;
-      audio.autoplay = true;
+    console.log('🎤 Initializing OpenAI Realtime...');
+      initOpenAIRealtime(
+      (remoteStream) => {
+        const audio = new Audio();
+        audio.srcObject = remoteStream;
+        audio.autoplay = true;
       // eslint-disable-next-line no-console
       audio.play().catch(err => console.error("Audio play error:", err));
     },
-    (event) => {
+      (event) => {
 
       if (event.type === 'input_audio_buffer.speech_started') {
         startBubble('user');
@@ -952,8 +957,8 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
       'position',
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
-    
-    orbitControls.update();
+
+      orbitControls.update();
 
     // eslint-disable-next-line no-unused-vars
     const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
