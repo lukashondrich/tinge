@@ -1078,7 +1078,26 @@ export async function connect() {
       
         // Relay raw events
         if (onEventCallback) onEventCallback(event);
-      
+
+
+        // — text-only response handling —
+        if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+            // Emit word-level events for automation logging and UI updates
+            if (onEventCallback) {
+                const words = event.delta.trim().split(/\s+/).filter(Boolean);
+                for (const w of words) {
+                    onEventCallback({ type: 'transcript.word', word: w, speaker: 'ai' });
+                }
+            }
+        }
+
+        if (event.type === 'response.output_text.done' && typeof event.text === 'string') {
+            // Dispatch chat-message so Playwright can capture AI responses
+            window.dispatchEvent(
+                new CustomEvent('chat-message', { detail: { speaker: 'ai', text: event.text } })
+            );
+        }
+
 
         // — AI interim speech (start recorder + accumulate text + offsets) —
         if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
@@ -1466,7 +1485,12 @@ export function sendTextMessage(text) {
     event_id: crypto.randomUUID()
   };
   dataChannel.send(JSON.stringify(responseEvent));
-  
+
+  // Immediately inform listeners of the user's message
+  window.dispatchEvent(
+    new CustomEvent('chat-message', { detail: { speaker: 'user', text } })
+  );
+
   return true;
 }
 

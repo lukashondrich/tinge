@@ -267,7 +267,8 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
       
       // ① Handle delta events by accumulating text in the bubble
       if (
-        event.type === 'response.audio_transcript.delta' &&
+        (event.type === 'response.audio_transcript.delta' ||
+         event.type === 'response.output_text.delta') &&
         typeof event.delta === 'string'
       ) {
         const speaker = 'ai';
@@ -441,6 +442,14 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         finalizeTimers[speaker] = setTimeout(() => {
           finalizeBubble(speaker);
         }, 1000); // Give time for utterance.added to be processed
+      }
+
+      // ④b handle text-only AI completion
+      if (
+        event.type === 'response.output_text.done' &&
+        typeof event.text === 'string'
+      ) {
+        finalizeBubble('ai');
       }
 
       // ⑤ handle final AI transcript completion
