@@ -4,10 +4,12 @@ const fs = require('fs');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  page.on('console', msg => console.log(msg.text()));
   const log = [];
 
   await page.goto('http://localhost:5173/?textMode=1', { timeout: 60000 });
   await page.evaluate(() => window.__connectRealtime());
+  await page.waitForFunction(() => window.__isConnectedToOpenAI(), null, { timeout: 60000 });
 
   await page.exposeBinding('recordMsg', (_src, msg) => log.push(msg));
   await page.evaluate(() => {
