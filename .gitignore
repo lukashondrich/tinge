@@ -20,3 +20,6 @@ dist/
 .DS_Store
 # Eval artifacts
 /evaluation/test_results/
+
+# runtime logs
+/conversation_log.json

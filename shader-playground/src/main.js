@@ -1,6 +1,6 @@
 // main.js
 console.log('📱 Main.js loading...');
-import { initOpenAIRealtime, connect, sendTextMessage } from "./openaiRealtime";
+import { initOpenAIRealtime, connect, sendTextMessage, isDataChannelReady } from "./openaiRealtime";
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -22,6 +22,7 @@ const TEXT_MODE = window.TEXT_MODE || import.meta.env.DEV;
 if (TEXT_MODE) {
   window.__connectRealtime = connect;
   window.__sendTestMessage = sendTextMessage;
+  window.__isDataChannelReady = isDataChannelReady;
 }
 
 window.__registerTranscriptHandler = (cb) => {

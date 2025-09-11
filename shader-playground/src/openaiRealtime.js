@@ -1455,6 +1455,10 @@ function disableMicrophone() {
   }
 }
 
+export function isDataChannelReady() {
+  return dataChannel && dataChannel.readyState === 'open';
+}
+
 export function sendTextMessage(text) {
   if (!dataChannel || dataChannel.readyState !== 'open') {
     // eslint-disable-next-line no-console
