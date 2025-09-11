@@ -23,3 +23,6 @@ dist/
 
 # runtime logs
 /conversation_log.json
+
+/evaluation/test_results/
+/conversation_log.json
