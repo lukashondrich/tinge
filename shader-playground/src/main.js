@@ -15,7 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
-import { TEXT_MODE } from './utils/env.js';
+//import { TEXT_MODE } from './utils/env.js';
 
 const TEXT_MODE = window.TEXT_MODE || import.meta.env.DEV;
 
@@ -509,7 +509,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   }
 
   async function loadWordsToScene(words, batchType = 'batch') {
-    console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
+    //console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
     
     for (const item of words) {
       try {

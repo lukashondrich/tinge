@@ -21,7 +21,7 @@ export class VocabularyStorage {
       if (!stored) return [];
       
       const vocabulary = JSON.parse(stored);
-      console.log(`📚 Loaded ${vocabulary.length} words from vocabulary storage`);
+      //console.log(`📚 Loaded ${vocabulary.length} words from vocabulary storage`);
       return vocabulary;
     } catch (error) {
       console.warn('Failed to load vocabulary from localStorage:', error);
@@ -38,7 +38,7 @@ export class VocabularyStorage {
     try {
       const vocabulary = this.loadVocabulary();
       const recent = vocabulary.slice(-count);
-      console.log(`📚 Loaded ${recent.length} recent words for fast startup`);
+      //console.log(`📚 Loaded ${recent.length} recent words for fast startup`);
       return recent;
     } catch (error) {
       console.warn('Failed to load recent vocabulary:', error);
@@ -56,7 +56,7 @@ export class VocabularyStorage {
     try {
       const vocabulary = this.loadVocabulary();
       const batch = vocabulary.slice(offset, offset + limit);
-      console.log(`📚 Loaded batch: ${batch.length} words (${offset}-${offset + limit})`);
+      //console.log(`📚 Loaded batch: ${batch.length} words (${offset}-${offset + limit})`);
       return batch;
     } catch (error) {
       console.warn('Failed to load vocabulary batch:', error);
