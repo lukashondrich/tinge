@@ -5,8 +5,7 @@ import os
 import time
 from typing import Any, Dict, List
 
-import openai
-from openai.error import OpenAIError
+from openai import OpenAI
 
 
 def simulate_student(
@@ -69,17 +68,17 @@ def simulate_student(
     messages.extend(history)
     messages.append({"role": "user", "content": question})
 
-    openai.api_key = os.getenv("OPENAI_API_KEY")
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     for attempt in range(3):
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
             )
-            return response["choices"][0]["message"]["content"]
-        except OpenAIError:
+            return response.choices[0].message.content
+        except Exception:
             if attempt == 2:
                 raise
             time.sleep(2 ** attempt)
