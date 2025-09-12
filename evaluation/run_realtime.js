@@ -95,6 +95,22 @@ const fs = require('fs');
     await page.waitForFunction(() => window.__isDataChannelReady(), { timeout: 30000 });
     console.log('Data channel is ready!');
 
+    // Test session health and refresh if needed
+    console.log('Testing session health...');
+    let sessionHealthy = await page.evaluate(() => window.__testSessionHealth(10000));
+    
+    if (!sessionHealthy) {
+      console.log('Session unhealthy, attempting to refresh...');
+      const refreshSuccess = await page.evaluate(() => window.__refreshSession(2));
+      
+      if (!refreshSuccess) {
+        throw new Error('Failed to establish healthy OpenAI session after refresh attempts');
+      }
+      console.log('Session refresh successful!');
+    } else {
+      console.log('Session is healthy!');
+    }
+
     console.log('Setting up logging and handlers...');
     await page.exposeBinding('recordMsg', (_src, msg) => log.push(msg));
     await page.evaluate(() => {

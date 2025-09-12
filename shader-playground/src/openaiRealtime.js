@@ -1459,6 +1459,30 @@ export function isDataChannelReady() {
   return dataChannel && dataChannel.readyState === 'open';
 }
 
+// Enhanced connection health check
+export function isConnectionHealthy() {
+  // Check data channel
+  if (!dataChannel || dataChannel.readyState !== 'open') {
+    console.warn('Connection health: Data channel not open');
+    return false;
+  }
+  
+  // Check peer connection
+  if (!peerConnection || peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'closed') {
+    console.warn('Connection health: Peer connection failed/closed');
+    return false;
+  }
+  
+  // Check if connected flag is set
+  if (!isConnected) {
+    console.warn('Connection health: Not connected');
+    return false;
+  }
+  
+  console.log('Connection health: All checks passed');
+  return true;
+}
+
 export function sendTextMessage(text) {
   if (!dataChannel || dataChannel.readyState !== 'open') {
     // eslint-disable-next-line no-console
@@ -1500,6 +1524,105 @@ export function sendTextMessage(text) {
 
 export function isConnectedToOpenAI() {
   return isConnected;
+}
+
+// Disconnect and cleanup the OpenAI Realtime connection
+export function disconnect() {
+  console.log('Disconnecting OpenAI Realtime...');
+  
+  isConnected = false;
+  
+  if (dataChannel) {
+    dataChannel.close();
+    dataChannel = null;
+  }
+  
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  
+  if (audioTrack) {
+    audioTrack.stop();
+    audioTrack = null;
+  }
+  
+  console.log('OpenAI Realtime disconnected');
+}
+
+// Test if the OpenAI session is actually responsive (not just connected)
+export async function testSessionHealth(timeoutMs = 10000) {
+  if (!isConnectionHealthy()) {
+    console.warn('Session health check: Connection not healthy');
+    return false;
+  }
+  
+  console.log('Testing OpenAI session health...');
+  
+  // Create a promise that resolves when we get ANY AI response
+  return new Promise((resolve) => {
+    const healthCheckId = `health_${Date.now()}`;
+    let timeoutHandle;
+    
+    // Set up temporary event listener for AI responses
+    const healthCheckListener = (event) => {
+      if (event.detail.speaker === 'ai') {
+        console.log('Session health check: AI responded - session is healthy');
+        clearTimeout(timeoutHandle);
+        window.removeEventListener('chat-message', healthCheckListener);
+        resolve(true);
+      }
+    };
+    
+    window.addEventListener('chat-message', healthCheckListener);
+    
+    // Set timeout
+    timeoutHandle = setTimeout(() => {
+      console.warn('Session health check: Timeout - session appears unresponsive');
+      window.removeEventListener('chat-message', healthCheckListener);
+      resolve(false);
+    }, timeoutMs);
+    
+    // Send a simple test message
+    sendTextMessage('Hi');
+  });
+}
+
+// Refresh the entire OpenAI session with a new connection
+export async function refreshSession(maxRetries = 2) {
+  console.log('Refreshing OpenAI session...');
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Disconnect current session
+      window.__disconnect ? window.__disconnect() : disconnect();
+      
+      // Wait a moment for cleanup
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Reconnect with fresh session
+      await (window.__connectRealtime ? window.__connectRealtime() : connect());
+      
+      // Wait for connection to be ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Test the new session
+      const isHealthy = await testSessionHealth(15000);
+      
+      if (isHealthy) {
+        console.log(`Session refresh successful on attempt ${attempt + 1}`);
+        return true;
+      } else {
+        console.warn(`Session refresh attempt ${attempt + 1} failed health check`);
+      }
+      
+    } catch (error) {
+      console.error(`Session refresh attempt ${attempt + 1} failed:`, error);
+    }
+  }
+  
+  console.error('Failed to refresh session after all attempts');
+  return false;
 }
 
 // Check if user can make more requests
