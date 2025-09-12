@@ -5,6 +5,8 @@ const fs = require('fs');
   const log = [];
   let browser;
   let page;
+  let heartbeat;
+  let lastHeartbeat = { ready: null, ts: Date.now() };
   try {
     console.log('Launching browser...');
     browser = await chromium.launch({ headless: false });
@@ -48,10 +50,46 @@ const fs = require('fs');
       });
     });
 
+    page.on('response', res => {
+      const entry = { type: 'response', url: res.url(), status: res.status() };
+      log.push(entry);
+      if (!res.ok()) console.error('HTTP error', entry);
+    });
+
     console.log('Navigating to page...');
-    await page.goto('http://localhost:5173/?textMode=1', { timeout: 60000 });
+    let response;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await page.goto('http://localhost:5173/?textMode=1', { timeout: 60000 });
+      if (response && response.ok()) {
+        try {
+          const body = await response.body();
+          if (body && body.length) break;
+        } catch (_) {}
+      }
+      const entry = {
+        type: 'navigation.error',
+        status: response ? response.status() : 'no_response',
+        attempt
+      };
+      log.push(entry);
+      console.error('Navigation failed', entry);
+      if (attempt === 1) return;
+    }
     console.log('Page loaded, connecting realtime...');
     await page.evaluate(() => window.__connectRealtime());
+
+    heartbeat = setInterval(async () => {
+      if (page.isClosed()) return;
+      const ready = await page.evaluate(() => window.__isDataChannelReady());
+      lastHeartbeat = { ready, ts: Date.now() };
+      log.push({ type: 'heartbeat', ...lastHeartbeat });
+      if (!ready) {
+        console.error('Data channel not ready; reconnecting');
+        try {
+          await page.evaluate(() => window.__connectRealtime());
+        } catch (_) {}
+      }
+    }, 5000);
 
     console.log('Waiting for data channel to be ready...');
     await page.waitForFunction(() => window.__isDataChannelReady(), { timeout: 30000 });
@@ -74,6 +112,16 @@ const fs = require('fs');
 
     console.log('Starting conversation...');
     for (const prompt of prompts) {
+      if (page.isClosed() || !browser.isConnected()) {
+        const entry = {
+          type: 'connection.lost',
+          pageClosed: page.isClosed(),
+          browserConnected: browser.isConnected()
+        };
+        log.push(entry);
+        console.error('Connection issue', entry);
+        break;
+      }
       console.log(`Sending: "${prompt}"`);
       const prevAiMessages = await page.evaluate(() =>
         window.__pageLog.filter(msg => msg.speaker === 'ai').length
@@ -81,12 +129,23 @@ const fs = require('fs');
       console.log(`Previous AI message count: ${prevAiMessages}`);
       await page.evaluate(t => window.__sendTestMessage(t), prompt);
       console.log('Waiting for AI response...');
-      await page.waitForFunction(
-        prevAiCount => window.__pageLog.filter(msg => msg.speaker === 'ai').length > prevAiCount,
-        prevAiMessages,
-        { timeout: 60000 }
-      );
-      console.log('AI response received!');
+      try {
+        await page.waitForFunction(
+          prevAiCount => window.__pageLog.filter(msg => msg.speaker === 'ai').length > prevAiCount,
+          prevAiMessages,
+          { timeout: 60000 }
+        );
+        console.log('AI response received!');
+      } catch (err) {
+        const entry = {
+          type: 'waitForFunction.timeout',
+          responses: log.filter(e => e.type === 'response'),
+          lastHeartbeat
+        };
+        log.push(entry);
+        console.error('waitForFunction timeout', entry);
+        throw err;
+      }
     }
 
     console.log('Conversation complete. Keeping browser open for 10 seconds...');
@@ -107,6 +166,7 @@ const fs = require('fs');
     if (browser) {
       await browser.close().catch(() => {});
     }
+    if (heartbeat) clearInterval(heartbeat);
     console.log('Writing conversation log...');
     fs.writeFileSync('conversation_log.json', JSON.stringify(log, null, 2));
     console.log('Done!');
