@@ -1474,8 +1474,8 @@ export function sendTextMessage(text) {
       role: 'user',
       content: [
         {
-          type: 'text',
-          text
+          type: 'input_text',
+          text: text,
         }
       ]
     }
