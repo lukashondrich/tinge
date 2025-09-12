@@ -1,0 +1,9 @@
+{
+    "topic": "French in the classroom",
+    "history": [
+      {"role": "user", "content": "Can you help me with basic school phrases in French?"},
+      {"role": "assistant", "content": "Of course! We'll begin with something simple."}
+    ],
+    "question": "Translate 'I am a student' into French."
+  }
+  

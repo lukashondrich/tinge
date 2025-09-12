@@ -1,0 +1,9 @@
+{
+    "topic": "Spanish greetings",
+    "history": [
+      {"role": "user", "content": "I just downloaded this app to learn Spanish."},
+      {"role": "assistant", "content": "¡Bienvenido! Let's start with greetings."}
+    ],
+    "question": "How do you say 'Nice to meet you' in Spanish?"
+  }
+  
