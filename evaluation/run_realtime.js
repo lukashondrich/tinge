@@ -27,6 +27,19 @@ const fs = require('fs');
     });
   });
 
+  page.on('console', msg => console.log('PAGE:', msg.text()));
+  page.on('console', msg => log.push({ type: 'console', text: msg.text() }));
+
+  page.on('requestfailed', request => {
+    const failure = request.failure();
+    console.error('REQUEST FAILED:', request.url(), failure && failure.errorText);
+    log.push({
+      type: 'requestfailed',
+      url: request.url(),
+      error: failure && failure.errorText
+    });
+  });
+
   const prompts = [
     'Hello there!',
     'Can you tell me a joke?'
