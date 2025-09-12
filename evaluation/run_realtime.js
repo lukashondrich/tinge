@@ -8,6 +8,30 @@ const fs = require('fs');
   const page = await browser.newPage();
   const log = [];
 
+  browser.on('disconnected', () => {
+    const msg = { event: 'browser.disconnected' };
+    console.error('Browser disconnected');
+    log.push(msg);
+  });
+
+  page.on('close', () => {
+    const msg = { event: 'page.close' };
+    console.error('Page closed');
+    log.push(msg);
+  });
+
+  page.on('crash', () => {
+    const msg = { event: 'page.crash' };
+    console.error('Page crashed');
+    log.push(msg);
+  });
+
+  page.on('pageerror', (err) => {
+    const msg = { event: 'page.error', message: err.message, stack: err.stack };
+    console.error('Page error:', err);
+    log.push(msg);
+  });
+
   console.log('Navigating to page...');
   await page.goto('http://localhost:5173/?textMode=1', { timeout: 60000 });
   console.log('Page loaded, connecting realtime...');
