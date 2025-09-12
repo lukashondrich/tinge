@@ -6,12 +6,18 @@ const fs = require('fs');
   const browser = await chromium.launch({ headless: false });
   console.log('Creating page...');
   const page = await browser.newPage();
+  page.on('console', msg => console.log(msg.text()));
   const log = [];
 
   console.log('Navigating to page...');
   await page.goto('http://localhost:5173/?textMode=1', { timeout: 60000 });
   console.log('Page loaded, connecting realtime...');
   await page.evaluate(() => window.__connectRealtime());
+  await page.waitForFunction(
+    () => typeof window.__isConnectedToOpenAI === 'function' && window.__isConnectedToOpenAI(),
+    null,
+    { timeout: 60000 }
+  );
 
   console.log('Waiting for data channel to be ready...');
   await page.waitForFunction(() => window.__isDataChannelReady(), { timeout: 30000 });
