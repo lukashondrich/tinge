@@ -1,0 +1,90 @@
+version: v1
+language: en
+abstain_is_null: true
+metric_keys:
+  - Help_Seeking
+  - Self_Explanation
+  - Persistence
+  - Guessing_or_Requesting_Answer
+  - Gaming_Behavior
+  - Affect_Handling
+  - Scaffolding_Use
+  - Language_Register
+  - Pace_and_Length
+  - Time_Management
+  - Under_Timer_Performance
+metrics:
+  - key: Help_Seeking
+    desc: Requests help appropriately and monitors understanding.
+    anchors:
+      zero: No help request or irrelevant.
+      mid: Vague request ("ok?") or delayed/unspecific help.
+      high: Clear monitoring and targeted help request (e.g., "explain step 2 …").
+  - key: Self_Explanation
+    desc: Explains reasoning/steps/rules (not just giving an answer).
+    anchors:
+      zero: No explanation.
+      mid: One brief reason or partial step.
+      high: Multiple steps or a structured explanation.
+  - key: Persistence
+    desc: Keeps working, signals willingness to continue or retry after difficulty.
+    anchors:
+      zero: Drops/changes task without attempt.
+      mid: Continues but hesitantly.
+      high: Clearly wants to continue or practice more.
+  - key: Guessing_or_Requesting_Answer
+    desc: Guessing or demanding the answer vs. trying oneself (positive polarity = non-guessing).
+    anchors:
+      zero: Demands solution or openly guesses.
+      mid: Single instance of guessing/uncertainty.
+      high: Explicitly avoids guessing; wants to try.
+    polarity: positive_if_non_guessing
+  - key: Gaming_Behavior
+    desc: Skips work (demands solution, bottom-out hints, ignores prompts).
+    anchors:
+      zero: Clear signs of gaming.
+      mid: Borderline or isolated tendency.
+      high: No gaming; accepts required work.
+    polarity: positive_if_no_gaming
+  - key: Affect_Handling
+    desc: Expresses confusion/frustration/boredom and regulates it productively.
+    anchors:
+      zero: Gives up immediately or uncooperative.
+      mid: Expresses affect without regulation.
+      high: Expresses affect and regulates (requests help, continues).
+  - key: Scaffolding_Use
+    desc: Accepts and applies hints/stepwise guidance.
+    anchors:
+      zero: Ignores hints.
+      mid: Partially applies hints.
+      high: Follows and applies hints; references them.
+    conditional: true
+  - key: Language_Register
+    desc: Uses requested language/register; appropriate simplicity for the task level.
+    anchors:
+      zero: Wrong language or clearly inappropriate register.
+      mid: Generally correct but sometimes too complex/too simple.
+      high: Appropriate language/register for the task.
+  - key: Pace_and_Length
+    desc: Turn length and tempo fit the task (not one-word or rambling).
+    anchors:
+      zero: One-word or overly long/rambling.
+      mid: Partly appropriate.
+      high: Well-dosed and task-appropriate.
+  - key: Time_Management
+    desc: References time budget and adapts plan accordingly.
+    anchors:
+      zero: Ignores time limit/none referenced.
+      mid: Implicit reference.
+      high: Explicit reference and adaptation.
+    conditional: true
+  - key: Under_Timer_Performance
+    desc: Under explicit timer/evaluation, shows realistic slight performance/behavior change.
+    anchors:
+      zero: No reaction despite timer (if present) OR excessive collapse.
+      mid: Slight/unclear reaction.
+      high: Realistic slight adjustment/drop.
+    conditional: true
+aggregation:
+  method: mean
+  rounding: 2
