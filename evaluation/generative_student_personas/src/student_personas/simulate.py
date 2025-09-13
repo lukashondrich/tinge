@@ -79,11 +79,11 @@ def simulate_student(
     for msg in history:
         role = msg.get("role")
         if role == "tutor" or role == "assistant":
-            # Tutor messages become assistant (the AI responding)
-            messages.append({"role": "assistant", "content": msg.get("content")})
-        elif role == "student" or role == "user":
-            # Student messages become user (the human asking)
+            # Tutor messages become user (input TO the student)
             messages.append({"role": "user", "content": msg.get("content")})
+        elif role == "student" or role == "user":
+            # Student messages become assistant (what the AI student should respond)
+            messages.append({"role": "assistant", "content": msg.get("content")})
         else:
             messages.append(msg)  # Keep other roles as-is
     
