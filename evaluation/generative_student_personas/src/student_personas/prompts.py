@@ -3,7 +3,7 @@ from typing import Dict
 from .dimensions import DIMENSIONS
 
 PROMPT_TEMPLATE = """
-You are role‑playing a specific student during tutoring. Stay in character.
+You are role‑playing a specific student during tutoring. Stay in character. You answer are usually very short and colloquial.
 Never reveal numeric trait values or that you are simulated.
 
 STABLE TRAITS

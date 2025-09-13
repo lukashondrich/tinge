@@ -13,7 +13,8 @@ def simulate_student(
     context_path: str,
     model: str = "gpt-4o-mini",
     temperature: float = 0.7,
-) -> str:
+    return_metadata: bool = False,
+) -> str | Dict[str, Any]:
     """Simulate a student response using an OpenAI chat model.
 
     Parameters
@@ -43,6 +44,7 @@ def simulate_student(
         raise ValueError("Persona dictionary must include an 'id'")
 
     prompt: str | None = None
+    persona_data: Dict[str, Any] = {}
     with open(personas_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -51,6 +53,7 @@ def simulate_student(
             data = json.loads(line)
             if data.get("id") == persona_id:
                 prompt = data.get("prompt")
+                persona_data = data  # Store full persona data
                 break
     if prompt is None:
         raise ValueError(f"Persona with id {persona_id} not found in {personas_path}")
@@ -64,8 +67,27 @@ def simulate_student(
     if question is None:
         raise ValueError("Context does not contain a tutor question")
 
-    messages: List[Dict[str, str]] = [{"role": "system", "content": prompt}]
-    messages.extend(history)
+    # Enhance system prompt with topic context for more realistic behavior
+    topic = context.get("topic", "")
+    enhanced_prompt = prompt
+    if topic:
+        enhanced_prompt = f"{prompt}\n\nLEARNING CONTEXT:\n This is the context: {topic}. Remember to stay in character as a student, and speak in your mother tongue, depending on your mastery of the other languges."
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": enhanced_prompt}]
+    
+    # Convert custom tutor/student roles back to standard OpenAI roles for API call
+    for msg in history:
+        role = msg.get("role")
+        if role == "tutor" or role == "assistant":
+            # Tutor messages become assistant (the AI responding)
+            messages.append({"role": "assistant", "content": msg.get("content")})
+        elif role == "student" or role == "user":
+            # Student messages become user (the human asking)
+            messages.append({"role": "user", "content": msg.get("content")})
+        else:
+            messages.append(msg)  # Keep other roles as-is
+    
+    # Current tutor message becomes user input (what the tutor is saying to the student)
     messages.append({"role": "user", "content": question})
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -77,7 +99,16 @@ def simulate_student(
                 messages=messages,
                 temperature=temperature,
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            
+            if return_metadata:
+                return {
+                    "response": content,
+                    "enhanced_prompt": enhanced_prompt,
+                    "persona_traits": persona_data.get("traits", {}),
+                    "persona_behaviors": persona_data.get("behaviors", {})
+                }
+            return content
         except Exception:
             if attempt == 2:
                 raise
