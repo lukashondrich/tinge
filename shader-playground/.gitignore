@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Project-specific logs and data
+page_log.json
