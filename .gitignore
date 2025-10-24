@@ -1,7 +1,14 @@
 embeddings_env/
+.venv/
+venv/
+env/
 *.pyc
 __pycache__/
 .ipynb_checkpoints/
+evaluation/
+page_log.json
+*.png
+*.svg
 
 # dependencies
 node_modules/
