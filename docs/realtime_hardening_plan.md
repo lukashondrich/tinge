@@ -48,7 +48,7 @@ This coupling works but makes recovery from failures and future features (e.g., 
 - Emit structured telemetry events (e.g., `session:error`, `embedding:fallback`) to help track instability.
 
 ## Suggested Implementation Order
-1. Land `RealtimeSession` class and migrate existing exports (`initOpenAIRealtime`, `connect`, `handlePTTPress/Release`) to use it without changing UI contract.
+1. Land `RealtimeSession` class and migrate existing exports (`initOpenAIRealtime`, `connect`, `handlePTTPress/Release`) to use it without changing UI contract. **(✅ implemented: `src/realtime/session.js` now encapsulates the realtime loop and `openaiRealtime.js` is a thin facade.)**
 2. Introduce `BubbleManager` and update `main.js` to use it while keeping `DialoguePanel` rendering.
 3. Refactor word processing queue, add caching/backoff, and untangle from bubble DOM writes.
 4. Add reconnection cleanup and improved error reporting.
@@ -63,4 +63,3 @@ This coupling works but makes recovery from failures and future features (e.g., 
 - Should mobile fallback code live in a separate adapter module (possibly loaded conditionally)?
 - Do we need to persist bubble metadata across reloads for the upcoming point-cloud control feature?
 - Can token usage API tolerate batching multiple utterances, or should we stream per delta as today?
-
