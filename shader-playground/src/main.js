@@ -15,6 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
+import { isMobileDevice, createMobileDebug } from './utils/mobile.js';
 
 
 
@@ -51,13 +52,6 @@ let lastUtteranceWords = [];
 const wordPositions = new Map(); // word -> THREE.Vector3 position
 const wordIndices = new Map(); // word -> index in optimizer
 
-// Mobile device detection
-const isMobileDevice = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-         ('ontouchstart' in window) ||
-         (navigator.maxTouchPoints > 0);
-};
-
 // Mobile-specific bubble creation tracking to prevent rapid duplicates
 const lastBubbleCreation = { user: 0, ai: 0 };
 const MOBILE_BUBBLE_COOLDOWN = 500; // 500ms cooldown between bubble creation on mobile
@@ -65,21 +59,7 @@ const IS_MOBILE = isMobileDevice();
 
 const panelEl = document.getElementById('transcriptContainer');
 
-// Mobile debug logging
-function mobileDebug(message) {
-  if (IS_MOBILE) {
-    const debugPanel = document.getElementById('mobileDebug');
-    const debugOutput = document.getElementById('debugOutput');
-    if (debugPanel && debugOutput) {
-      debugPanel.style.display = 'block';
-      const timestamp = new Date().toLocaleTimeString();
-      debugOutput.innerHTML += `<div>[${timestamp}] ${message}</div>`;
-      debugOutput.scrollTop = debugOutput.scrollHeight;
-    }
-  }
-  // eslint-disable-next-line no-console
-  console.log(`[MOBILE] ${message}`);
-}
+const mobileDebug = createMobileDebug(IS_MOBILE);
 
 // timer used to delay bubble finalization per speaker
 const finalizeTimers = { user: null, ai: null };
@@ -491,7 +471,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   }
 
   async function loadWordsToScene(words, batchType = 'batch') {
-    console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
+    //console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
     
     for (const item of words) {
       try {
@@ -531,7 +511,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.instanceMatrix.needsUpdate = true;
     
-    console.log(`📚 ${batchType}: Loaded ${loadedWordCount}/${totalVocabularySize} words`);
+    //console.log(`📚 ${batchType}: Loaded ${loadedWordCount}/${totalVocabularySize} words`);
   }
 
   async function loadOlderWordsBatch() {
