@@ -13,7 +13,7 @@ export class VocabularyStorage {
 
   /**
    * Load vocabulary from localStorage
-   * @returns {Array} Array of {word, position: {x, y, z}, timestamp, speaker} objects
+   * @returns {Array} Array of {word, position: {x, y, z}, timestamp, speaker, language} objects
    */
   loadVocabulary() {
     try {
@@ -69,8 +69,9 @@ export class VocabularyStorage {
    * @param {string} word - The spoken word
    * @param {Object} position - {x, y, z} position
    * @param {string} speaker - 'user' or 'ai'
+   * @param {string} language - ISO language code or name
    */
-  saveWord(word, position, speaker = 'ai') {
+  saveWord(word, position, speaker = 'ai', language = 'unknown') {
     try {
       const vocabulary = this.loadVocabulary();
       const key = word.trim().toLowerCase();
@@ -84,6 +85,7 @@ export class VocabularyStorage {
           word: word,
           position: position,
           speaker: speaker,
+          language: language,
           timestamp: Date.now()
         };
       } else {
@@ -92,6 +94,7 @@ export class VocabularyStorage {
           word: word,
           position: position,
           speaker: speaker,
+          language: language,
           timestamp: Date.now()
         });
         
