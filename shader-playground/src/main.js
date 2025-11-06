@@ -15,6 +15,7 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
+import { TEXT_MODE } from './utils/env.js';
 
 
 
@@ -94,8 +95,9 @@ const wordToUtteranceMap = new Map();
 
 // Audio playback for 3D words
 function playAudioFor(word) {
+  if (TEXT_MODE) return;
   const utteranceData = wordToUtteranceMap.get(word.toLowerCase());
-  
+
   if (utteranceData && utteranceData.audioURL) {
     // Play the original utterance audio
     const audio = new Audio(utteranceData.audioURL);
@@ -112,6 +114,7 @@ function playAudioFor(word) {
 
 // Text-to-Speech fallback for words without utterance audio
 function playTTSFallback(word) {
+  if (TEXT_MODE) return;
   if ('speechSynthesis' in window) {
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.rate = 0.8;
@@ -235,6 +238,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   console.log('🎤 Initializing OpenAI Realtime...');
   initOpenAIRealtime(
     (remoteStream) => {
+      if (TEXT_MODE) return;
       const audio = new Audio();
       audio.srcObject = remoteStream;
       audio.autoplay = true;

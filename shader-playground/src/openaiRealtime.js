@@ -5,6 +5,7 @@
 import { AudioManager } from './audio/audioManager';
 import { StorageService } from './core/storageService';
 import jsyaml from 'js-yaml';
+import { TEXT_MODE } from './utils/env.js';
 
 
 let peerConnection = null;
@@ -163,8 +164,15 @@ function stopAndTranscribe(audioMgr, transcriptText) {
 
 
 // our recorder for “utterance” blobs
-const userAudioMgr = new AudioManager({ speaker: 'user' });
-const aiAudioMgr = new AudioManager({ speaker: 'ai' });
+class NoopAudioManager {
+  constructor() { this.isRecording = false; this.stream = null; }
+  async init() {}
+  startRecording() {}
+  async stopRecording() { return null; }
+  playAudio() {}
+}
+const userAudioMgr = TEXT_MODE ? new NoopAudioManager() : new AudioManager({ speaker: 'user' });
+const aiAudioMgr = TEXT_MODE ? new NoopAudioManager() : new AudioManager({ speaker: 'ai' });
 
 
 // Function handlers for memory management
@@ -446,8 +454,10 @@ export async function initOpenAIRealtime(streamCallback, eventCallback, usageCal
   tokenUsageCallback = usageCallback;
 
   // Prepare MediaRecorder
-  await userAudioMgr.init();
-  await aiAudioMgr.init();
+  if (!TEXT_MODE) {
+    await userAudioMgr.init();
+    await aiAudioMgr.init();
+  }
   // Create PTT button
   createPTTButton();
   
@@ -661,7 +671,7 @@ export async function connect() {
     pttButton.style.backgroundColor = '#666';
 
     // Mobile-specific audio initialization first
-    if (MOBILE_DEVICE) {
+    if (MOBILE_DEVICE && !TEXT_MODE) {
       try {
         mobileDebug('Starting mobile audio initialization...');
         
@@ -838,10 +848,12 @@ export async function connect() {
       };
 
     // Media and DataChannel
-    const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioTrack = mediaStream.getTracks()[0];
-    audioTrack.enabled = false;
-    peerConnection.addTrack(audioTrack);
+    if (!TEXT_MODE) {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioTrack = mediaStream.getTracks()[0];
+      audioTrack.enabled = false;
+      peerConnection.addTrack(audioTrack);
+    }
     dataChannel = peerConnection.createDataChannel('oai-events');
     
     dataChannel.onclose = () => {
@@ -1047,6 +1059,8 @@ export async function connect() {
         document.body.appendChild(remoteAudio);
         }
 
+        if (TEXT_MODE) return;
+
         // Re-init AI AudioManager on that stream
         aiAudioMgr.stream = remoteStream;
         try {
@@ -1098,6 +1112,7 @@ export async function connect() {
                         return;
                     }
                     onEventCallback({ type: 'utterance.added', record });
+                    window.dispatchEvent(new CustomEvent('chat-message', { detail: { speaker: record.speaker, text: record.text } }));
 
                 // reset for next turn
                 aiTranscript = '';
@@ -1153,13 +1168,14 @@ export async function connect() {
               
               // Store and emit single enhanced record with device context
               StorageService.addUtterance(record);
-              onEventCallback({ 
-                type: 'utterance.added', 
+              onEventCallback({
+                type: 'utterance.added',
                 record,
                 deviceType: DEVICE_TYPE,
                 transcriptKey
               });
-              
+              window.dispatchEvent(new CustomEvent('chat-message', { detail: { speaker: record.speaker, text: record.text } }));
+
               // Clean up pending state
               if (pendingUserRecord === record) pendingUserRecord = null;
               pendingUserRecordPromise = null;
@@ -1200,7 +1216,7 @@ export async function connect() {
         // — handle final AI transcription completion —
         if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
           const finalTranscript = event.transcript.trim();
-          
+
           // Relay this event to the UI so it can handle final transcription logic
           if (onEventCallback) {
             onEventCallback({
@@ -1209,6 +1225,7 @@ export async function connect() {
               speaker: 'ai'
             });
           }
+          window.dispatchEvent(new CustomEvent('chat-message', { detail: { speaker: 'ai', text: finalTranscript } }));
         }
 
         // — handle function calls —
@@ -1388,6 +1405,7 @@ export async function connect() {
 
 
 function enableMicrophone() {
+  if (TEXT_MODE) return;
   if (audioTrack && isConnected) {
     audioTrack.enabled = true;
     isMicActive = true;
@@ -1396,16 +1414,17 @@ function enableMicrophone() {
   } else {
     if (!audioTrack) {
       // eslint-disable-next-line no-console
-    console.error('Cannot enable microphone - no audio track available');
+      console.error('Cannot enable microphone - no audio track available');
     }
     if (!isConnected) {
       // eslint-disable-next-line no-console
-    console.error('Cannot enable microphone - not connected to OpenAI');
+      console.error('Cannot enable microphone - not connected to OpenAI');
     }
   }
 }
 
 function disableMicrophone() {
+  if (TEXT_MODE) return;
   if (audioTrack) {
     audioTrack.enabled = false;
     isMicActive = false;
