@@ -4,6 +4,7 @@
   "description": "A Three.js playground with AI-powered features",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:embedding\"",
+    "setup:python": "cd embedding-service && npm run setup:python",
     "install:all": "npm install && cd backend && npm install && cd ../shader-playground && npm install && cd ../embedding-service && npm install",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd shader-playground && npm run dev",

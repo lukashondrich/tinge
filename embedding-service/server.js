@@ -19,7 +19,14 @@ try {
 
 // Start a persistent Python process that keeps the model in memory
 const pythonScript = path.join(__dirname, 'compute_embedding.py');
-const python = spawn('python3', [pythonScript, '--server']);
+const venvPython = path.join(__dirname, '.venv', 'bin', 'python3');
+const legacyVenvPython = path.join(__dirname, 'venv', 'bin', 'python3');
+const pythonExecutable = fs.existsSync(venvPython)
+  ? venvPython
+  : (fs.existsSync(legacyVenvPython) ? legacyVenvPython : 'python3');
+
+console.log(`[embedding-service] Using Python executable: ${pythonExecutable}`);
+const python = spawn(pythonExecutable, [pythonScript, '--server']);
 let pyBuffer = '';
 const pending = [];
 
@@ -41,6 +48,15 @@ python.stdout.on('data', data => {
 
 python.stderr.on('data', data => {
   console.error('Embedding process error:', data.toString());
+});
+
+python.on('exit', (code, signal) => {
+  const reason = signal ? `signal ${signal}` : `code ${code}`;
+  console.error(`[embedding-service] Python process exited (${reason})`);
+  while (pending.length > 0) {
+    const req = pending.shift();
+    if (req) req.reject(new Error(`Embedding backend unavailable (${reason})`));
+  }
 });
 
 function embedWord(word) {

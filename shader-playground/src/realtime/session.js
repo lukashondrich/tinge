@@ -30,6 +30,7 @@ export class RealtimeSession {
 
     this.isMicActive = false;
     this.isConnected = false;
+    this.isConnecting = false;
     this.currentEphemeralKey = null;
     this.pendingUserRecordPromise = null;
     this.pendingUserRecord = null;
@@ -179,6 +180,12 @@ export class RealtimeSession {
     this.pttButton.style.backgroundColor = color;
   }
 
+  setPTTReadyStatus() {
+    // Guard against async connect callbacks overriding active recording state.
+    if (this.isMicActive) return;
+    this.setPTTStatus('Push to Talk', '#44f');
+  }
+
   enableMicrophone() {
     if (this.audioTrack && this.isConnected) {
       this.audioTrack.enabled = true;
@@ -195,11 +202,15 @@ export class RealtimeSession {
     }
     this.isMicActive = false;
     if (this.isConnected) {
-      this.setPTTStatus('Push to Talk', '#44f');
+      this.setPTTReadyStatus();
     }
   }
 
   async handlePTTPress() {
+    if (this.isConnecting) {
+      return { allowed: false, reason: 'connecting' };
+    }
+
     this.resetPendingRecording();
 
     const limitCheck = await this.checkTokenLimit();
@@ -272,6 +283,8 @@ export class RealtimeSession {
   }
 
   async connect() {
+    if (this.isConnecting) return;
+    this.isConnecting = true;
     try {
       if (this.pttButton) {
         this.setPTTStatus('Connecting...', '#666');
@@ -290,12 +303,14 @@ export class RealtimeSession {
       console.log('OpenAI Realtime connection established'); // eslint-disable-line no-console
       this.mobileDebug('🎉 OpenAI Realtime connection fully established!');
       this.isConnected = true;
-      this.setPTTStatus('Push to Talk', '#44f');
+      this.setPTTReadyStatus();
     } catch (error) {
       console.error(`OpenAI connection error: ${error.message}`); // eslint-disable-line no-console
       console.error('Error details:', error); // eslint-disable-line no-console
       this.handleConnectError(error);
       throw error;
+    } finally {
+      this.isConnecting = false;
     }
   }
 
@@ -444,7 +459,7 @@ export class RealtimeSession {
 
     this.dataChannel.onopen = async () => {
       this.isConnected = true;
-      this.setPTTStatus('Push to Talk', '#44f');
+      this.setPTTReadyStatus();
       await this.sendSystemPrompt();
       await this.sendSessionConfiguration();
     };

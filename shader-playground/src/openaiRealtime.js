@@ -16,9 +16,11 @@ const session = new RealtimeSession({
 
 let pttButton = null;
 let isPTTPressed = false;
+let isFirstConnectionPress = true;
 let lastTouchEventTime = 0;
 let touchEventCount = 0;
 const MOBILE_DEBOUNCE_TIME = MOBILE_DEVICE ? 100 : 0;
+const CONNECTING_FEEDBACK_MS = 1200;
 
 export async function initOpenAIRealtime(streamCallback, eventCallback, usageCallback = null) {
   if (MOBILE_DEVICE) {
@@ -71,14 +73,47 @@ async function attemptPTTStart() {
   if (!result.allowed) {
     if (result.reason === 'token_limit_exceeded') {
       showTokenLimitMessage();
+    } else if (result.reason === 'connecting' && pttButton) {
+      pttButton.innerText = 'Connecting...';
+      pttButton.style.backgroundColor = '#666';
+      setTimeout(() => {
+        if (!isPTTPressed && pttButton) {
+          pttButton.innerText = 'Push to Talk';
+          pttButton.style.backgroundColor = '#44f';
+        }
+      }, CONNECTING_FEEDBACK_MS);
     }
     return false;
   }
   return true;
 }
 
+async function connectOnly() {
+  const started = await attemptPTTStart();
+  if (!started) return false;
+
+  // If this was a first-press connect action, stop immediately and return
+  // to idle so subsequent presses are true hold-to-talk interactions.
+  session.handlePTTRelease({
+    bufferTime: 0
+  });
+  isFirstConnectionPress = false;
+  isPTTPressed = false;
+  if (pttButton) {
+    pttButton.innerText = 'Push to Talk';
+    pttButton.style.backgroundColor = '#44f';
+  }
+  return false;
+}
+
 async function startPTT() {
   if (isPTTPressed) return;
+
+  if (isFirstConnectionPress) {
+    await connectOnly();
+    return;
+  }
+
   const started = await attemptPTTStart();
   if (started) {
     isPTTPressed = true;
@@ -163,6 +198,7 @@ export function cleanup() {
   }
   pttButton = null;
   isPTTPressed = false;
+  isFirstConnectionPress = true;
   lastTouchEventTime = 0;
   touchEventCount = 0;
 }
@@ -263,4 +299,3 @@ function showTokenLimitMessage() {
 
   limitOverlay.style.display = 'flex';
 }
-

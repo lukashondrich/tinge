@@ -225,3 +225,156 @@ body{background:var(--canvas);}      /* or panel */
   background: rgba(0, 0, 0, 0.1);
 }
 
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(17, 255, 107, 0.12), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(169, 16, 229, 0.14), transparent 48%),
+    rgba(3, 3, 4, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+.onboarding-card {
+  width: min(760px, 100%);
+  border-radius: 14px;
+  padding: 22px 22px 20px;
+  color: #f2f3f5;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(19, 19, 24, 0.92), rgba(8, 8, 10, 0.95));
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(17, 255, 107, 0.12) inset;
+}
+
+.onboarding-card h1 {
+  margin: 8px 0 8px;
+  font-size: clamp(1.35rem, 2.4vw, 1.95rem);
+  line-height: 1.2;
+}
+
+.memory-chip {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #9af9cd;
+  border: 1px solid rgba(17, 255, 107, 0.35);
+  background: rgba(17, 255, 107, 0.12);
+}
+
+.onboarding-subtitle {
+  margin: 0 0 10px;
+  color: #d7dae2;
+}
+
+.onboarding-steps {
+  margin: 0 0 10px 18px;
+  padding: 0;
+}
+
+.onboarding-steps li {
+  margin-bottom: 5px;
+}
+
+.onboarding-note {
+  margin: 0 0 8px;
+  color: #c6cad6;
+  font-size: 0.92rem;
+}
+
+.onboarding-status {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: #e7e9ee;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.onboarding-btn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-family: "DM Mono", "Courier New", monospace;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.onboarding-btn.primary {
+  color: #081108;
+  background: linear-gradient(140deg, #33f18d, #11ff6b);
+  border-color: rgba(17, 255, 107, 0.5);
+}
+
+.onboarding-btn.secondary {
+  color: #ebeef5;
+  background: linear-gradient(140deg, #3f2556, #2f1e42);
+  border-color: rgba(169, 16, 229, 0.45);
+}
+
+.onboarding-btn.ghost {
+  color: #d3d8e0;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.onboarding-btn:hover {
+  transform: translateY(-1px);
+}
+
+.onboarding-launcher {
+  position: fixed;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(88px);
+  z-index: 1600;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-family: "DM Mono", "Courier New", monospace;
+  font-size: 0.76rem;
+  color: #ddf8eb;
+  border: 1px solid rgba(17, 255, 107, 0.4);
+  background: rgba(3, 10, 7, 0.75);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.onboarding-launcher:hover {
+  border-color: rgba(17, 255, 107, 0.7);
+  background: rgba(6, 18, 12, 0.88);
+}
+
+@media (max-width: 600px) {
+  .onboarding-overlay {
+    padding: 12px;
+  }
+
+  .onboarding-card {
+    padding: 16px;
+  }
+
+  .onboarding-actions {
+    flex-direction: column;
+  }
+
+  .onboarding-btn {
+    width: 100%;
+  }
+
+  .onboarding-launcher {
+    bottom: 68px;
+    transform: translateX(82px);
+    font-size: 0.68rem;
+    padding: 6px 9px;
+  }
+}

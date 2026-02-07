@@ -15,7 +15,184 @@ import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
+import { BubbleManager } from './ui/bubbleManager.js';
 import { isMobileDevice, createMobileDebug } from './utils/mobile.js';
+
+const ONBOARDING_DISMISSED_KEY = 'tinge-onboarding-dismissed';
+const DEMO_SEED_ENABLED_KEY = 'tinge-demo-seed-enabled';
+const DEMO_SEED_WORDS = [
+  { word: 'travel', speaker: 'user' },
+  { word: 'career', speaker: 'user' },
+  { word: 'confidence', speaker: 'user' },
+  { word: 'fluency', speaker: 'user' },
+  { word: 'interview', speaker: 'user' },
+  { word: 'pronunciation', speaker: 'user' },
+  { word: 'practice', speaker: 'user' },
+  { word: 'listening', speaker: 'user' },
+  { word: 'feedback', speaker: 'ai' },
+  { word: 'goal', speaker: 'ai' },
+  { word: 'motivation', speaker: 'ai' },
+  { word: 'context', speaker: 'ai' },
+  { word: 'grammar', speaker: 'ai' },
+  { word: 'vocabulary', speaker: 'ai' },
+  { word: 'mistake', speaker: 'ai' },
+  { word: 'progress', speaker: 'ai' },
+  { word: 'culture', speaker: 'ai' },
+  { word: 'conversation', speaker: 'ai' },
+  { word: 'clarity', speaker: 'ai' },
+  { word: 'routine', speaker: 'ai' },
+  { word: 'daily', speaker: 'user' },
+  { word: 'work', speaker: 'user' },
+  { word: 'friends', speaker: 'user' },
+  { word: 'family', speaker: 'user' },
+  { word: 'hobby', speaker: 'user' },
+  { word: 'music', speaker: 'user' },
+  { word: 'reading', speaker: 'user' },
+  { word: 'writing', speaker: 'user' },
+  { word: 'speaking', speaker: 'user' },
+  { word: 'story', speaker: 'user' },
+  { word: 'question', speaker: 'ai' },
+  { word: 'answer', speaker: 'ai' },
+  { word: 'pattern', speaker: 'ai' },
+  { word: 'revision', speaker: 'ai' },
+  { word: 'memory', speaker: 'ai' },
+  { word: 'profile', speaker: 'ai' },
+  { word: 'style', speaker: 'ai' },
+  { word: 'challenge', speaker: 'ai' },
+  { word: 'improve', speaker: 'ai' },
+  { word: 'momentum', speaker: 'ai' }
+];
+
+function seededPoint(index, total) {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const t = total > 1 ? index / (total - 1) : 0.5;
+  const y = 1 - 2 * t;
+  const radius = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = index * goldenAngle;
+  const jitter = Math.sin(index * 12.9898) * 0.07;
+
+  return {
+    x: radius * Math.cos(theta) * 0.82 + jitter,
+    y: y * 0.82 + jitter * 0.2,
+    z: radius * Math.sin(theta) * 0.82 - jitter * 0.2
+  };
+}
+
+function shouldEnableDemoSeed() {
+  const stored = localStorage.getItem(DEMO_SEED_ENABLED_KEY);
+  if (stored === null) {
+    localStorage.setItem(DEMO_SEED_ENABLED_KEY, '1');
+    return true;
+  }
+  return stored === '1';
+}
+
+function setDemoSeedEnabled(enabled) {
+  localStorage.setItem(DEMO_SEED_ENABLED_KEY, enabled ? '1' : '0');
+}
+
+function buildDemoSeedVocabulary() {
+  const now = Date.now();
+  return DEMO_SEED_WORDS.map((entry, index) => ({
+    word: entry.word,
+    speaker: entry.speaker,
+    position: seededPoint(index, DEMO_SEED_WORDS.length),
+    timestamp: now + index
+  }));
+}
+
+function applyDemoSeedVocabulary() {
+  const entries = buildDemoSeedVocabulary();
+  vocabularyStorage.importVocabulary(JSON.stringify(entries));
+  return entries.length;
+}
+
+function dismissOnboarding(overlay, persistDismiss = false) {
+  if (persistDismiss) {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1');
+  }
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
+
+function showOnboarding(overlay) {
+  if (overlay) {
+    overlay.style.display = 'flex';
+  }
+}
+
+function createOnboardingUI() {
+  const overlay = document.createElement('section');
+  overlay.id = 'onboardingOverlay';
+  overlay.className = 'onboarding-overlay';
+
+  const stats = vocabularyStorage.getStats();
+  overlay.innerHTML = `
+    <div class="onboarding-card">
+      <span class="memory-chip">Agentic memory active (local profile)</span>
+      <h1>Voice-to-Meaning Language Playground</h1>
+      <p class="onboarding-subtitle">
+        Speak naturally while holding <strong>Push to Talk</strong>. Every new word appears in a live 3D meaning map.
+      </p>
+      <ol class="onboarding-steps">
+        <li>Allow microphone access.</li>
+        <li>Hold the button while you speak.</li>
+        <li>Release to get AI feedback and new mapped words.</li>
+      </ol>
+      <p class="onboarding-note">
+        Talk about anything: work, hobbies, travel, interviews. The tutor adapts in real time and updates your learning profile over sessions.
+      </p>
+      <p class="onboarding-status">Current cloud size: <strong>${stats.total}</strong> words</p>
+      <div class="onboarding-actions">
+        <button id="onboardingUseDemo" class="onboarding-btn primary">Use Demo Cloud</button>
+        <button id="onboardingStartFresh" class="onboarding-btn secondary">Start Fresh</button>
+        <button id="onboardingDismiss" class="onboarding-btn ghost">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1';
+  if (dismissed) {
+    overlay.style.display = 'none';
+  }
+
+  const useDemoBtn = overlay.querySelector('#onboardingUseDemo');
+  const startFreshBtn = overlay.querySelector('#onboardingStartFresh');
+  const dismissBtn = overlay.querySelector('#onboardingDismiss');
+
+  useDemoBtn?.addEventListener('click', () => {
+    setDemoSeedEnabled(true);
+    if (vocabularyStorage.getStats().total === 0) {
+      applyDemoSeedVocabulary();
+    }
+    dismissOnboarding(overlay, true);
+    window.location.reload();
+  });
+
+  startFreshBtn?.addEventListener('click', () => {
+    setDemoSeedEnabled(false);
+    vocabularyStorage.clearVocabulary();
+    dismissOnboarding(overlay, true);
+    window.location.reload();
+  });
+
+  dismissBtn?.addEventListener('click', () => {
+    dismissOnboarding(overlay, true);
+  });
+
+  const launcher = document.createElement('button');
+  launcher.id = 'onboardingLauncher';
+  launcher.className = 'onboarding-launcher';
+  launcher.textContent = 'How it works';
+  launcher.title = 'Show onboarding guide';
+  launcher.addEventListener('click', () => {
+    showOnboarding(overlay);
+  });
+  document.body.appendChild(launcher);
+}
 
 
 
@@ -33,18 +210,8 @@ const panel = new DialoguePanel('#transcriptContainer');
 // Initialize token progress bar
 const tokenProgressBar = new TokenProgressBar();
 
-// Track the currently active chat bubble for each speaker
-const activeBubbles = { user: null, ai: null };
-
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
-
-// Track pending text from delta events for word extraction
-let pendingDeltaText = '';
-
-// Track processed utterances to prevent duplicates with mobile-specific keys
-const processedUtterances = new Set();
-const deviceUtterances = new Map(); // Track utterances by device type
 
 // Track last utterance for 3D text labels
 let lastUtteranceWords = [];
@@ -52,22 +219,27 @@ let lastUtteranceWords = [];
 const wordPositions = new Map(); // word -> THREE.Vector3 position
 const wordIndices = new Map(); // word -> index in optimizer
 
-// Mobile-specific bubble creation tracking to prevent rapid duplicates
-const lastBubbleCreation = { user: 0, ai: 0 };
 const MOBILE_BUBBLE_COOLDOWN = 500; // 500ms cooldown between bubble creation on mobile
 const IS_MOBILE = isMobileDevice();
+const IDLE_AUTO_ROTATE_SPEED = 0.62;
+const IDLE_RESUME_DELAY_MS = 1600;
 
 const panelEl = document.getElementById('transcriptContainer');
 
 const mobileDebug = createMobileDebug(IS_MOBILE);
-
-// timer used to delay bubble finalization per speaker
-const finalizeTimers = { user: null, ai: null };
-
+createOnboardingUI();
 
 function scrollToBottom() {
   panelEl.scrollTop = panelEl.scrollHeight;
 }
+
+const bubbleManager = new BubbleManager({
+  containerElement: panelEl,
+  isMobile: IS_MOBILE,
+  mobileCooldown: MOBILE_BUBBLE_COOLDOWN,
+  playAudioFor,
+  scrollBehavior: scrollToBottom
+});
 
 // Word to utterance mapping for audio playback
 const wordToUtteranceMap = new Map();
@@ -103,55 +275,6 @@ function playTTSFallback(word) {
   }
 }
 
-function startBubble(speaker) {
-  const now = Date.now();
-  
-  // Check for active bubble first
-  if (activeBubbles[speaker]) {
-    return;
-  }
-  
-  // Mobile-specific cooldown check to prevent rapid bubble creation
-  if (IS_MOBILE && (now - lastBubbleCreation[speaker]) < MOBILE_BUBBLE_COOLDOWN) {
-    return;
-  }
-  
-  // Check if there's an existing unfinalized bubble for this speaker
-  const existingBubbles = panelEl.querySelectorAll(`.bubble.${speaker}`);
-  for (let i = existingBubbles.length - 1; i >= 0; i--) {
-    const existingBubble = existingBubbles[i];
-    // Look for bubbles without utteranceId (unfinalized) or with undefined utteranceId
-    if (!existingBubble.dataset.utteranceId || existingBubble.dataset.utteranceId === 'undefined') {
-      activeBubbles[speaker] = existingBubble; // Restore the active reference
-      scrollToBottom();
-      return;
-    }
-  }
-  
-  // Only create new bubble if we couldn't find an existing unfinalized one
-  const bubble = document.createElement('div');
-  bubble.classList.add('bubble', speaker);
-  const p = document.createElement('p');
-  p.className = 'transcript';
-  const span = document.createElement('span');
-  span.className = 'highlighted-text';
-  
-  // For user speech, add a "speaking..." placeholder
-  if (speaker === 'user') {
-    span.textContent = 'Speaking...';
-    span.style.fontStyle = 'italic';
-    span.style.opacity = '0.7';
-  }
-  
-  p.appendChild(span);
-  bubble.appendChild(p);
-  panelEl.appendChild(bubble);
-  bubble.__highlight = span;
-  activeBubbles[speaker] = bubble;
-  lastBubbleCreation[speaker] = now; // Track creation time
-  scrollToBottom();
-}
-
 // Initialize scene and OpenAI Realtime
 console.log('🚀 Starting scene initialization...');
 createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls: _controls, recentlyAdded, labels, textManager }) => {
@@ -162,7 +285,31 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
   const orbitControls = new OrbitControls(camera, renderer.domElement);
   orbitControls.target.set(0, 0, 0);
+  orbitControls.enableDamping = true;
+  orbitControls.dampingFactor = 0.06;
+  orbitControls.autoRotate = false;
+  orbitControls.autoRotateSpeed = IDLE_AUTO_ROTATE_SPEED;
   orbitControls.update();
+
+  let isUserOrbiting = false;
+  let lastUserInteractionTime = performance.now();
+
+  function markUserInteraction() {
+    lastUserInteractionTime = performance.now();
+  }
+
+  orbitControls.addEventListener('start', () => {
+    isUserOrbiting = true;
+    markUserInteraction();
+  });
+  orbitControls.addEventListener('end', () => {
+    isUserOrbiting = false;
+    markUserInteraction();
+  });
+
+  renderer.domElement.addEventListener('wheel', markUserInteraction, { passive: true });
+  renderer.domElement.addEventListener('pointerdown', markUserInteraction);
+  renderer.domElement.addEventListener('touchstart', markUserInteraction, { passive: true });
 
   // 🏷 Tooltip for hovered words
   const tooltip = document.createElement('div');
@@ -224,7 +371,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     (event) => {
 
       if (event.type === 'input_audio_buffer.speech_started') {
-        startBubble('user');
+        bubbleManager.beginTurn('user');
       }
       
       if (event.type === 'input_audio_buffer.speech_stopped') {
@@ -236,61 +383,43 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         event.type === 'response.audio_transcript.delta' &&
         typeof event.delta === 'string'
       ) {
-        const speaker = 'ai';
-        addDeltaToActiveBubble(event.delta, speaker);
+        const completedWords = bubbleManager.appendDelta('ai', event.delta);
+        completedWords.forEach((word) => addWord(word, 'ai', { skipBubble: true }));
       }
 
       // ② Handle individual word events 
       if (event.type === 'transcript.word' && typeof event.word === 'string') {
         const speaker = event.speaker || 'ai';
-        // eslint-disable-next-line no-unused-vars
-        const _deviceType = event.deviceType || 'unknown';
         
         // For user speech, only process words if there's an active bubble (from PTT press)
         // This prevents creating new bubbles but allows updating existing placeholder
         if (speaker === 'user') {
-          if (activeBubbles[speaker]) {
-            updateUserPlaceholder(event.word, speaker);
-            addWord(event.word, speaker); // Also add user words to word cloud
-          }
+          bubbleManager.appendWord({ speaker, word: event.word, onWordClick: playAudioFor });
+          addWord(event.word, speaker, { skipBubble: true });
           return;
         }
         
         // For AI speech, only process word events if we don't have an active delta-based bubble
         // This prevents conflicts between delta and word event processing
-        const bubble = activeBubbles[speaker];
-        if (!bubble || !bubble.__deltaText) {
+        if (!bubbleManager.hasActiveDelta(speaker)) {
           addWord(event.word, speaker);
         } else {
           // We have delta-based content, just add to word cloud without UI update
           const key = event.word.trim().toLowerCase();
           if (!usedWords.has(key)) {
-            wordQueue.push({ word: event.word, speaker });
-            processWordQueue();
+            addWord(event.word, speaker, { skipBubble: true });
           }
         }
       }
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
       if (event.type === 'utterance.added' && event.record) {
-        // eslint-disable-next-line no-unused-vars
-        const { speaker = 'ai', id, text, wordTimings, deviceType: _deviceType } = event.record;
+        const { speaker = 'ai', id, text, wordTimings } = event.record;
         const eventDeviceType = event.deviceType || 'unknown';
         
-        // Enhanced duplicate prevention with device-specific tracking
-        const utteranceKey = `${speaker}-${id}`;
-        const deviceSpecificKey = `${eventDeviceType}-${speaker}-${id}`;
-        const contentKey = `${speaker}-${text.substring(0, 30)}`;
-        
-        if (processedUtterances.has(utteranceKey) || 
-            processedUtterances.has(deviceSpecificKey) ||
-            deviceUtterances.has(contentKey)) {
+        if (!bubbleManager.shouldProcessUtterance(event.record, eventDeviceType)) {
           return;
         }
-        
-        processedUtterances.add(utteranceKey);
-        processedUtterances.add(deviceSpecificKey);
-        deviceUtterances.set(contentKey, { deviceType: eventDeviceType, timestamp: Date.now() });
         
         // Map words to utterance for audio playback
         if (event.record.audioURL && event.record.wordTimings) {
@@ -319,32 +448,24 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           });
         }
         
-        const bubble = activeBubbles[speaker];
+        const bubble = bubbleManager.getActiveBubble(speaker);
 
         // Handle placeholder records - they need processing to set up bubble tracking
         // even if they don't have final content yet
         const isPlaceholder = text === '...' && (!wordTimings || wordTimings.length === 0);
         
         if (isPlaceholder) {
-          // Set utteranceId on bubble for future replacement
-          if (bubble) {
-            bubble.dataset.utteranceId = id;
-          }
-          // Start finalization timer - when final transcription arrives, it will replace this
-          clearTimeout(finalizeTimers[speaker]);
-          finalizeTimers[speaker] = setTimeout(() => {
-            finalizeBubble(speaker);
-          }, 2000); // Longer timeout for user speech (server transcription takes time)
+          bubbleManager.setUtteranceId(speaker, id);
+          const placeholderDelay = speaker === 'user' ? 2000 : 1000;
+          bubbleManager.scheduleFinalize(speaker, placeholderDelay, (words) => {
+            words.forEach((word) => addWord(word, speaker, { skipBubble: true }));
+          });
           return;
         }
 
         // Cancel any pending finalization timer since we're processing the final utterance now
-        clearTimeout(finalizeTimers[speaker]);
-        
-        // Ensure active bubble has utteranceId for proper replacement detection
-        if (bubble) {
-          bubble.dataset.utteranceId = id;
-        }
+        bubbleManager.clearFinalizeTimer(speaker);
+        bubbleManager.setUtteranceId(speaker, id);
         
         // 🏷️ Track last utterance for 3D text labels
         if (text && text !== '...') {
@@ -387,9 +508,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         // For AI responses, don't set a short finalization timer since we're handling it in output_audio_buffer.stopped
         // For user responses, set a short timer since they don't have buffer events
         if (speaker === 'user') {
-          finalizeTimers[speaker] = setTimeout(() => {
-            finalizeBubble(speaker);
-          }, 300);
+          bubbleManager.scheduleFinalize(speaker, 300);
         }
         // AI finalization is handled by output_audio_buffer.stopped event
         return;
@@ -397,12 +516,9 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
 
       // ④ handle AI buffer stopped - this signals end of AI response
       if (event.type === 'output_audio_buffer.stopped') {
-        const speaker = 'ai';
-        // Don't finalize immediately - wait for the utterance.added event to be processed
-        clearTimeout(finalizeTimers[speaker]);
-        finalizeTimers[speaker] = setTimeout(() => {
-          finalizeBubble(speaker);
-        }, 1000); // Give time for utterance.added to be processed
+        bubbleManager.scheduleFinalize('ai', 1000, (words) => {
+          words.forEach((word) => addWord(word, 'ai', { skipBubble: true }));
+        });
       }
 
       // ⑤ handle final AI transcript completion
@@ -416,7 +532,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         // If we have a final transcript but no utterance.added event yet,
         // this helps ensure we don't lose the final transcription
         // The actual processing will happen when utterance.added arrives
-        if (transcript && !activeBubbles[speaker]) {
+        if (transcript && !bubbleManager.getActiveBubble(speaker)) {
           // eslint-disable-next-line no-console
           console.warn('Got final transcript but no active AI bubble - transcript may be lost');
         }
@@ -444,12 +560,20 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     console.log('📚 Loading vocabulary with performance optimization...');
     try {
       // Quick check of total vocabulary size
-      const fullVocabulary = vocabularyStorage.loadVocabulary();
+      let fullVocabulary = vocabularyStorage.loadVocabulary();
       totalVocabularySize = fullVocabulary.length;
       
       if (totalVocabularySize === 0) {
-        console.log('📚 No previous vocabulary found - starting fresh');
-        return;
+        const demoEnabled = shouldEnableDemoSeed();
+        if (demoEnabled) {
+          const seededCount = applyDemoSeedVocabulary();
+          console.log(`📚 Added ${seededCount} demo seed words for first-time experience`);
+          fullVocabulary = vocabularyStorage.loadVocabulary();
+          totalVocabularySize = fullVocabulary.length;
+        } else {
+          console.log('📚 No previous vocabulary found - starting fresh');
+          return;
+        }
       }
 
       console.log(`📚 Found ${totalVocabularySize} words total - using progressive loading`);
@@ -551,9 +675,9 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     processingWordQueue = true;
     try {
       while (wordQueue.length > 0) {
-        const { word, speaker } = wordQueue.shift();
+        const { word, speaker, options = {} } = wordQueue.shift();
         try {
-          await processWord(word, speaker);
+          await processWord(word, speaker, options);
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('Error processing word:', word, 'Error:', err);
@@ -566,90 +690,9 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     }
   }
 
-  function addWord(word, speaker = 'ai') {
-    wordQueue.push({ word, speaker });
+  function addWord(word, speaker = 'ai', options = {}) {
+    wordQueue.push({ word, speaker, options });
     processWordQueue();
-  }
-
-  function updateUserPlaceholder(word, speaker = 'user') {
-    const bubble = activeBubbles[speaker];
-    if (!bubble) return;
-    
-    const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
-    if (!target) return;
-    
-    // If this is the first word, clear the "Speaking..." placeholder
-    if (target.textContent?.includes('Speaking...')) {
-      target.textContent = '';
-      target.style.fontStyle = 'normal';
-      target.style.opacity = '1';
-    }
-    
-    // Add the word with proper spacing (same logic as processWord)
-    const span = document.createElement('span');
-    span.className = 'word';
-    span.textContent = word + ' ';
-    span.onclick = () => playAudioFor(word);
-    target.appendChild(span);
-    
-    scrollToBottom();
-  }
-
-  function addDeltaToActiveBubble(delta, speaker = 'ai') {
-    let bubble = activeBubbles[speaker];
-    if (!bubble) {
-      bubble = document.createElement('div');
-      bubble.classList.add('bubble', speaker);
-      const p = document.createElement('p');
-      p.className = 'transcript';
-      const span = document.createElement('span');
-      span.className = 'highlighted-text';
-      p.appendChild(span);
-      bubble.appendChild(p);
-      panelEl.appendChild(bubble);
-      bubble.__highlight = span;
-      activeBubbles[speaker] = bubble;
-    }
-    
-    const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
-    
-    // Store accumulated delta text on the bubble for consistent rendering
-    if (!bubble.__deltaText) {
-      bubble.__deltaText = '';
-    }
-    bubble.__deltaText += delta;
-    
-    // Clear existing content and rebuild with accumulated text
-    target.innerHTML = '';
-    const textNode = document.createTextNode(bubble.__deltaText);
-    target.appendChild(textNode);
-    
-    // Extract words from delta for word cloud
-    if (speaker === 'ai') {
-      pendingDeltaText += delta;
-      
-      // Extract complete words from the accumulated text
-      const words = pendingDeltaText.match(/\b\w+\b/g);
-      if (words) {
-        // Find the last complete word position
-        const lastWordMatch = pendingDeltaText.match(/.*\b(\w+)\b/);
-        if (lastWordMatch) {
-          const lastWordEnd = lastWordMatch.index + lastWordMatch[0].length;
-          
-          // Add complete words to the word cloud
-          words.forEach(word => {
-            if (word.length > 2) { // Only add words longer than 2 characters
-              addWord(word, speaker);
-            }
-          });
-          
-          // Keep only the remaining incomplete text
-          pendingDeltaText = pendingDeltaText.substring(lastWordEnd);
-        }
-      }
-    }
-    
-    scrollToBottom();
   }
 
   // Set up post-processing
@@ -670,56 +713,11 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   // composer.addPass(vhsCrtPass);
   
 
-  async function processWord(word, speaker = "ai") {
+  async function processWord(word, speaker = "ai", options = {}) {
     try {
-      const now = Date.now();
-      
-      // FIRST: Update UI immediately (synchronous) to preserve word order
-      let bubble = activeBubbles[speaker];
-      
-      // If no active bubble, check if there's an existing unfinalized bubble for this speaker
-      if (!bubble) {
-        const existingBubbles = panelEl.querySelectorAll(`.bubble.${speaker}`);
-        for (let i = existingBubbles.length - 1; i >= 0; i--) {
-          const existingBubble = existingBubbles[i];
-          // Look for bubbles without utteranceId (unfinalized) or with undefined utteranceId
-          if (!existingBubble.dataset.utteranceId || existingBubble.dataset.utteranceId === 'undefined') {
-            bubble = existingBubble;
-            activeBubbles[speaker] = bubble; // Restore the active reference
-            break;
-          }
-        }
+      if (!options.skipBubble) {
+        bubbleManager.appendWord({ speaker, word, onWordClick: playAudioFor });
       }
-      
-      // Only create new bubble if we couldn't find or reuse an existing one
-      if (!bubble) {
-        // Mobile-specific cooldown check to prevent rapid bubble creation
-        if (IS_MOBILE && (now - lastBubbleCreation[speaker]) < MOBILE_BUBBLE_COOLDOWN) {
-          return; // Skip processing this word to prevent duplicate bubble
-        }
-        
-        bubble = document.createElement('div');
-        bubble.classList.add('bubble', speaker);
-        const p = document.createElement('p');
-        p.className = 'transcript';
-        const span = document.createElement('span');
-        span.className = 'highlighted-text';
-        p.appendChild(span);
-        bubble.appendChild(p);
-        panelEl.appendChild(bubble);
-        bubble.__highlight = span;
-        activeBubbles[speaker] = bubble;
-        lastBubbleCreation[speaker] = now; // Track creation time
-      }
-      const target = bubble.__highlight || bubble.querySelector('.highlighted-text');
-      
-      // Add the word with proper spacing
-      const span = document.createElement('span');
-      span.className = 'word';
-      span.textContent = word + ' '; // Add the complete word with trailing space
-      span.onclick = () => playAudioFor(word);
-      target.appendChild(span);
-      scrollToBottom();
 
       // SECOND: Process embeddings asynchronously (won't affect word order)
       const key = word.trim().toLowerCase();
@@ -815,40 +813,18 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     }
   }
 
-  function finalizeBubble(speaker) {
-    const bubble = activeBubbles[speaker];
-    if (bubble) {
-      // Clear delta text from the bubble
-      bubble.__deltaText = '';
-    }
-    activeBubbles[speaker] = null;
-    
-    // Clear pending delta text for AI speaker when finalizing
-    if (speaker === 'ai') {
-      // Process any remaining words in the pending text
-      if (pendingDeltaText.trim()) {
-        const words = pendingDeltaText.match(/\b\w+\b/g);
-        if (words) {
-          words.forEach(word => {
-            if (word.length > 2) { // Only add words longer than 2 characters
-              addWord(word, speaker);
-            }
-          });
-        }
-      }
-      pendingDeltaText = '';
-    }
-  }
-
-
   // Performance optimization variables
   const MAX_RENDER_DISTANCE = 30; // Hide points beyond this distance
   const LOD_DISTANCES = [10, 20, MAX_RENDER_DISTANCE]; // Different detail levels
   let frameCount = 0;
+  let lastFrameTimeMs = performance.now();
 
   // Animation loop with LOD optimization
-  function animate(_t) {
+  function animate(t) {
     requestAnimationFrame(animate);
+    const deltaSeconds = Math.min(0.05, Math.max(0.0, (t - lastFrameTimeMs) / 1000));
+    lastFrameTimeMs = t;
+
     optimizer.step();
   
     const updatedPositions = optimizer.getPositions();
@@ -933,11 +909,12 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
       new THREE.Float32BufferAttribute(linePositions, 3)
     );
     
-    orbitControls.update();
+    const idleElapsed = performance.now() - lastUserInteractionTime;
+    orbitControls.autoRotate = !isUserOrbiting && idleElapsed > IDLE_RESUME_DELAY_MS;
+    orbitControls.update(deltaSeconds);
 
     // eslint-disable-next-line no-unused-vars
     const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
-    camera.lookAt(0, 0, 0);
 
     // ✨ Apply RGB shift only when user is dragging
     rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;

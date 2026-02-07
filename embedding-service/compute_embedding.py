@@ -2,8 +2,21 @@ import sys
 import json
 import os
 import numpy as np
-import gensim.downloader as api
-from sklearn.decomposition import PCA
+
+GENSIM_IMPORT_ERROR = None
+SKLEARN_IMPORT_ERROR = None
+
+try:
+    import gensim.downloader as api
+except Exception as err:  # pragma: no cover - env-dependent
+    api = None
+    GENSIM_IMPORT_ERROR = err
+
+try:
+    from sklearn.decomposition import PCA
+except Exception as err:  # pragma: no cover - env-dependent
+    PCA = None
+    SKLEARN_IMPORT_ERROR = err
 
 
 def load_words(path=None):
@@ -15,10 +28,15 @@ def load_words(path=None):
 
 
 def load_model():
+    if api is None:
+        return None
     return api.load("glove-wiki-gigaword-100")
 
 
 def compute_pca(model, base_words):
+    if model is None or PCA is None:
+        return None, None
+
     vectors = []
     for word in base_words:
         vec = None
@@ -36,6 +54,14 @@ def compute_pca(model, base_words):
 
 
 def embed_word(word, model, pca, max_abs):
+    if model is None or pca is None or not max_abs:
+        return {
+            "label": word,
+            "x": round((hash(word) % 1000) / 1000 - 0.5, 2),
+            "y": round((hash(word[::-1]) % 1000) / 1000 - 0.5, 2),
+            "z": round((hash(word + word) % 1000) / 1000 - 0.5, 2)
+        }
+
     scale = 8
     vec = None
     for key in (word, word.lower()):
@@ -60,6 +86,17 @@ def embed_word(word, model, pca, max_abs):
 
 
 def main():
+    if GENSIM_IMPORT_ERROR:
+        print(
+            f"[embedding-service] gensim unavailable, using fallback embeddings: {GENSIM_IMPORT_ERROR}",
+            file=sys.stderr
+        )
+    if SKLEARN_IMPORT_ERROR:
+        print(
+            f"[embedding-service] scikit-learn unavailable, using fallback embeddings: {SKLEARN_IMPORT_ERROR}",
+            file=sys.stderr
+        )
+
     if len(sys.argv) > 1 and sys.argv[1] == "--server":
         base_words = load_words()
         model = load_model()

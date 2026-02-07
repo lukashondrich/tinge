@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "scripts": {
     "start": "node server.js",
+    "setup:python": "bash ./setup-python-env.sh",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
