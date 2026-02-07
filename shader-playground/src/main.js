@@ -221,7 +221,9 @@ const wordIndices = new Map(); // word -> index in optimizer
 
 const MOBILE_BUBBLE_COOLDOWN = 500; // 500ms cooldown between bubble creation on mobile
 const IS_MOBILE = isMobileDevice();
-const IDLE_AUTO_ROTATE_SPEED = 0.62;
+const IDLE_AUTO_ROTATE_TARGET_SPEED = 0.5;
+const IDLE_AUTO_ROTATE_ACCEL_PER_SEC = 0.1;
+const IDLE_AUTO_ROTATE_DECEL_PER_SEC = 1.2;
 const IDLE_RESUME_DELAY_MS = 1600;
 
 const panelEl = document.getElementById('transcriptContainer');
@@ -288,7 +290,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   orbitControls.enableDamping = true;
   orbitControls.dampingFactor = 0.06;
   orbitControls.autoRotate = false;
-  orbitControls.autoRotateSpeed = IDLE_AUTO_ROTATE_SPEED;
+  orbitControls.autoRotateSpeed = 0;
   orbitControls.update();
 
   let isUserOrbiting = false;
@@ -818,6 +820,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   const LOD_DISTANCES = [10, 20, MAX_RENDER_DISTANCE]; // Different detail levels
   let frameCount = 0;
   let lastFrameTimeMs = performance.now();
+  let currentIdleRotateSpeed = 0;
 
   // Animation loop with LOD optimization
   function animate(t) {
@@ -910,7 +913,20 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     );
     
     const idleElapsed = performance.now() - lastUserInteractionTime;
-    orbitControls.autoRotate = !isUserOrbiting && idleElapsed > IDLE_RESUME_DELAY_MS;
+    const shouldIdleRotate = !isUserOrbiting && idleElapsed > IDLE_RESUME_DELAY_MS;
+    if (shouldIdleRotate) {
+      currentIdleRotateSpeed = Math.min(
+        IDLE_AUTO_ROTATE_TARGET_SPEED,
+        currentIdleRotateSpeed + IDLE_AUTO_ROTATE_ACCEL_PER_SEC * deltaSeconds
+      );
+    } else {
+      currentIdleRotateSpeed = Math.max(
+        0,
+        currentIdleRotateSpeed - IDLE_AUTO_ROTATE_DECEL_PER_SEC * deltaSeconds
+      );
+    }
+    orbitControls.autoRotate = currentIdleRotateSpeed > 0;
+    orbitControls.autoRotateSpeed = currentIdleRotateSpeed;
     orbitControls.update(deltaSeconds);
 
     // eslint-disable-next-line no-unused-vars
