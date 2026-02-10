@@ -16,6 +16,7 @@ import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
 import { vocabularyStorage } from './utils/vocabularyStorage.js';
 import { BubbleManager } from './ui/bubbleManager.js';
+import { SourcePanel } from './ui/sourcePanel.js';
 import { isMobileDevice, createMobileDebug } from './utils/mobile.js';
 
 const ONBOARDING_DISMISSED_KEY = 'tinge-onboarding-dismissed';
@@ -133,7 +134,7 @@ function createOnboardingUI() {
       <span class="memory-chip">Agentic memory active (local profile)</span>
       <h1>Voice-to-Meaning Language Playground</h1>
       <p class="onboarding-subtitle">
-        Speak naturally while holding <strong>Push to Talk</strong>. Every new word appears in a live 3D meaning map.
+        Speak naturally while holding <strong>Push to Talk</strong>. Every new word appears in a live 3D meaning map. Ask about Spanish-speaking culture, and the tutor pulls real knowledge from a curated Wikipedia archive using Elasticsearch &amp; Haystack RAG.
       </p>
       <ol class="onboarding-steps">
         <li>Allow microphone access.</li>
@@ -141,7 +142,7 @@ function createOnboardingUI() {
         <li>Release to get AI feedback and new mapped words.</li>
       </ol>
       <p class="onboarding-note">
-        Talk about anything: work, hobbies, travel, interviews. The tutor adapts in real time and updates your learning profile over sessions.
+        Talk about anything: work, hobbies, travel - or ask about places, food, history and traditions in Spain &amp; Latin America. The tutor adapts in real time, cites its sources, and updates your learning profile over sessions.
       </p>
       <p class="onboarding-status">Current cloud size: <strong>${stats.total}</strong> words</p>
       <div class="onboarding-actions">
@@ -242,6 +243,14 @@ const bubbleManager = new BubbleManager({
   playAudioFor,
   scrollBehavior: scrollToBottom
 });
+const sourcePanel = new SourcePanel({ maxVisible: 4 });
+const pendingRetrievedSources = new Map(); // citation_index -> source item for current turn
+const pendingLocalToGlobalCitations = new Map(); // local citation index -> provisional/global citation index
+const pendingProvisionalBySourceKey = new Map(); // source key -> provisional citation index for this turn
+let pendingAiCitationRemap = new Map(); // local citation index -> global session citation index
+let pendingProvisionalNextIndex = sourcePanel.getNextDisplayIndex();
+let aiStreamingTranscript = '';
+let lastSearchTelemetry = null;
 
 // Word to utterance mapping for audio playback
 const wordToUtteranceMap = new Map();
@@ -275,6 +284,83 @@ function playTTSFallback(word) {
   } else {
     console.warn('Speech synthesis not supported - no audio playback available');
   }
+}
+
+function remapCitationMarkers(text, localToGlobalMap) {
+  if (!text || !localToGlobalMap || localToGlobalMap.size === 0) return text;
+
+  let rewritten = text.replace(/\[(\d+)\]/g, (match, n) => {
+    const local = Number(n);
+    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
+    return `[${localToGlobalMap.get(local)}]`;
+  });
+
+  rewritten = rewritten.replace(/\((\d+)\)/g, (match, n) => {
+    const local = Number(n);
+    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
+    return `[${localToGlobalMap.get(local)}]`;
+  });
+
+  rewritten = rewritten.replace(/(?:source|fuente)\s*#?\s*(\d+)/gi, (match, n) => {
+    const local = Number(n);
+    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
+    return `[${localToGlobalMap.get(local)}]`;
+  });
+
+  return rewritten;
+}
+
+function extractCitationIndexesInOrder(text = '') {
+  if (!text) return [];
+  const ordered = [];
+  const seen = new Set();
+  const citationPattern = /\[(\d+)\]|\((\d+)\)|(?:source|fuente)\s*#?\s*(\d+)/gi;
+  let match = citationPattern.exec(text);
+  while (match !== null) {
+    const raw = match[1] || match[2] || match[3];
+    const citationIndex = Number(raw);
+    if (Number.isFinite(citationIndex) && citationIndex > 0 && !seen.has(citationIndex)) {
+      seen.add(citationIndex);
+      ordered.push(citationIndex);
+    }
+    match = citationPattern.exec(text);
+  }
+  return ordered;
+}
+
+function assignStreamingCitationIndexes(transcript = '') {
+  const citedIndexes = extractCitationIndexesInOrder(transcript);
+  citedIndexes.forEach((localIndex) => {
+    if (pendingLocalToGlobalCitations.has(localIndex)) return;
+    if (!pendingRetrievedSources.has(localIndex)) return;
+
+    const source = pendingRetrievedSources.get(localIndex);
+    const existingIndex = sourcePanel.getExistingDisplayIndexForSource(source);
+    if (Number.isFinite(existingIndex)) {
+      pendingLocalToGlobalCitations.set(localIndex, existingIndex);
+      return;
+    }
+
+    const sourceKey = sourcePanel.getSourceKey(source);
+    if (pendingProvisionalBySourceKey.has(sourceKey)) {
+      pendingLocalToGlobalCitations.set(localIndex, pendingProvisionalBySourceKey.get(sourceKey));
+      return;
+    }
+
+    const provisionalIndex = pendingProvisionalNextIndex;
+    pendingProvisionalNextIndex += 1;
+    pendingProvisionalBySourceKey.set(sourceKey, provisionalIndex);
+    pendingLocalToGlobalCitations.set(localIndex, provisionalIndex);
+  });
+  return citedIndexes;
+}
+
+function resetPendingCitationState() {
+  pendingRetrievedSources.clear();
+  pendingLocalToGlobalCitations.clear();
+  pendingProvisionalBySourceKey.clear();
+  pendingProvisionalNextIndex = sourcePanel.getNextDisplayIndex();
+  aiStreamingTranscript = '';
 }
 
 // Initialize scene and OpenAI Realtime
@@ -385,7 +471,15 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
         event.type === 'response.audio_transcript.delta' &&
         typeof event.delta === 'string'
       ) {
-        const completedWords = bubbleManager.appendDelta('ai', event.delta);
+        aiStreamingTranscript += event.delta;
+        assignStreamingCitationIndexes(aiStreamingTranscript);
+        const remappedStreamingTranscript = remapCitationMarkers(
+          aiStreamingTranscript,
+          pendingLocalToGlobalCitations
+        );
+        const completedWords = bubbleManager.appendDelta('ai', event.delta, {
+          displayText: remappedStreamingTranscript
+        });
         completedWords.forEach((word) => addWord(word, 'ai', { skipBubble: true }));
       }
 
@@ -416,11 +510,21 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
 
       // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
       if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text, wordTimings } = event.record;
+        const { speaker = 'ai', id, text: rawText, wordTimings } = event.record;
+        let text = rawText;
         const eventDeviceType = event.deviceType || 'unknown';
         
         if (!bubbleManager.shouldProcessUtterance(event.record, eventDeviceType)) {
           return;
+        }
+
+        if (speaker === 'ai' && text && text !== '...' && pendingAiCitationRemap.size > 0) {
+          text = remapCitationMarkers(text, pendingAiCitationRemap);
+          event.record.text = text;
+          if (typeof event.record.fullText === 'string') {
+            event.record.fullText = remapCitationMarkers(event.record.fullText, pendingAiCitationRemap);
+          }
+          pendingAiCitationRemap = new Map();
         }
         
         // Map words to utterance for audio playback
@@ -450,8 +554,6 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           });
         }
         
-        const bubble = bubbleManager.getActiveBubble(speaker);
-
         // Handle placeholder records - they need processing to set up bubble tracking
         // even if they don't have final content yet
         const isPlaceholder = text === '...' && (!wordTimings || wordTimings.length === 0);
@@ -530,6 +632,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
       ) {
         const speaker = 'ai'; // This event is always from AI
         const transcript = event.transcript.trim();
+        aiStreamingTranscript = transcript;
         
         // If we have a final transcript but no utterance.added event yet,
         // this helps ensure we don't lose the final transcription
@@ -538,6 +641,122 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
           // eslint-disable-next-line no-console
           console.warn('Got final transcript but no active AI bubble - transcript may be lost');
         }
+
+        // Commit only sources actually cited in the final assistant transcript.
+        const citedIndexes = assignStreamingCitationIndexes(transcript);
+        const sourceKeysInCitationOrder = [];
+        const sourceByKey = new Map();
+        const provisionalIndexByKey = new Map();
+
+        citedIndexes.forEach((localIndex) => {
+          if (!pendingRetrievedSources.has(localIndex)) return;
+          const source = pendingRetrievedSources.get(localIndex);
+          const sourceKey = sourcePanel.getSourceKey(source);
+          if (!sourceByKey.has(sourceKey)) {
+            sourceByKey.set(sourceKey, source);
+            sourceKeysInCitationOrder.push(sourceKey);
+          }
+          if (!provisionalIndexByKey.has(sourceKey)) {
+            const existing = sourcePanel.getExistingDisplayIndexForSource(source);
+            if (Number.isFinite(existing)) {
+              provisionalIndexByKey.set(sourceKey, existing);
+            } else if (pendingLocalToGlobalCitations.has(localIndex)) {
+              provisionalIndexByKey.set(sourceKey, pendingLocalToGlobalCitations.get(localIndex));
+            }
+          }
+        });
+
+        const committedIndexBySourceKey = new Map();
+        sourceKeysInCitationOrder.forEach((sourceKey) => {
+          const source = sourceByKey.get(sourceKey);
+          const existing = sourcePanel.getExistingDisplayIndexForSource(source);
+          if (Number.isFinite(existing)) {
+            committedIndexBySourceKey.set(sourceKey, existing);
+          }
+        });
+
+        sourceKeysInCitationOrder
+          .filter((sourceKey) => !committedIndexBySourceKey.has(sourceKey))
+          .sort((a, b) => {
+            const aIdx = provisionalIndexByKey.get(a);
+            const bIdx = provisionalIndexByKey.get(b);
+            const aNum = Number.isFinite(aIdx) ? aIdx : Number.MAX_SAFE_INTEGER;
+            const bNum = Number.isFinite(bIdx) ? bIdx : Number.MAX_SAFE_INTEGER;
+            return aNum - bNum;
+          })
+          .forEach((sourceKey) => {
+            const source = sourceByKey.get(sourceKey);
+            const committed = sourcePanel.getDisplayIndexForSource(source);
+            committedIndexBySourceKey.set(sourceKey, committed);
+          });
+
+        const localToGlobalMap = new Map();
+        const usedSourcesByKey = new Map();
+        citedIndexes.forEach((localIndex) => {
+          if (!pendingRetrievedSources.has(localIndex)) return;
+          const source = pendingRetrievedSources.get(localIndex);
+          const sourceKey = sourcePanel.getSourceKey(source);
+          if (!committedIndexBySourceKey.has(sourceKey)) return;
+          const globalIndex = committedIndexBySourceKey.get(sourceKey);
+          localToGlobalMap.set(localIndex, globalIndex);
+          if (!usedSourcesByKey.has(sourceKey)) {
+            usedSourcesByKey.set(sourceKey, {
+              ...source,
+              display_index: globalIndex
+            });
+          }
+        });
+
+        const usedSources = Array.from(usedSourcesByKey.values())
+          .sort((a, b) => (a.display_index || 0) - (b.display_index || 0));
+
+        pendingAiCitationRemap = localToGlobalMap;
+        sourcePanel.updateFromSearchResults(usedSources);
+        if (lastSearchTelemetry) {
+          sourcePanel.updateTelemetry({
+            ...lastSearchTelemetry,
+            citedCount: usedSources.length
+          });
+        }
+        resetPendingCitationState();
+      }
+
+      if (event.type === 'tool.search_knowledge.result') {
+        const results = event?.result?.results || [];
+        results.forEach((item) => {
+          const index = Number(item?.citation_index);
+          if (Number.isFinite(index) && index > 0) {
+            pendingRetrievedSources.set(index, item);
+          }
+        });
+
+        if (aiStreamingTranscript) {
+          assignStreamingCitationIndexes(aiStreamingTranscript);
+          const remappedStreamingTranscript = remapCitationMarkers(
+            aiStreamingTranscript,
+            pendingLocalToGlobalCitations
+          );
+          bubbleManager.appendDelta('ai', '', {
+            displayText: remappedStreamingTranscript
+          });
+        }
+
+        lastSearchTelemetry = event?.telemetry || null;
+        sourcePanel.updateTelemetry(lastSearchTelemetry);
+      }
+
+      if (event.type === 'tool.search_knowledge.started') {
+        resetPendingCitationState();
+        const args = event?.args || {};
+        sourcePanel.updateTelemetry({
+          queryOriginal: args.query_original || '',
+          queryEn: args.query_en || '',
+          language: args.language || '',
+          topK: args.top_k || '',
+          durationMs: 0,
+          resultCount: 0,
+          status: 'loading'
+        });
       }
     }
   ,

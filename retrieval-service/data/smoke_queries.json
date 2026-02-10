@@ -1,0 +1,43 @@
+[
+  {
+    "id": "barcelona_architecture_en",
+    "query_original": "Tell me about architecture in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 1,
+    "must_contain_any": ["gaudi", "sagrada", "park guell", "architecture"]
+  },
+  {
+    "id": "barcelona_architecture_es",
+    "query_original": "Cuentame sobre la arquitectura de Barcelona",
+    "query_en": "Tell me about architecture in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 1,
+    "must_contain_any": ["gaudi", "sagrada", "parque guell", "arquitectura"]
+  },
+  {
+    "id": "barcelona_neighborhoods_en",
+    "query_original": "What neighborhoods are known in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 1,
+    "must_contain_any": ["eixample", "gracia", "gothic quarter"]
+  },
+  {
+    "id": "spain_languages_en",
+    "query_original": "What languages are spoken in Spain",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 1,
+    "must_contain_any": ["spanish", "catalan", "galician", "basque"]
+  },
+  {
+    "id": "spain_capital_en",
+    "query_original": "What is the capital of Spain",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 1,
+    "must_contain_any": ["madrid", "spain"]
+  }
+]

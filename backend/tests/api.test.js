@@ -35,6 +35,7 @@ const cors = require('cors');
 const createTestApp = () => {
   const app = express();
   app.use(cors());
+  app.use(express.json());
   
   // Health check endpoint
   app.get('/health', (req, res) => {
@@ -103,6 +104,60 @@ const createTestApp = () => {
     } catch (error) {
       res.status(500).json({
         error: "Transcription service error",
+        detail: error.message
+      });
+    }
+  });
+
+  // Knowledge search proxy endpoint
+  app.post('/knowledge/search', async (req, res) => {
+    const { query_original, query_en, language, top_k } = req.body || {};
+
+    if (!query_original || typeof query_original !== 'string' || !query_original.trim()) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        detail: 'query_original must be a non-empty string'
+      });
+    }
+
+    if (language && !['en', 'es'].includes(String(language).toLowerCase())) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        detail: 'language must be either "en" or "es"'
+      });
+    }
+
+    const payload = {
+      query_original: query_original.trim(),
+      ...(query_en ? { query_en } : {}),
+      ...(language ? { language } : {}),
+      ...(Number.isInteger(top_k) ? { top_k: Math.min(Math.max(top_k, 1), 10) } : {})
+    };
+
+    try {
+      const response = await mockFetch('http://retrieval/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).json({
+          error: 'Knowledge search failed',
+          detail: await response.text()
+        });
+      }
+
+      return res.json(await response.json());
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return res.status(504).json({
+          error: 'Knowledge search timed out',
+          detail: 'Retrieval service did not respond in time'
+        });
+      }
+      return res.status(502).json({
+        error: 'Knowledge search service unavailable',
         detail: error.message
       });
     }
@@ -252,6 +307,79 @@ describe('Backend API Tests', () => {
       await request(app)
         .delete('/health')
         .expect(404);
+    });
+  });
+
+  describe('Knowledge Search Endpoint', () => {
+    test('should return 400 for missing query_original', async () => {
+      const response = await request(app)
+        .post('/knowledge/search')
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid request');
+      expect(response.body.detail).toContain('query_original');
+    });
+
+    test('should return retrieval results on success', async () => {
+      const retrievalPayload = {
+        results: [
+          {
+            chunk_id: 'doc1::chunk::0',
+            doc_id: 'doc1',
+            score: 1.5,
+            snippet: 'Barcelona is the capital of Catalonia',
+            title: 'Barcelona',
+            url: 'https://example.com/barcelona',
+            source: 'Wikipedia',
+            language: 'en'
+          }
+        ],
+        used_queries: ['Barcelona'],
+        index_name: 'tinge_knowledge_v1'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => retrievalPayload
+      });
+
+      const response = await request(app)
+        .post('/knowledge/search')
+        .send({ query_original: 'Barcelona', top_k: 3, language: 'en' })
+        .expect(200);
+
+      expect(response.body).toEqual(retrievalPayload);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('should forward downstream errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        text: async () => 'retrieval down'
+      });
+
+      const response = await request(app)
+        .post('/knowledge/search')
+        .send({ query_original: 'Barcelona' })
+        .expect(503);
+
+      expect(response.body.error).toBe('Knowledge search failed');
+      expect(response.body.detail).toBe('retrieval down');
+    });
+
+    test('should map timeout-like errors to 504', async () => {
+      const abortErr = new Error('timeout');
+      abortErr.name = 'AbortError';
+      mockFetch.mockRejectedValueOnce(abortErr);
+
+      const response = await request(app)
+        .post('/knowledge/search')
+        .send({ query_original: 'Barcelona' })
+        .expect(504);
+
+      expect(response.body.error).toBe('Knowledge search timed out');
     });
   });
 });

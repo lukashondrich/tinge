@@ -1,0 +1,6 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+haystack-ai>=2.8.0,<3.0.0
+elasticsearch-haystack>=4.2.0,<5.0.0
+elasticsearch==8.17.0
+sentence-transformers>=5.0.0

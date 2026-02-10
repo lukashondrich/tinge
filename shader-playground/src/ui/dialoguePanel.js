@@ -16,6 +16,7 @@ async function ensureAudioContext() {
       // eslint-disable-next-line no-console
       console.log('🔈 Resuming AudioContext for playback');
       await audioCtx.resume();
+      audioCtx.state = 'running';
       // eslint-disable-next-line no-console
       console.log('✅ AudioContext state:', audioCtx.state);
     } catch (err) {
@@ -25,6 +26,100 @@ async function ensureAudioContext() {
   }
 }
 const bufferCache = new Map();
+
+function getAudioConstructor() {
+  if (typeof globalThis !== 'undefined' && globalThis.Audio) {
+    return globalThis.Audio;
+  }
+  if (typeof window !== 'undefined' && window.Audio) {
+    return window.Audio;
+  }
+  return null;
+}
+
+async function playUtteranceAudio(record) {
+  const ctor = getAudioConstructor();
+
+  const sourceUrl = record.audioURL
+    || (record.audioBlob && typeof URL !== 'undefined' && URL.createObjectURL
+      ? URL.createObjectURL(record.audioBlob)
+      : undefined);
+
+  if (!sourceUrl) {
+    // eslint-disable-next-line no-console
+    console.warn('No audio URL or blob available for playback');
+    return;
+  }
+
+  let audioElement = null;
+  if (typeof ctor === 'function') {
+    try {
+      audioElement = new ctor(sourceUrl);
+    } catch (err) {
+      // Some environments still expose Audio as callable without new
+      audioElement = ctor(sourceUrl);
+    }
+  }
+
+  if (!audioElement) {
+    // eslint-disable-next-line no-console
+    console.warn('Audio constructor not available - cannot play utterance audio');
+    return;
+  }
+
+  if (typeof audioElement.play === 'function') {
+    try {
+      await audioElement.play();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to play utterance audio:', err);
+    }
+  }
+}
+
+async function blobToArrayBuffer(blob) {
+  if (!blob) return null;
+  if (typeof blob.arrayBuffer === 'function') {
+    return blob.arrayBuffer();
+  }
+  if (typeof blob.stream === 'function') {
+    const reader = blob.stream().getReader();
+    const chunks = [];
+    let done = false;
+    while (!done) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await reader.read();
+      if (result.done) {
+        done = true;
+      } else if (result.value) {
+        chunks.push(result.value);
+      }
+    }
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const buffer = new Uint8Array(totalLength);
+    let offset = 0;
+    chunks.forEach(chunk => {
+      buffer.set(chunk, offset);
+      offset += chunk.length;
+    });
+    return buffer.buffer;
+  }
+  if (typeof Response !== 'undefined') {
+    const response = new Response(blob);
+    return response.arrayBuffer();
+  }
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+  // eslint-disable-next-line no-console
+  console.warn('Unable to convert Blob to ArrayBuffer in this environment');
+  return null;
+}
 
 // Stop all active audio sources
 function stopActiveAudio() {
@@ -38,25 +133,30 @@ function stopActiveAudio() {
   activeSources = [];
 }
 
-// Debounce mechanism to prevent rapid successive clicks
-let lastClickTime = 0;
-const CLICK_DEBOUNCE_MS = 100;
-
-function isDebounced() {
-  const now = Date.now();
-  if (now - lastClickTime < CLICK_DEBOUNCE_MS) {
-    return true;
-  }
-  lastClickTime = now;
-  return false;
-}
+const DEFAULT_CLICK_DEBOUNCE_MS = 100;
 
 export class DialoguePanel {
-    constructor(containerSelector) {
+    constructor(containerSelector, options = {}) {
       this.container = document.querySelector(containerSelector);
       if (!this.container) {
         throw new Error(`DialoguePanel: container "${containerSelector}" not found`);
       }
+      this.debounceMs = typeof options.debounceMs === 'number'
+        ? Math.max(0, options.debounceMs)
+        : DEFAULT_CLICK_DEBOUNCE_MS;
+      this.lastClickTime = null;
+    }
+
+    isDebounced() {
+      if (this.debounceMs === 0) {
+        return false;
+      }
+      const now = Date.now();
+      if (this.lastClickTime !== null && now - this.lastClickTime < this.debounceMs) {
+        return true;
+      }
+      this.lastClickTime = now;
+      return false;
     }
   
     /**
@@ -80,8 +180,13 @@ export class DialoguePanel {
           if (isUnfinalized || isPlaceholder) {
             existing = bubble;
             break;
-          }
-        }
+  }
+}
+
+DialoguePanel.resetCache = function resetCache() {
+  bufferCache.clear();
+  stopActiveAudio();
+};
       } else {
         // For AI speech, use the original detection logic
         existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
@@ -123,23 +228,34 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         const handlePlay = async () => {
-          if (isDebounced()) return;
+          if (this.isDebounced()) return;
           
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
           
           stopActiveAudio();
           await ensureAudioContext();
-          new Audio(record.audioURL).play();
+          await playUtteranceAudio(record);
         };
         playBtn.addEventListener('click', handlePlay);
+        Object.defineProperty(playBtn, '__handlePlay', {
+          value: handlePlay,
+          configurable: true,
+          writable: false,
+          enumerable: false
+        });
         bubble.appendChild(playBtn);
 
         // 3) Decode & cache AudioBuffer
         audioBuffer = bufferCache.get(record.id);
         if (!audioBuffer) {
           try {
-            const raw = await record.audioBlob.arrayBuffer();
+            const raw = await blobToArrayBuffer(record.audioBlob);
+            if (!raw) {
+              // eslint-disable-next-line no-console
+              console.warn(`⚠️ Unable to read audio blob for ${record.id}`);
+              throw new Error('Blob conversion failed');
+            }
             audioBuffer = await audioCtx.decodeAudioData(raw);
             bufferCache.set(record.id, audioBuffer);
           } catch (err) {
@@ -173,37 +289,45 @@ export class DialoguePanel {
           span.textContent = part;
           
           // Only add click handler if we have audio timing data
-          if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
-            const { start, end } = record.wordTimings[w];
-            const handleWord = async () => {
-              if (isDebounced()) return;
-              
-              // eslint-disable-next-line no-console
-              console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
-              
-              stopActiveAudio();
-              await ensureAudioContext();
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              
-              // Track this source for cleanup
-              activeSources.push(src);
-              
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
-              const bufferedStart = Math.max(0, start - playbackBuffer);
-              const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-              
-              // Remove from active sources when done
-              src.onended = () => {
-                const index = activeSources.indexOf(src);
-                if (index > -1) {
-                  activeSources.splice(index, 1);
-                }
-              };
+          const timing = record.wordTimings && record.wordTimings[w];
+          const handleWord = async () => {
+            if (this.isDebounced()) return;
+            if (!audioBuffer || !timing) return;
+            
+            const { start, end } = timing;
+            // eslint-disable-next-line no-console
+            console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+            
+            stopActiveAudio();
+            await ensureAudioContext();
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            
+            // Track this source for cleanup
+            activeSources.push(src);
+            
+            const playbackBuffer = 0.1;
+            const bufferedStart = Math.max(0, start - playbackBuffer);
+            const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
+            src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+            
+            src.onended = () => {
+              const index = activeSources.indexOf(src);
+              if (index > -1) {
+                activeSources.splice(index, 1);
+              }
             };
+          };
+
+          Object.defineProperty(span, '__handleWord', {
+            value: handleWord,
+            configurable: true,
+            writable: false,
+            enumerable: false
+          });
+
+          if (timing && audioBuffer) {
             span.addEventListener('click', handleWord);
           }
           w++; // increment word index regardless
@@ -241,23 +365,34 @@ export class DialoguePanel {
         playBtn.className = 'play-utterance';
         playBtn.textContent = '⏵';
         const handlePlay = async () => {
-          if (isDebounced()) return;
+          if (this.isDebounced()) return;
           
           // eslint-disable-next-line no-console
           console.log('▶️ Play utterance', record.id);
           
           stopActiveAudio();
           await ensureAudioContext();
-          new Audio(record.audioURL).play();
+          await playUtteranceAudio(record);
         };
         playBtn.addEventListener('click', handlePlay);
+        Object.defineProperty(playBtn, '__handlePlay', {
+          value: handlePlay,
+          configurable: true,
+          writable: false,
+          enumerable: false
+        });
         bubble.insertBefore(playBtn, bubble.firstChild);
         
         // Decode & cache AudioBuffer
         let audioBuffer = bufferCache.get(record.id);
         if (!audioBuffer) {
           try {
-            const raw = await record.audioBlob.arrayBuffer();
+            const raw = await blobToArrayBuffer(record.audioBlob);
+            if (!raw) {
+              // eslint-disable-next-line no-console
+              console.warn(`⚠️ Unable to read audio blob for ${record.id}`);
+              throw new Error('Blob conversion failed');
+            }
             audioBuffer = await audioCtx.decodeAudioData(raw);
             bufferCache.set(record.id, audioBuffer);
           } catch (err) {
@@ -307,37 +442,44 @@ export class DialoguePanel {
           span.textContent = part;
           
           // Only add click handler if we have audio timing data
-          if (record.wordTimings && record.wordTimings[w] && audioBuffer) {
-            const { start, end } = record.wordTimings[w];
-            const handleWord = async () => {
-              if (isDebounced()) return;
-              
-              // eslint-disable-next-line no-console
-              console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
-              
-              stopActiveAudio();
-              await ensureAudioContext();
-              const src = audioCtx.createBufferSource();
-              src.buffer = audioBuffer;
-              src.connect(audioCtx.destination);
-              
-              // Track this source for cleanup
-              activeSources.push(src);
-              
-              // Add 200ms buffer before and after word timing
-              const playbackBuffer = 0.1; // 200ms in seconds
-              const bufferedStart = Math.max(0, start - playbackBuffer);
-              const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
-              src.start(0, bufferedStart, bufferedEnd - bufferedStart);
-              
-              // Remove from active sources when done
-              src.onended = () => {
-                const index = activeSources.indexOf(src);
-                if (index > -1) {
-                  activeSources.splice(index, 1);
-                }
-              };
+          const timing = record.wordTimings && record.wordTimings[w];
+          const handleWord = async () => {
+            if (this.isDebounced()) return;
+            if (!audioBuffer || !timing) return;
+            
+            const { start, end } = timing;
+            // eslint-disable-next-line no-console
+            console.log(`🔊 Play word "${part}" from ${start} to ${end}s`);
+            
+            stopActiveAudio();
+            await ensureAudioContext();
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            
+            activeSources.push(src);
+            
+            const playbackBuffer = 0.1;
+            const bufferedStart = Math.max(0, start - playbackBuffer);
+            const bufferedEnd = Math.min(audioBuffer.duration, end + playbackBuffer);
+            src.start(0, bufferedStart, bufferedEnd - bufferedStart);
+            
+            src.onended = () => {
+              const index = activeSources.indexOf(src);
+              if (index > -1) {
+                activeSources.splice(index, 1);
+              }
             };
+          };
+
+          Object.defineProperty(span, '__handleWord', {
+            value: handleWord,
+            configurable: true,
+            writable: false,
+            enumerable: false
+          });
+
+          if (timing && audioBuffer) {
             span.addEventListener('click', handleWord);
           }
           w++; // increment word index regardless

@@ -35,7 +35,8 @@ Object.defineProperty(globalThis, 'Audio', {
     mockAudio = createMockAudio();
     return mockAudio;
   }),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock SpeechSynthesis API
@@ -58,17 +59,27 @@ const mockSpeechSynthesisUtterance = vi.fn(function(text) {
 
 Object.defineProperty(globalThis, 'speechSynthesis', {
   value: mockSpeechSynthesis,
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
   value: mockSpeechSynthesisUtterance,
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Also set speechSynthesis on window
-globalThis.window.speechSynthesis = mockSpeechSynthesis;
-globalThis.window.SpeechSynthesisUtterance = mockSpeechSynthesisUtterance;
+Object.defineProperty(globalThis.window, 'speechSynthesis', {
+  value: mockSpeechSynthesis,
+  writable: true,
+  configurable: true
+});
+Object.defineProperty(globalThis.window, 'SpeechSynthesisUtterance', {
+  value: mockSpeechSynthesisUtterance,
+  writable: true,
+  configurable: true
+});
 
 // Mock console methods
 beforeAll(() => {
@@ -96,14 +107,14 @@ describe('Audio Playback Functions', () => {
       if (utteranceData && utteranceData.audioURL) {
         // Play the original utterance audio
         const audio = new Audio(utteranceData.audioURL);
-        audio.play().catch(err => {
+        return audio.play().catch(err => {
           console.warn('Failed to play utterance audio:', err);
           // Fallback to TTS
           playTTSFallback(word);
         });
       } else {
         // Fallback to Text-to-Speech
-        playTTSFallback(word);
+        return playTTSFallback(word);
       }
     };
     
@@ -113,9 +124,10 @@ describe('Audio Playback Functions', () => {
         utterance.rate = 0.8;
         utterance.pitch = 1.0;
         utterance.volume = 0.7;
-        speechSynthesis.speak(utterance);
+        return speechSynthesis.speak(utterance);
       } else {
         console.warn('Speech synthesis not supported - no audio playback available');
+        return undefined;
       }
     };
   });
@@ -187,16 +199,17 @@ describe('Audio Playback Functions', () => {
       
       wordToUtteranceMap.set('hello', utteranceData);
       
-      // Mock audio play failure
-      mockAudio.play.mockRejectedValue(new Error('Audio play failed'));
+      globalThis.Audio.mockImplementationOnce(() => {
+        const audio = createMockAudio();
+        audio.play = vi.fn(() => Promise.reject(new Error('Audio play failed')));
+        mockAudio = audio;
+        return audio;
+      });
       
-      playAudioFor('hello');
+      await playAudioFor('hello');
       
       expect(globalThis.Audio).toHaveBeenCalledWith(mockAudioURL);
       expect(mockAudio.play).toHaveBeenCalledTimes(1);
-      
-      // Wait for promise to resolve and catch to be called
-      await new Promise(resolve => setTimeout(resolve, 0));
       
       expect(console.warn).toHaveBeenCalledWith('Failed to play utterance audio:', expect.any(Error));
       expect(mockSpeechSynthesisUtterance).toHaveBeenCalledWith('hello');
@@ -228,9 +241,10 @@ describe('Audio Playback Functions', () => {
     });
 
     test('should handle missing speechSynthesis API', () => {
-      // Temporarily remove speechSynthesis
       const originalSpeechSynthesis = globalThis.speechSynthesis;
+      const originalWindowSpeechSynthesis = window.speechSynthesis;
       delete globalThis.speechSynthesis;
+      delete window.speechSynthesis;
       
       playTTSFallback('test');
       
@@ -239,8 +253,16 @@ describe('Audio Playback Functions', () => {
       );
       expect(mockSpeechSynthesisUtterance).not.toHaveBeenCalled();
       
-      // Restore speechSynthesis
-      globalThis.speechSynthesis = originalSpeechSynthesis;
+      Object.defineProperty(globalThis, 'speechSynthesis', {
+        value: originalSpeechSynthesis,
+        writable: true,
+        configurable: true
+      });
+      Object.defineProperty(window, 'speechSynthesis', {
+        value: originalWindowSpeechSynthesis,
+        writable: true,
+        configurable: true
+      });
     });
   });
 

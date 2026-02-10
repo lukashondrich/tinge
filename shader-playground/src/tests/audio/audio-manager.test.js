@@ -446,6 +446,9 @@ describe('AudioManager', () => {
       
       // Manually trigger stop
       audioManager.isRecording = false;
+      if (currentMockRecorder.onstop) {
+        currentMockRecorder.onstop();
+      }
       
       const result = await stopPromise;
       
@@ -456,9 +459,10 @@ describe('AudioManager', () => {
   describe('Integration with StorageService', () => {
     test('should store utterance in StorageService on stop', async () => {
       const { StorageService } = await import('../../core/storageService.js');
+      const addSpy = vi.spyOn(StorageService, 'addUtterance').mockResolvedValue();
       
       await audioManager.init();
-      
+
       // Create mock data object
       const mockData = {
         type: 'audio/webm',
@@ -474,10 +478,13 @@ describe('AudioManager', () => {
       
       // Manually trigger stop
       audioManager.isRecording = false;
+      if (currentMockRecorder.onstop) {
+        currentMockRecorder.onstop();
+      }
       
       await stopPromise;
       
-      expect(StorageService.addUtterance).toHaveBeenCalledWith({
+      expect(addSpy).toHaveBeenCalledWith({
         id: 'mock-uuid-1234',
         speaker: 'user',
         timestamp: expect.any(Number),

@@ -130,6 +130,75 @@ export class RealtimeSession {
     return { words, fullText };
   }
 
+  async searchKnowledge(args) {
+    const queryOriginal = String(args?.query_original || '').trim();
+    const queryEn = String(args?.query_en || queryOriginal).trim();
+    const payload = {
+      query_original: queryOriginal,
+      query_en: queryEn,
+      // EN-only retrieval corpus: always filter to English documents.
+      language: 'en',
+      ...(args?.top_k ? { top_k: args.top_k } : {})
+    };
+
+    const controller = new AbortController();
+    const timeoutMs = 8000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const startedAt = performance.now();
+    let response;
+    try {
+      response = await fetch(`${this.apiUrl}/knowledge/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new Error(`Knowledge search timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      let detail = '';
+      try {
+        detail = await response.text();
+      } catch (err) {
+        detail = 'No error detail available';
+      }
+      throw new Error(`Knowledge search failed (${response.status}): ${detail}`);
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data.results)) {
+      data.results = this.attachCitationIndexes(data.results);
+    }
+    const durationMs = Math.round(performance.now() - startedAt);
+    return {
+      data,
+      telemetry: {
+        queryOriginal: payload.query_original || '',
+        queryEn: payload.query_en || '',
+        language: payload.language || '',
+        topK: payload.top_k || '',
+        durationMs,
+        resultCount: Array.isArray(data.results) ? data.results.length : 0,
+        status: 'ok'
+      }
+    };
+  }
+
+  attachCitationIndexes(results = []) {
+    return results.map((item, idx) => ({
+      ...item,
+      citation_index: idx + 1
+    }));
+  }
+
   async stopAndTranscribe(audioMgr, transcriptText) {
     return audioMgr.stopRecording(transcriptText)
       .then(async (record) => {
@@ -679,6 +748,36 @@ export class RealtimeSession {
               },
               required: ['user_id', 'updates']
             }
+          },
+          {
+            type: 'function',
+            name: 'search_knowledge',
+            description: 'Search trusted knowledge snippets for factual questions and provide source metadata for citations.',
+            parameters: {
+              type: 'object',
+              properties: {
+                query_original: {
+                  type: 'string',
+                  description: 'Original query in the user\'s language.'
+                },
+                query_en: {
+                  type: 'string',
+                  description: 'English translation/paraphrase of query_original for EN-only retrieval.'
+                },
+                language: {
+                  type: 'string',
+                  enum: ['en'],
+                  description: 'Document language filter. Use "en".'
+                },
+                top_k: {
+                  type: 'integer',
+                  minimum: 1,
+                  maximum: 10,
+                  description: 'Number of top results to return.'
+                }
+              },
+              required: ['query_original', 'query_en']
+            }
           }
         ]
       }
@@ -716,6 +815,10 @@ export class RealtimeSession {
     this.dataChannel.addEventListener('message', async (e) => {
       const event = JSON.parse(e.data);
       if (!event.timestamp) event.timestamp = new Date().toLocaleTimeString();
+      if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
+        event.transcript = event.transcript.trim();
+        event.speaker = 'ai';
+      }
       if (this.onEventCallback) this.onEventCallback(event);
 
       if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
@@ -752,16 +855,6 @@ export class RealtimeSession {
       if (event.type === 'conversation.item.input_audio_transcription.completed') {
         await this.handleUserTranscription(event);
         return;
-      }
-
-      if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
-        if (this.onEventCallback) {
-          this.onEventCallback({ ...event, transcript: event.transcript.trim(), speaker: 'ai' });
-        }
-      }
-
-      if (event.type === 'response.function_call_arguments.delta') {
-        if (this.onEventCallback) this.onEventCallback(event);
       }
 
       if (event.type === 'response.function_call_arguments.done') {
@@ -844,6 +937,7 @@ export class RealtimeSession {
   }
 
   async handleFunctionCall(event) {
+    let output;
     try {
       const args = JSON.parse(event.arguments);
       let result = null;
@@ -851,40 +945,77 @@ export class RealtimeSession {
         result = await handleGetUserProfile(args);
       } else if (event.name === 'update_user_profile') {
         result = await handleUpdateUserProfile(args);
+      } else if (event.name === 'search_knowledge') {
+        if (this.onEventCallback) {
+          this.onEventCallback({
+            type: 'tool.search_knowledge.started',
+            args
+          });
+        }
+        const searchPayload = await this.searchKnowledge(args);
+        result = searchPayload.data;
+        if (this.onEventCallback) {
+          this.onEventCallback({
+            type: 'tool.search_knowledge.result',
+            result: searchPayload.data,
+            telemetry: searchPayload.telemetry,
+            args
+          });
+        }
       } else {
         console.error(`Unknown function call: ${event.name}`); // eslint-disable-line no-console
         result = { error: `Unknown function: ${event.name}` };
       }
-
-      const functionResultEvent = {
-        type: 'conversation.item.create',
-        event_id: crypto.randomUUID(),
-        item: {
-          type: 'function_call_output',
-          call_id: event.call_id,
-          output: JSON.stringify(result)
-        }
-      };
-
-      this.dataChannel.send(JSON.stringify(functionResultEvent));
-      const responseEvent = {
-        type: 'response.create',
-        event_id: crypto.randomUUID()
-      };
-      this.dataChannel.send(JSON.stringify(responseEvent));
+      output = result;
     } catch (error) {
       console.error(`Function call error: ${error.message}`); // eslint-disable-line no-console
       console.error(`Error stack: ${error.stack}`); // eslint-disable-line no-console
+      output = { error: error.message };
+      if (event.name === 'search_knowledge' && this.onEventCallback) {
+        const parsedArgs = (() => {
+          try {
+            return JSON.parse(event.arguments || '{}');
+          } catch (err) {
+            return {};
+          }
+        })();
+        this.onEventCallback({
+          type: 'tool.search_knowledge.result',
+          result: { results: [], error: error.message },
+          telemetry: {
+            queryOriginal: parsedArgs.query_original || '',
+            queryEn: parsedArgs.query_en || '',
+            language: parsedArgs.language || '',
+            topK: parsedArgs.top_k || '',
+            durationMs: 0,
+            resultCount: 0,
+            status: 'error',
+            error: error.message
+          },
+          args: parsedArgs
+        });
+      }
+    }
+
+    try {
       const errorResultEvent = {
         type: 'conversation.item.create',
         event_id: crypto.randomUUID(),
         item: {
           type: 'function_call_output',
           call_id: event.call_id,
-          output: JSON.stringify({ error: error.message })
+          output: JSON.stringify(output)
         }
       };
       this.dataChannel.send(JSON.stringify(errorResultEvent));
+
+      const responseEvent = {
+        type: 'response.create',
+        event_id: crypto.randomUUID()
+      };
+      this.dataChannel.send(JSON.stringify(responseEvent));
+    } catch (sendError) {
+      console.error(`Failed to send function output/response.create: ${sendError.message}`); // eslint-disable-line no-console
     }
   }
 

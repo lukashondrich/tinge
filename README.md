@@ -19,6 +19,36 @@ This is a multi-service application consisting of:
 - **Frontend** (`shader-playground/`): Vite + Three.js application
 - **Backend** (`backend/`): Node.js/Express API server
 - **Embedding Service** (`embedding-service/`): Python/Node.js hybrid service for AI embeddings
+- **Retrieval Service** (`retrieval-service/`): FastAPI + Haystack RAG over Elasticsearch
+
+### RAG Flow (Elasticsearch + Haystack)
+
+```text
+User voice/text
+   |
+   v
+Frontend (Realtime API + tool call: search_knowledge)
+   |
+   v
+Backend (/knowledge/search proxy, timeout/error mapping)
+   |
+   v
+Retrieval Service (FastAPI + Haystack pipeline)
+   |- BM25 retriever (Elasticsearch)
+   |- Dense retriever (sentence-transformers embeddings)
+   |- RRF fusion (hybrid ranking)
+   v
+Top-k chunks + metadata (title, url, source, language)
+   |
+   v
+Frontend source panel (stable [1..n] citations, clickable links)
+```
+
+What this architecture demonstrates:
+- Tool-augmented realtime agent architecture (voice + function calling).
+- Hybrid retrieval engineering (lexical + dense + rank fusion).
+- Source-grounded response UX with deterministic citation mapping across turns.
+- Evaluation-driven iteration (`smoke_test.py`, `eval_retrieval.py`, benchmark presets).
 
 ## Development Setup
 
@@ -168,12 +198,7 @@ railway up --service tinge_backend --detach
   - Frontend: https://frontend-staging-production-3876.up.railway.app
   - Backend: https://backend-staging-production-bb3d.up.railway.app
 
-**Alternative Deployment Platforms**:
-- AWS ECS/Fargate
-- Google Cloud Run
-- Azure Container Instances  
-- DigitalOcean App Platform
-- Render, Vercel, or similar platforms
+
 
 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
@@ -235,6 +260,13 @@ npm run docker:build      # Build containers
 npm run docker:up         # Start containers
 npm run docker:down       # Stop containers
 npm run docker:logs       # View logs
+
+# RAG workflow
+make dev-rag              # Start RAG stack + index + smoke test
+make rag-status           # Show container status
+make rag-index            # Re-index retrieval corpus
+make rag-smoke            # Run retrieval smoke tests
+make rag-down             # Stop stack
 ```
 
 ## Contributing
@@ -245,5 +277,3 @@ npm run docker:logs       # View logs
 4. Create pull request to `develop`
 
 ## License
-
-[Add your license information here]# Force Railway rebuild

@@ -53,7 +53,7 @@ export class BubbleManager {
     return bubble;
   }
 
-  appendDelta(speaker, delta) {
+  appendDelta(speaker, delta = '', { displayText } = {}) {
     const bubble = this._ensureActiveBubble(speaker);
     if (!bubble) return [];
 
@@ -64,7 +64,7 @@ export class BubbleManager {
     bubble.__deltaText += delta;
 
     if (target) {
-      target.textContent = bubble.__deltaText;
+      target.textContent = typeof displayText === 'string' ? displayText : bubble.__deltaText;
     }
 
     let completedWords = [];

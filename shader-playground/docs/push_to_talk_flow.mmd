@@ -1,0 +1,57 @@
+sequenceDiagram
+autonumber
+participant App as initOpenAIRealtime()
+participant Button as PTT Button
+participant Press as handlePTTPress()
+participant Limit as checkTokenLimit()
+participant Connect as connect()
+participant Backend as Backend (__API_URL__)
+participant RTC as RTCPeerConnection
+participant Data as DataChannel oai-events
+participant AudioMgr as userAudioMgr
+participant Mic as audioTrack
+participant Release as handlePTTRelease()
+
+App->>AudioMgr: init() (prepare MediaRecorder)
+App->>Button: createPTTButton()
+User->>Button: hold press (mousedown/touchstart)
+Button->>Press: handlePTTPress()
+Press->>Limit: checkTokenLimit(currentEphemeralKey)
+
+alt No ephemeral key yet or connection lost
+  Limit-->>Press: { allowed: true, reason: "no_key" }
+  Press->>Connect: connect()
+  Connect->>Backend: GET /token
+  Backend-->>Connect: ephemeral key (assign to currentEphemeralKey)
+  Connect->>RTC: new RTCPeerConnection + addTransceiver
+  Connect->>RTC: addTrack(disabled mic stream)
+  Connect->>Data: createDataChannel(oai-events)
+  Connect->>RTC: createOffer & setLocalDescription
+  Connect->>Backend: POST /v1/realtime?model=... (Bearer ephemeral key)
+  Backend-->>Connect: SDP answer from OpenAI
+  Connect->>RTC: setRemoteDescription(answer)
+  Note over Connect,Data: dataChannel.onopen sends system prompt & session.update
+  Connect-->>Press: resolve (isConnected = true)
+else Connection already established
+  Limit-->>Press: { allowed: true }
+end
+
+opt Manual push-to-talk mode (ENABLE_SEMANTIC_VAD = false)
+  Press->>Data: input_audio_buffer.clear
+end
+
+Press->>AudioMgr: startRecording()
+Press->>Mic: enableMicrophone()
+Press-->>Button: update UI to "Talking"
+
+User-->>Button: release (mouseup/touchend)
+Button->>Release: handlePTTRelease()
+Release->>AudioMgr: stopRecording("...") (store pendingUserRecord)
+Release->>Mic: disableMicrophone() after buffer
+Release->>Data: speech_stopped event
+
+opt Manual push-to-talk mode
+  Release->>Data: input_audio_buffer.commit and response.create
+end
+
+Release-->>Button: reset UI to "Push to Talk"

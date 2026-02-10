@@ -38,12 +38,14 @@ const mockAudioContext = {
 
 Object.defineProperty(global, 'AudioContext', {
   value: vi.fn(() => mockAudioContext),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 Object.defineProperty(global, 'webkitAudioContext', {
   value: vi.fn(() => mockAudioContext),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock MediaRecorder
@@ -59,7 +61,8 @@ const mockMediaRecorder = {
 
 Object.defineProperty(global, 'MediaRecorder', {
   value: vi.fn(() => mockMediaRecorder),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock getUserMedia
@@ -72,19 +75,22 @@ Object.defineProperty(global.navigator, 'mediaDevices', {
   value: {
     getUserMedia: vi.fn(() => Promise.resolve(mockStream))
   },
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock URL.createObjectURL
 Object.defineProperty(global.URL, 'createObjectURL', {
   value: vi.fn(() => 'blob:mock-url'),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock crypto.randomUUID
 Object.defineProperty(global.crypto, 'randomUUID', {
   value: vi.fn(() => 'mock-uuid-1234'),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock Audio constructor
@@ -97,7 +103,8 @@ const mockAudio = {
 
 Object.defineProperty(global, 'Audio', {
   value: vi.fn(() => mockAudio),
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock SpeechSynthesis
@@ -115,12 +122,14 @@ const mockSpeechSynthesisUtterance = vi.fn(function(text) {
 
 Object.defineProperty(global, 'speechSynthesis', {
   value: mockSpeechSynthesis,
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 Object.defineProperty(global, 'SpeechSynthesisUtterance', {
   value: mockSpeechSynthesisUtterance,
-  writable: true
+  writable: true,
+  configurable: true
 });
 
 // Mock IndexedDB
@@ -144,8 +153,14 @@ const mockIndexedDB = {
 
 Object.defineProperty(global, 'indexedDB', {
   value: mockIndexedDB,
-  writable: true
+  writable: true,
+  configurable: true
 });
+
+const flushPromises = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 describe('Audio Integration Tests', () => {
   beforeAll(() => {
@@ -158,6 +173,16 @@ describe('Audio Integration Tests', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    navigator.mediaDevices.getUserMedia.mockResolvedValue(mockStream);
+    mockAudio.play.mockImplementation(() => Promise.resolve());
+    mockAudioContext.resume.mockResolvedValue();
+    mockAudioContext.decodeAudioData.mockReset().mockImplementation(() => Promise.resolve({ duration: 2.5, sampleRate: 44100 }));
+    mockAudioContext.createBufferSource.mockReset().mockImplementation(() => ({
+      start: vi.fn(),
+      stop: vi.fn(),
+      connect: vi.fn(),
+      buffer: null
+    }));
     
     // Reset DOM state
     document.getElementById('transcriptContainer').innerHTML = '';
@@ -290,6 +315,7 @@ describe('Audio Integration Tests', () => {
 
       // 7. Test playback
       playButton.click();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalled();
       expect(global.Audio).toHaveBeenCalledWith('blob:mock-url');
@@ -302,7 +328,10 @@ describe('Audio Integration Tests', () => {
         id: 'test-utterance-with-timing',
         speaker: 'ai',
         text: 'Hello world test',
-        audioBlob: new Blob(['mock audio data'], { type: 'audio/webm' }),
+        audioBlob: {
+          type: 'audio/webm',
+          arrayBuffer: vi.fn(() => Promise.resolve(new ArrayBuffer(1024)))
+        },
         audioURL: 'blob:mock-url-with-timing',
         wordTimings: [
           { word: 'Hello', start: 0.0, end: 0.5 },
@@ -387,14 +416,15 @@ describe('Audio Integration Tests', () => {
 
       // Test word-level playback
       wordSpans[0].click();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalled();
       expect(mockAudioContext.createBufferSource).toHaveBeenCalled();
       
-      const bufferSource = mockAudioContext.createBufferSource();
+      const bufferSource = mockAudioContext.createBufferSource.mock.results[0].value;
       expect(bufferSource.buffer).toBe(mockAudioBuffer);
       expect(bufferSource.connect).toHaveBeenCalledWith(mockAudioContext.destination);
-      expect(bufferSource.start).toHaveBeenCalledWith(0, -0.1, 0.6);
+      expect(bufferSource.start).toHaveBeenCalledWith(0, 0, 0.6);
     });
   });
 
@@ -403,7 +433,7 @@ describe('Audio Integration Tests', () => {
       const permissionError = new Error('Permission denied');
       permissionError.name = 'NotAllowedError';
       
-      navigator.mediaDevices.getUserMedia.mockRejectedValue(permissionError);
+      navigator.mediaDevices.getUserMedia.mockRejectedValueOnce(permissionError);
 
       const audioManager = {
         async init() {
@@ -429,9 +459,8 @@ describe('Audio Integration Tests', () => {
 
       const playAudioFor = (word) => {
         const utteranceData = { audioURL: 'blob:mock-url' };
-        
         const audio = new Audio(utteranceData.audioURL);
-        audio.play().catch(err => {
+        return audio.play().catch(err => {
           console.warn('Failed to play utterance audio:', err);
           // Fallback to TTS
           const utterance = new SpeechSynthesisUtterance(word);
@@ -442,24 +471,22 @@ describe('Audio Integration Tests', () => {
         });
       };
 
-      playAudioFor('test');
+      await playAudioFor('test');
 
       expect(mockAudio.play).toHaveBeenCalled();
-      
-      // Wait for promise to resolve
-      await new Promise(resolve => setTimeout(resolve, 0));
-      
       expect(console.warn).toHaveBeenCalledWith('Failed to play utterance audio:', expect.any(Error));
       expect(mockSpeechSynthesisUtterance).toHaveBeenCalledWith('test');
       expect(mockSpeechSynthesis.speak).toHaveBeenCalled();
     });
 
     test('should handle AudioContext creation failures', () => {
+      const originalAudioContext = global.AudioContext;
       global.AudioContext = vi.fn(() => {
         throw new Error('AudioContext creation failed');
       });
 
       expect(() => new AudioContext()).toThrow('AudioContext creation failed');
+      global.AudioContext = originalAudioContext;
     });
 
     test('should handle audio decoding failures', async () => {
@@ -576,13 +603,14 @@ describe('Audio Integration Tests', () => {
 
   describe('Cross-Browser Audio Compatibility', () => {
     test('should handle webkit AudioContext fallback', () => {
-      // Remove standard AudioContext
+      const originalAudioContext = global.AudioContext;
       delete global.AudioContext;
       
       const audioCtx = new webkitAudioContext();
       
       expect(global.webkitAudioContext).toHaveBeenCalled();
       expect(audioCtx.state).toBe('suspended');
+      global.AudioContext = originalAudioContext;
     });
 
     test('should handle MediaRecorder mime type variations', () => {

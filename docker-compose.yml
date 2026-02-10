@@ -10,6 +10,7 @@ services:
     depends_on:
       - backend
       - embedding-service
+      - retrieval-service
     environment:
       - NODE_ENV=development
     networks:
@@ -24,6 +25,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - RETRIEVAL_SERVICE_URL=http://retrieval-service:3004
+      - RETRIEVAL_FORCE_EN=true
     env_file:
       - .env
     volumes:
@@ -45,6 +48,52 @@ services:
       - ./embedding-service:/app
       - /app/node_modules
       - ./shader-playground/public:/app/public
+    networks:
+      - app-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.license.self_generated.type=basic
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks:
+      - app-network
+
+  retrieval-service:
+    build:
+      context: ./retrieval-service
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_INDEX=tinge_knowledge_v1
+      - DEFAULT_TOP_K=5
+      - MAX_TOP_K=10
+      - DEFAULT_CORPUS_PATH=/app/data/corpus.jsonl
+      - RETRIEVAL_QUERY_JOIN_MODE=reciprocal_rank_fusion
+      - RETRIEVAL_BRANCH_TOP_K=0
+      - RETRIEVAL_LOG_TIMING=true
+      - RETRIEVAL_DENSE_ENABLED=true
+      - RETRIEVAL_WRITE_EMBEDDINGS=true
+      - RETRIEVAL_EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - RETRIEVAL_DENSE_TOP_K=8
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./retrieval-service/app:/app/app
+      - ./retrieval-service/data:/app/data
     networks:
       - app-network
 

@@ -49,7 +49,7 @@ This coupling works but makes recovery from failures and future features (e.g., 
 
 ## Suggested Implementation Order
 1. Land `RealtimeSession` class and migrate existing exports (`initOpenAIRealtime`, `connect`, `handlePTTPress/Release`) to use it without changing UI contract. **(✅ implemented: `src/realtime/session.js` now encapsulates the realtime loop and `openaiRealtime.js` is a thin facade.)**
-2. Introduce `BubbleManager` and update `main.js` to use it while keeping `DialoguePanel` rendering.
+2. Introduce `BubbleManager` and update `main.js` to use it while keeping `DialoguePanel` rendering. **(✅ implemented: `src/ui/bubbleManager.js` owns bubble lifecycle and `main.js` now delegates placeholder/delta handling to it.)**
 3. Refactor word processing queue, add caching/backoff, and untangle from bubble DOM writes.
 4. Add reconnection cleanup and improved error reporting.
 5. Tackle secondary cleanups (dedupe set trimming, doc updates, tests).

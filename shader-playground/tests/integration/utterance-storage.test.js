@@ -45,8 +45,12 @@ beforeEach(() => {
     deleteObjectStore: vi.fn(),
     close: vi.fn(),
     version: 1,
-    objectStoreNames: ['utterances']
+    objectStoreNames: {
+      contains: vi.fn(() => false)
+    }
   };
+
+  mockDB.objectStoreNames.contains.mockReturnValue(true);
 
   const mockOpenRequest = {
     onsuccess: null,
@@ -62,6 +66,8 @@ beforeEach(() => {
     },
     writable: true
   });
+
+  StorageService.db = null;
 });
 
 // Mock URL.createObjectURL
@@ -75,6 +81,101 @@ Object.defineProperty(global.crypto, 'randomUUID', {
   value: vi.fn(() => 'mock-uuid-1234'),
   writable: true
 });
+
+const StorageService = {
+  dbName: 'VoicePlaygroundDB',
+  version: 1,
+  db: null,
+
+  async init() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.version);
+
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('utterances')) {
+          const store = db.createObjectStore('utterances', { keyPath: 'id' });
+          store.createIndex('timestamp', 'timestamp');
+          store.createIndex('speaker', 'speaker');
+        }
+      };
+    });
+  },
+
+  async addUtterance(utterance) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['utterances'], 'readwrite');
+      const store = transaction.objectStore('utterances');
+      const request = store.add(utterance);
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async getUtterance(id) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['utterances'], 'readonly');
+      const store = transaction.objectStore('utterances');
+      const request = store.get(id);
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async getAllUtterances() {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['utterances'], 'readonly');
+      const store = transaction.objectStore('utterances');
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async deleteUtterance(id) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['utterances'], 'readwrite');
+      const store = transaction.objectStore('utterances');
+      const request = store.delete(id);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async getUtteranceCount() {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['utterances'], 'readonly');
+      const store = transaction.objectStore('utterances');
+      const request = store.count();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+};
 
 describe('Utterance Storage Integration Tests', () => {
   beforeAll(() => {
@@ -90,102 +191,6 @@ describe('Utterance Storage Integration Tests', () => {
   });
 
   describe('StorageService Implementation', () => {
-    // Mock implementation of StorageService
-    const StorageService = {
-      dbName: 'VoicePlaygroundDB',
-      version: 1,
-      db: null,
-
-      async init() {
-        return new Promise((resolve, reject) => {
-          const request = indexedDB.open(this.dbName, this.version);
-          
-          request.onsuccess = () => {
-            this.db = request.result;
-            resolve();
-          };
-          
-          request.onerror = () => {
-            reject(request.error);
-          };
-          
-          request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains('utterances')) {
-              const store = db.createObjectStore('utterances', { keyPath: 'id' });
-              store.createIndex('timestamp', 'timestamp');
-              store.createIndex('speaker', 'speaker');
-            }
-          };
-        });
-      },
-
-      async addUtterance(utterance) {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve, reject) => {
-          const transaction = this.db.transaction(['utterances'], 'readwrite');
-          const store = transaction.objectStore('utterances');
-          const request = store.add(utterance);
-          
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-      },
-
-      async getUtterance(id) {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve, reject) => {
-          const transaction = this.db.transaction(['utterances'], 'readonly');
-          const store = transaction.objectStore('utterances');
-          const request = store.get(id);
-          
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-      },
-
-      async getAllUtterances() {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve, reject) => {
-          const transaction = this.db.transaction(['utterances'], 'readonly');
-          const store = transaction.objectStore('utterances');
-          const request = store.getAll();
-          
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-      },
-
-      async deleteUtterance(id) {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve, reject) => {
-          const transaction = this.db.transaction(['utterances'], 'readwrite');
-          const store = transaction.objectStore('utterances');
-          const request = store.delete(id);
-          
-          request.onsuccess = () => resolve();
-          request.onerror = () => reject(request.error);
-        });
-      },
-
-      async getUtteranceCount() {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve, reject) => {
-          const transaction = this.db.transaction(['utterances'], 'readonly');
-          const store = transaction.objectStore('utterances');
-          const request = store.count();
-          
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-      }
-    };
-
     test('should initialize database successfully', async () => {
       const initPromise = StorageService.init();
       
@@ -200,6 +205,7 @@ describe('Utterance Storage Integration Tests', () => {
     });
 
     test('should handle database upgrade', async () => {
+      mockDB.objectStoreNames.contains.mockReturnValueOnce(false).mockReturnValue(true);
       const initPromise = StorageService.init();
       
       // Simulate database upgrade
@@ -232,7 +238,7 @@ describe('Utterance Storage Integration Tests', () => {
       const addPromise = StorageService.addUtterance(mockUtterance);
       
       // Simulate successful add
-      const addRequest = mockObjectStore.add();
+      const addRequest = mockObjectStore.add.mock.results[mockObjectStore.add.mock.results.length - 1].value;
       addRequest.onsuccess();
       
       await addPromise;
@@ -255,7 +261,7 @@ describe('Utterance Storage Integration Tests', () => {
       const getPromise = StorageService.getUtterance(testId);
       
       // Simulate successful retrieval
-      const getRequest = mockObjectStore.get();
+      const getRequest = mockObjectStore.get.mock.results[mockObjectStore.get.mock.results.length - 1].value;
       getRequest.result = mockUtterance;
       getRequest.onsuccess();
       
@@ -277,7 +283,7 @@ describe('Utterance Storage Integration Tests', () => {
       const getAllPromise = StorageService.getAllUtterances();
       
       // Simulate successful retrieval
-      const getAllRequest = mockObjectStore.getAll();
+      const getAllRequest = mockObjectStore.getAll.mock.results[mockObjectStore.getAll.mock.results.length - 1].value;
       getAllRequest.result = mockUtterances;
       getAllRequest.onsuccess();
       
@@ -295,7 +301,7 @@ describe('Utterance Storage Integration Tests', () => {
       const deletePromise = StorageService.deleteUtterance(testId);
       
       // Simulate successful deletion
-      const deleteRequest = mockObjectStore.delete();
+      const deleteRequest = mockObjectStore.delete.mock.results[mockObjectStore.delete.mock.results.length - 1].value;
       deleteRequest.onsuccess();
       
       await deletePromise;
@@ -312,7 +318,7 @@ describe('Utterance Storage Integration Tests', () => {
       const countPromise = StorageService.getUtteranceCount();
       
       // Simulate successful count
-      const countRequest = mockObjectStore.count();
+      const countRequest = mockObjectStore.count.mock.results[mockObjectStore.count.mock.results.length - 1].value;
       countRequest.result = expectedCount;
       countRequest.onsuccess();
       
@@ -341,7 +347,7 @@ describe('Utterance Storage Integration Tests', () => {
       const addPromise = StorageService.addUtterance(utterance);
       
       // Simulate successful add
-      const addRequest = mockObjectStore.add();
+      const addRequest = mockObjectStore.add.mock.results[mockObjectStore.add.mock.results.length - 1].value;
       addRequest.onsuccess();
       
       await addPromise;
@@ -372,7 +378,7 @@ describe('Utterance Storage Integration Tests', () => {
       const addPromise = StorageService.addUtterance(utterance);
       
       // Simulate successful add
-      const addRequest = mockObjectStore.add();
+      const addRequest = mockObjectStore.add.mock.results[mockObjectStore.add.mock.results.length - 1].value;
       addRequest.onsuccess();
       
       await addPromise;
@@ -409,7 +415,7 @@ describe('Utterance Storage Integration Tests', () => {
       const addPromise = StorageService.addUtterance(mockUtterance);
       
       // Simulate add failure
-      const addRequest = mockObjectStore.add();
+      const addRequest = mockObjectStore.add.mock.results[mockObjectStore.add.mock.results.length - 1].value;
       addRequest.error = new Error('Add operation failed');
       addRequest.onerror();
       
@@ -424,7 +430,7 @@ describe('Utterance Storage Integration Tests', () => {
       const getPromise = StorageService.getUtterance(testId);
       
       // Simulate get failure
-      const getRequest = mockObjectStore.get();
+      const getRequest = mockObjectStore.get.mock.results[mockObjectStore.get.mock.results.length - 1].value;
       getRequest.error = new Error('Get operation failed');
       getRequest.onerror();
       
@@ -439,7 +445,7 @@ describe('Utterance Storage Integration Tests', () => {
       const getPromise = StorageService.getUtterance(testId);
       
       // Simulate successful get with no result
-      const getRequest = mockObjectStore.get();
+      const getRequest = mockObjectStore.get.mock.results[mockObjectStore.get.mock.results.length - 1].value;
       getRequest.result = undefined;
       getRequest.onsuccess();
       
@@ -466,7 +472,7 @@ describe('Utterance Storage Integration Tests', () => {
         const promise = StorageService.addUtterance(utterance);
         
         // Simulate immediate success for each
-        const addRequest = mockObjectStore.add();
+        const addRequest = mockObjectStore.add.mock.results[mockObjectStore.add.mock.results.length - 1].value;
         setTimeout(() => addRequest.onsuccess(), 0);
         
         return promise;
@@ -489,7 +495,7 @@ describe('Utterance Storage Integration Tests', () => {
       });
       
       // Simulate quota exceeded error
-      const addRequest = mockObjectStore.add();
+      const addRequest = mockObjectStore.add.mock.results[0].value;
       addRequest.error = new Error('QuotaExceededError');
       addRequest.onerror();
       
@@ -500,10 +506,12 @@ describe('Utterance Storage Integration Tests', () => {
   describe('Storage Cleanup', () => {
     test('should provide cleanup functionality', async () => {
       StorageService.db = mockDB;
+      const deleteSpy = vi.spyOn(StorageService, 'deleteUtterance');
       
       // Mock cleanup function
       const cleanup = async () => {
         const utterances = await StorageService.getAllUtterances();
+        expect(utterances.length).toBe(2);
         const now = Date.now();
         const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
         
@@ -521,27 +529,23 @@ describe('Utterance Storage Integration Tests', () => {
         { id: 'old-2', timestamp: Date.now() - 9 * 24 * 60 * 60 * 1000 }
       ];
       
-      const getAllPromise = StorageService.getAllUtterances();
-      const getAllRequest = mockObjectStore.getAll();
+      const getAllRequest = { onsuccess: null, onerror: null, result: oldUtterances };
+      mockObjectStore.getAll.mockReturnValueOnce(getAllRequest);
       getAllRequest.result = oldUtterances;
+      const cleanupPromise = cleanup();
       getAllRequest.onsuccess();
-      
-      // Simulate successful deletions
-      const deletePromise1 = StorageService.deleteUtterance('old-1');
-      const deletePromise2 = StorageService.deleteUtterance('old-2');
-      
-      const deleteRequest1 = mockObjectStore.delete();
-      const deleteRequest2 = mockObjectStore.delete();
-      
-      setTimeout(() => {
-        deleteRequest1.onsuccess();
-        deleteRequest2.onsuccess();
-      }, 0);
-      
-      const cleanedCount = await cleanup();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const deleteRequests = mockObjectStore.delete.mock.results.map(r => r.value);
+      expect(deleteRequests.length).toBe(2);
+      deleteRequests.forEach(req => expect(typeof req.onsuccess).toBe('function'));
+      deleteRequests.forEach(req => req.onsuccess());
+      await Promise.resolve();
+      const cleanedCount = await cleanupPromise;
       
       expect(cleanedCount).toBe(2);
       expect(mockObjectStore.delete).toHaveBeenCalledTimes(2);
+      expect(deleteSpy).toHaveBeenCalledTimes(2);
     });
   });
 

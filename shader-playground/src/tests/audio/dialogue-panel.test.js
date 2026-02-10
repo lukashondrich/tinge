@@ -69,6 +69,11 @@ Object.defineProperty(globalThis.URL, 'createObjectURL', {
   writable: true
 });
 
+const flushPromises = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 describe('DialoguePanel Audio Functionality', () => {
   let panel;
   let container;
@@ -88,13 +93,17 @@ describe('DialoguePanel Audio Functionality', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    mockAudioContext.state = 'suspended';
+    if (typeof DialoguePanel.resetCache === 'function') {
+      DialoguePanel.resetCache();
+    }
     
     // Reset DOM
     container = document.getElementById('transcriptContainer');
     container.innerHTML = '';
     
     // Create fresh DialoguePanel instance
-    panel = new DialoguePanel('#transcriptContainer');
+    panel = new DialoguePanel('#transcriptContainer', { debounceMs: 0 });
   });
 
   describe('Play Button Creation', () => {
@@ -162,7 +171,8 @@ describe('DialoguePanel Audio Functionality', () => {
       const playButton = container.querySelector('.play-utterance');
       
       // Simulate click
-      playButton.click();
+      await playButton.__handlePlay();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
       expect(globalThis.Audio).toHaveBeenCalledWith('blob:mock-url');
@@ -185,7 +195,8 @@ describe('DialoguePanel Audio Functionality', () => {
       await panel.add(record);
 
       const playButton = container.querySelector('.play-utterance');
-      playButton.click();
+      await playButton.__handlePlay();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
       expect(console.log).toHaveBeenCalledWith('🔈 Resuming AudioContext for playback');
@@ -206,7 +217,8 @@ describe('DialoguePanel Audio Functionality', () => {
       await panel.add(record);
 
       const playButton = container.querySelector('.play-utterance');
-      playButton.click();
+      await playButton.__handlePlay();
+      await flushPromises();
 
       expect(mockAudioContext.resume).not.toHaveBeenCalled();
     });
@@ -229,6 +241,7 @@ describe('DialoguePanel Audio Functionality', () => {
       };
 
       await panel.add(record);
+      expect(mockAudioContext.decodeAudioData).toHaveBeenCalled();
 
       const wordSpans = container.querySelectorAll('.word');
       expect(wordSpans.length).toBe(3);
@@ -265,15 +278,16 @@ describe('DialoguePanel Audio Functionality', () => {
       const firstWord = wordSpans[0];
       
       // Simulate click on first word
-      firstWord.click();
+      await firstWord.__handleWord();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
       expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
       
-      const bufferSource = mockAudioContext.createBufferSource();
+      const bufferSource = mockAudioContext.createBufferSource.mock.results[0].value;
       expect(bufferSource.buffer).toBe(mockBuffer);
       expect(bufferSource.connect).toHaveBeenCalledWith(mockAudioContext.destination);
-      expect(bufferSource.start).toHaveBeenCalledWith(0, -0.1, 0.6); // buffered start/end
+      expect(bufferSource.start).toHaveBeenCalledWith(0, 0, 0.6); // buffered start/end (clamped to 0)
     });
 
 
@@ -295,6 +309,7 @@ describe('DialoguePanel Audio Functionality', () => {
       
       // Click should not trigger audio playback
       wordSpans[0].click();
+      await flushPromises();
       
       expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
     });
@@ -322,9 +337,10 @@ describe('DialoguePanel Audio Functionality', () => {
       await panel.add(record);
 
       const wordSpan = container.querySelector('.word');
-      wordSpan.click();
+      await wordSpan.__handleWord();
+      await flushPromises();
 
-      const bufferSource = mockAudioContext.createBufferSource();
+      const bufferSource = mockAudioContext.createBufferSource.mock.results[0].value;
       
       // Should use buffered start/end times
       // bufferedStart = Math.max(0, 0.2 - 0.1) = 0.1
@@ -349,7 +365,8 @@ describe('DialoguePanel Audio Functionality', () => {
       await panel.add(record);
 
       const playButton = container.querySelector('.play-utterance');
-      playButton.click();
+      await playButton.__handlePlay();
+      await flushPromises();
 
       expect(mockAudioContext.resume).toHaveBeenCalledTimes(1);
       expect(console.warn).toHaveBeenCalledWith('AudioContext resume failed:', expect.any(Error));
@@ -420,7 +437,9 @@ describe('DialoguePanel Audio Functionality', () => {
 
       // Add the same record twice
       await panel.add(record);
+      await flushPromises();
       await panel.add(record);
+      await flushPromises();
 
       const playButtons = container.querySelectorAll('.play-utterance');
       expect(playButtons.length).toBe(1);

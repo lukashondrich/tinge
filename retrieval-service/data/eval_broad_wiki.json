@@ -1,0 +1,172 @@
+[
+  {
+    "id": "architecture_en_broad",
+    "query_original": "Tell me about architecture in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["architecture", "gaud", "sagrada", "barcelona"],
+    "expected_terms_any": ["architecture", "gaudi", "sagrada", "modernist"],
+    "max_latency_ms": 1500
+  },
+  {
+    "id": "architecture_es_broad",
+    "query_original": "Cuentame sobre la arquitectura de Barcelona",
+    "query_en": "Tell me about architecture in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["architecture", "gaud", "sagrada", "barcelona"],
+    "expected_terms_any": ["architecture", "gaudi", "sagrada", "modernist"],
+    "max_latency_ms": 1500
+  },
+  {
+    "id": "neighborhoods_en_broad",
+    "query_original": "What neighborhoods are known in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["barcelona", "ciutat_vella", "eixample", "gracia", "district"],
+    "expected_terms_any": ["neighborhood", "district", "barcelona", "eixample", "gracia"]
+  },
+  {
+    "id": "neighborhoods_es_broad",
+    "query_original": "Que barrios son conocidos en Barcelona",
+    "query_en": "What neighborhoods are known in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["barcelona", "ciutat_vella", "eixample", "gracia", "district"],
+    "expected_terms_any": ["neighborhood", "district", "barcelona", "eixample", "gracia"]
+  },
+  {
+    "id": "transport_en_broad",
+    "query_original": "How do people move around Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["transport", "metro", "rail", "tram", "barcelona"],
+    "expected_terms_any": ["transport", "metro", "bus", "rail", "tram"]
+  },
+  {
+    "id": "transport_es_broad",
+    "query_original": "Como moverse por Barcelona en transporte publico",
+    "query_en": "How to move around Barcelona on public transport",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["transport", "metro", "rail", "tram", "barcelona"],
+    "expected_terms_any": ["transport", "metro", "bus", "rail", "tram"]
+  },
+  {
+    "id": "food_en_broad",
+    "query_original": "What food should I try in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["cuisine", "boqueria", "food", "barcelona", "tapas"],
+    "expected_terms_any": ["food", "cuisine", "tapas", "market", "boqueria"]
+  },
+  {
+    "id": "food_es_broad",
+    "query_original": "Que comida probar en Barcelona",
+    "query_en": "What food should I try in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["cuisine", "boqueria", "food", "barcelona", "tapas"],
+    "expected_terms_any": ["food", "cuisine", "tapas", "market", "boqueria"]
+  },
+  {
+    "id": "sant_jordi_en_broad",
+    "query_original": "Tell me about Sant Jordi in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["sant_jordi", "day_of_books_and_roses", "barcelona", "catalonia"],
+    "expected_terms_any": ["sant jordi", "books", "roses", "catalonia"]
+  },
+  {
+    "id": "sant_jordi_es_broad",
+    "query_original": "Que es Sant Jordi en Barcelona",
+    "query_en": "What is Sant Jordi in Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["sant_jordi", "day_of_books_and_roses", "barcelona", "catalonia"],
+    "expected_terms_any": ["sant jordi", "books", "roses", "catalonia"]
+  },
+  {
+    "id": "montserrat_en_broad",
+    "query_original": "Can I do a day trip to Montserrat from Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["montserrat", "catalonia", "barcelona"],
+    "expected_terms_any": ["montserrat", "mountain", "monastery", "barcelona"]
+  },
+  {
+    "id": "montserrat_es_broad",
+    "query_original": "Se puede hacer una excursion a Montserrat desde Barcelona",
+    "query_en": "Can I do a day trip to Montserrat from Barcelona",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["montserrat", "catalonia", "barcelona"],
+    "expected_terms_any": ["montserrat", "mountain", "monastery", "barcelona"]
+  },
+  {
+    "id": "spain_languages_en_broad",
+    "query_original": "What languages are spoken in Spain",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["languages", "spain", "catalonia"],
+    "expected_terms_any": ["language", "spanish", "catalan", "spain"]
+  },
+  {
+    "id": "spain_autonomous_es_broad",
+    "query_original": "Como se organiza Espana en comunidades autonomas",
+    "query_en": "How is Spain organized into autonomous communities",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["autonomous_communities_of_spain", "spain"],
+    "expected_terms_any": ["autonomous", "communities", "spain"]
+  },
+  {
+    "id": "spain_highspeed_en_broad",
+    "query_original": "How does high-speed rail work in Spain",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["alta_velocidad", "high-speed", "rail", "spain"],
+    "expected_terms_any": ["high-speed", "rail", "ave", "spain"]
+  },
+  {
+    "id": "spain_highspeed_es_broad",
+    "query_original": "Como funciona el tren de alta velocidad en Espana",
+    "query_en": "How does high-speed rail work in Spain",
+    "language": "en",
+    "top_k": 5,
+    "min_results": 3,
+    "expected_sources_any": ["Wikipedia"],
+    "expected_url_contains_any": ["alta_velocidad", "high-speed", "rail", "spain"],
+    "expected_terms_any": ["high-speed", "rail", "ave", "spain"]
+  }
+]

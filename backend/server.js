@@ -15,6 +15,11 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.OPENAI_API_KEY;
+const retrievalServiceUrl = process.env.RETRIEVAL_SERVICE_URL || 'http://localhost:3004';
+const retrievalTimeoutMs = Number(process.env.RETRIEVAL_TIMEOUT_MS || 8000);
+const retrievalForceEn = !['0', 'false', 'no'].includes(
+  String(process.env.RETRIEVAL_FORCE_EN || 'true').trim().toLowerCase()
+);
 
 // Configure CORS for production
 const corsOptions = {
@@ -24,9 +29,15 @@ const corsOptions = {
     
     const allowedOrigins = [
       'http://localhost:5173',
+      'http://127.0.0.1:5173',
       'http://localhost:8080',
+      'http://127.0.0.1:8080',
       'http://localhost:3000',
+      'http://127.0.0.1:3000',
       process.env.FRONTEND_URL,
+      // Local development patterns
+      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+      /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
       // Railway.app domains
       /\.railway\.app$/,
       /\.up\.railway\.app$/
@@ -242,6 +253,76 @@ app.post('/transcribe', upload.single('file'), async (req, res) => {
   }
 });
 
+// Knowledge search proxy endpoint for retrieval-service
+app.post('/knowledge/search', express.json(), async (req, res) => {
+  const { query_original, query_en, language, top_k } = req.body || {};
+
+  if (!query_original || typeof query_original !== 'string' || !query_original.trim()) {
+    return res.status(400).json({
+      error: 'Invalid request',
+      detail: 'query_original must be a non-empty string'
+    });
+  }
+
+  const normalizedOriginal = query_original.trim();
+  const normalizedQueryEn = typeof query_en === 'string' && query_en.trim()
+    ? query_en.trim()
+    : normalizedOriginal;
+  const normalizedTopK = Number.isInteger(top_k) ? Math.min(Math.max(top_k, 1), 10) : undefined;
+  const normalizedLanguage = typeof language === 'string' ? language.trim().toLowerCase() : undefined;
+  if (!retrievalForceEn && normalizedLanguage && !['en', 'es'].includes(normalizedLanguage)) {
+    return res.status(400).json({
+      error: 'Invalid request',
+      detail: 'language must be either "en" or "es"'
+    });
+  }
+
+  const payload = {
+    query_original: normalizedOriginal,
+    query_en: normalizedQueryEn,
+    ...(retrievalForceEn ? { language: 'en' } : (normalizedLanguage ? { language: normalizedLanguage } : {})),
+    ...(normalizedTopK ? { top_k: normalizedTopK } : {})
+  };
+
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), retrievalTimeoutMs);
+
+  try {
+    const response = await fetch(`${retrievalServiceUrl}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: abortController.signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        error: 'Knowledge search failed',
+        detail: errorText
+      });
+    }
+
+    const result = await response.json();
+    res.json(result);
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({
+        error: 'Knowledge search timed out',
+        detail: `Retrieval service did not respond within ${retrievalTimeoutMs}ms`
+      });
+    }
+
+    console.error('Knowledge search proxy error:', error);
+    res.status(502).json({
+      error: 'Knowledge search service unavailable',
+      detail: error.message
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
 
 
 
@@ -255,4 +336,5 @@ app.listen(port, () => {
   console.log(`Health check: http://localhost:${port}/health`);
   console.log(`Token endpoint: http://localhost:${port}/token`);
   console.log(`Transcribe endpoint: http://localhost:${port}/transcribe`);
+  console.log(`Knowledge search endpoint: http://localhost:${port}/knowledge/search`);
 });
