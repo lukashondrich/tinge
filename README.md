@@ -127,6 +127,8 @@ What this architecture demonstrates:
 - **Backend Tests**: `npm run test:backend` 
 - **Frontend Tests**: `npm run test:frontend`
 - **Coverage**: `npm run test:coverage`
+- **Citation Path Integration Test**:
+  `npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js`
 
 ### Linting
 
@@ -201,6 +203,10 @@ railway up --service tinge_backend --detach
 
 
 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+For the current working Railway setup (retrieval + Elasticsearch included), see
+[docs/railway_runbook.md](./docs/railway_runbook.md).
+For session continuity and the active technical debt roadmap, start with
+[AGENTS.md](./AGENTS.md) and [docs/tech_debt_register.md](./docs/tech_debt_register.md).
 
 ## Environment Variables
 
@@ -250,6 +256,8 @@ npm run dev:embedding      # Embedding service only
 npm test                   # Run all tests
 npm run test:watch         # Watch mode
 npm run test:coverage      # With coverage
+npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js
+                           # Citation path integration test
 
 # Linting
 npm run lint              # Lint all services
@@ -275,5 +283,16 @@ make rag-down             # Stop stack
 2. Make changes with tests
 3. Run `npm run lint` and `npm test`
 4. Create pull request to `develop`
+
+## PR Safety Checklist
+
+Before opening a PR:
+
+1. Confirm your current branch is not `main`.
+2. Rebase or merge latest target branch changes.
+3. Run `npm run lint` and `npm test`.
+4. Update `AGENTS.md` session status/next steps if work changed priorities.
+5. Update `docs/tech_debt_register.md` when debt priorities or severity changed.
+6. Open PR and wait for required checks/review before any merge to `main`.
 
 ## License
