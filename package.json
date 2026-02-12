@@ -15,11 +15,15 @@
     "test:frontend": "cd shader-playground && npm run test:run",
     "test:embedding": "cd embedding-service && npm test",
     "test:integration": "jest tests/integration.test.js",
+    "test:watch": "cd backend && npm run test:watch",
     "test:all": "npm run test",
     "test:coverage": "npm run test:backend && cd backend && npm run test:coverage && cd ../shader-playground && npm run test:coverage",
-    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint": "npm run lint:backend && npm run lint:frontend && npm run lint:embedding",
+    "lint:fix": "npm run lint:backend -- --fix && npm run lint:frontend -- --fix && npm run lint:embedding -- --fix",
     "lint:backend": "cd backend && npm run lint",
     "lint:frontend": "cd shader-playground && npm run lint",
+    "lint:embedding": "cd embedding-service && npm run lint",
+    "check:readme-scripts": "node scripts/verify-readme-scripts.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
@@ -45,7 +49,11 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "roots": ["./tests"],
-    "testMatch": ["**/tests/**/*.test.js"]
+    "roots": [
+      "./tests"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
   }
 }
