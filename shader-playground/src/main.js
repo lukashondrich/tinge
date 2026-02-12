@@ -1,16 +1,11 @@
 // main.js
-console.log('📱 Main.js loading...');
 import { initOpenAIRealtime } from "./openaiRealtime";
 
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { createRGBShiftPass } from './effects/rgbShiftPass.js';
 // import { createVHSCRTPass } from './effects/vhsCrtPass.js';
 import { createRenderer } from './core/renderer.js';
 import { createScene } from './core/scene.js';
 import { setupTouchRotation } from './utils/touchInput.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SCALE } from './core/scene.js';
 import { DialoguePanel } from './ui/dialoguePanel.js';
 import { TokenProgressBar } from './ui/tokenProgressBar.js';
@@ -18,189 +13,23 @@ import { vocabularyStorage } from './utils/vocabularyStorage.js';
 import { BubbleManager } from './ui/bubbleManager.js';
 import { SourcePanel } from './ui/sourcePanel.js';
 import { isMobileDevice, createMobileDebug } from './utils/mobile.js';
-
-const ONBOARDING_DISMISSED_KEY = 'tinge-onboarding-dismissed';
-const DEMO_SEED_ENABLED_KEY = 'tinge-demo-seed-enabled';
-const DEMO_SEED_WORDS = [
-  { word: 'travel', speaker: 'user' },
-  { word: 'career', speaker: 'user' },
-  { word: 'confidence', speaker: 'user' },
-  { word: 'fluency', speaker: 'user' },
-  { word: 'interview', speaker: 'user' },
-  { word: 'pronunciation', speaker: 'user' },
-  { word: 'practice', speaker: 'user' },
-  { word: 'listening', speaker: 'user' },
-  { word: 'feedback', speaker: 'ai' },
-  { word: 'goal', speaker: 'ai' },
-  { word: 'motivation', speaker: 'ai' },
-  { word: 'context', speaker: 'ai' },
-  { word: 'grammar', speaker: 'ai' },
-  { word: 'vocabulary', speaker: 'ai' },
-  { word: 'mistake', speaker: 'ai' },
-  { word: 'progress', speaker: 'ai' },
-  { word: 'culture', speaker: 'ai' },
-  { word: 'conversation', speaker: 'ai' },
-  { word: 'clarity', speaker: 'ai' },
-  { word: 'routine', speaker: 'ai' },
-  { word: 'daily', speaker: 'user' },
-  { word: 'work', speaker: 'user' },
-  { word: 'friends', speaker: 'user' },
-  { word: 'family', speaker: 'user' },
-  { word: 'hobby', speaker: 'user' },
-  { word: 'music', speaker: 'user' },
-  { word: 'reading', speaker: 'user' },
-  { word: 'writing', speaker: 'user' },
-  { word: 'speaking', speaker: 'user' },
-  { word: 'story', speaker: 'user' },
-  { word: 'question', speaker: 'ai' },
-  { word: 'answer', speaker: 'ai' },
-  { word: 'pattern', speaker: 'ai' },
-  { word: 'revision', speaker: 'ai' },
-  { word: 'memory', speaker: 'ai' },
-  { word: 'profile', speaker: 'ai' },
-  { word: 'style', speaker: 'ai' },
-  { word: 'challenge', speaker: 'ai' },
-  { word: 'improve', speaker: 'ai' },
-  { word: 'momentum', speaker: 'ai' }
-];
-
-function seededPoint(index, total) {
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const t = total > 1 ? index / (total - 1) : 0.5;
-  const y = 1 - 2 * t;
-  const radius = Math.sqrt(Math.max(0, 1 - y * y));
-  const theta = index * goldenAngle;
-  const jitter = Math.sin(index * 12.9898) * 0.07;
-
-  return {
-    x: radius * Math.cos(theta) * 0.82 + jitter,
-    y: y * 0.82 + jitter * 0.2,
-    z: radius * Math.sin(theta) * 0.82 - jitter * 0.2
-  };
-}
-
-function shouldEnableDemoSeed() {
-  const stored = localStorage.getItem(DEMO_SEED_ENABLED_KEY);
-  if (stored === null) {
-    localStorage.setItem(DEMO_SEED_ENABLED_KEY, '1');
-    return true;
-  }
-  return stored === '1';
-}
-
-function setDemoSeedEnabled(enabled) {
-  localStorage.setItem(DEMO_SEED_ENABLED_KEY, enabled ? '1' : '0');
-}
-
-function buildDemoSeedVocabulary() {
-  const now = Date.now();
-  return DEMO_SEED_WORDS.map((entry, index) => ({
-    word: entry.word,
-    speaker: entry.speaker,
-    position: seededPoint(index, DEMO_SEED_WORDS.length),
-    timestamp: now + index
-  }));
-}
-
-function applyDemoSeedVocabulary() {
-  const entries = buildDemoSeedVocabulary();
-  vocabularyStorage.importVocabulary(JSON.stringify(entries));
-  return entries.length;
-}
-
-function dismissOnboarding(overlay, persistDismiss = false) {
-  if (persistDismiss) {
-    localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1');
-  }
-  if (overlay) {
-    overlay.style.display = 'none';
-  }
-}
-
-function showOnboarding(overlay) {
-  if (overlay) {
-    overlay.style.display = 'flex';
-  }
-}
-
-function createOnboardingUI() {
-  const overlay = document.createElement('section');
-  overlay.id = 'onboardingOverlay';
-  overlay.className = 'onboarding-overlay';
-
-  const stats = vocabularyStorage.getStats();
-  overlay.innerHTML = `
-    <div class="onboarding-card">
-      <span class="memory-chip">Agentic memory active (local profile)</span>
-      <h1>Voice-to-Meaning Language Playground</h1>
-      <p class="onboarding-subtitle">
-        Speak naturally while holding <strong>Push to Talk</strong>. Every new word appears in a live 3D meaning map. Ask about Spanish-speaking culture, and the tutor pulls real knowledge from a curated Wikipedia archive using Elasticsearch &amp; Haystack RAG.
-      </p>
-      <ol class="onboarding-steps">
-        <li>Allow microphone access.</li>
-        <li>Hold the button while you speak.</li>
-        <li>Release to get AI feedback and new mapped words.</li>
-      </ol>
-      <p class="onboarding-note">
-        Talk about anything: work, hobbies, travel - or ask about places, food, history and traditions in Spain &amp; Latin America. The tutor adapts in real time, cites its sources, and updates your learning profile over sessions.
-      </p>
-      <p class="onboarding-status">Current cloud size: <strong>${stats.total}</strong> words</p>
-      <div class="onboarding-actions">
-        <button id="onboardingUseDemo" class="onboarding-btn primary">Use Demo Cloud</button>
-        <button id="onboardingStartFresh" class="onboarding-btn secondary">Start Fresh</button>
-        <button id="onboardingDismiss" class="onboarding-btn ghost">Close</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  const dismissed = localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1';
-  if (dismissed) {
-    overlay.style.display = 'none';
-  }
-
-  const useDemoBtn = overlay.querySelector('#onboardingUseDemo');
-  const startFreshBtn = overlay.querySelector('#onboardingStartFresh');
-  const dismissBtn = overlay.querySelector('#onboardingDismiss');
-
-  useDemoBtn?.addEventListener('click', () => {
-    setDemoSeedEnabled(true);
-    if (vocabularyStorage.getStats().total === 0) {
-      applyDemoSeedVocabulary();
-    }
-    dismissOnboarding(overlay, true);
-    window.location.reload();
-  });
-
-  startFreshBtn?.addEventListener('click', () => {
-    setDemoSeedEnabled(false);
-    vocabularyStorage.clearVocabulary();
-    dismissOnboarding(overlay, true);
-    window.location.reload();
-  });
-
-  dismissBtn?.addEventListener('click', () => {
-    dismissOnboarding(overlay, true);
-  });
-
-  const launcher = document.createElement('button');
-  launcher.id = 'onboardingLauncher';
-  launcher.className = 'onboarding-launcher';
-  launcher.textContent = 'How it works';
-  launcher.title = 'Show onboarding guide';
-  launcher.addEventListener('click', () => {
-    showOnboarding(overlay);
-  });
-  document.body.appendChild(launcher);
-}
-
-
+import { createLogger } from './utils/logger.js';
+import { createOnboardingUI, shouldEnableDemoSeed, applyDemoSeedVocabulary } from './ui/onboardingController.js';
+import { CitationTurnState } from './realtime/citationState.js';
+import { RetrievalCitationCoordinator } from './realtime/retrievalCitationCoordinator.js';
+import { AsyncWordQueue } from './realtime/asyncWordQueue.js';
+import { WordIngestionService } from './realtime/wordIngestionService.js';
+import { VocabularyHydrator } from './realtime/vocabularyHydrator.js';
+import { UtteranceEventProcessor } from './realtime/utteranceEventProcessor.js';
+import { RealtimeEventCoordinator } from './realtime/realtimeEventCoordinator.js';
+import { createSceneInteractionController } from './realtime/sceneInteractionController.js';
+import { createSceneRuntimeController } from './realtime/sceneRuntimeController.js';
+const logger = createLogger('main');
+logger.log('📱 Main.js loading...');
 
 // Check if animation is already running
 if (window.__ANIMATING__) {
-  // eslint-disable-next-line no-console
-  console.warn('🔥 animate() already running — skipping');
+  logger.warn('🔥 animate() already running — skipping');
   throw new Error('animate() already running');
 }
 window.__ANIMATING__ = true;
@@ -214,23 +43,22 @@ const tokenProgressBar = new TokenProgressBar();
 // Track words already visualized to avoid duplicates
 const usedWords = new Set();
 
-// Track last utterance for 3D text labels
-let lastUtteranceWords = [];
-// let lastUtteranceSpeaker = null;
 const wordPositions = new Map(); // word -> THREE.Vector3 position
 const wordIndices = new Map(); // word -> index in optimizer
 
 const MOBILE_BUBBLE_COOLDOWN = 500; // 500ms cooldown between bubble creation on mobile
 const IS_MOBILE = isMobileDevice();
-const IDLE_AUTO_ROTATE_TARGET_SPEED = 0.5;
-const IDLE_AUTO_ROTATE_ACCEL_PER_SEC = 0.1;
-const IDLE_AUTO_ROTATE_DECEL_PER_SEC = 1.2;
-const IDLE_RESUME_DELAY_MS = 1600;
+const IDLE_CONFIG = {
+  targetSpeed: 0.5,
+  accelPerSec: 0.1,
+  decelPerSec: 1.2,
+  resumeDelayMs: 1600
+};
 
 const panelEl = document.getElementById('transcriptContainer');
 
 const mobileDebug = createMobileDebug(IS_MOBILE);
-createOnboardingUI();
+createOnboardingUI({ vocabulary: vocabularyStorage });
 
 function scrollToBottom() {
   panelEl.scrollTop = panelEl.scrollHeight;
@@ -244,33 +72,21 @@ const bubbleManager = new BubbleManager({
   scrollBehavior: scrollToBottom
 });
 const sourcePanel = new SourcePanel({ maxVisible: 4 });
-const pendingRetrievedSources = new Map(); // citation_index -> source item for current turn
-const pendingLocalToGlobalCitations = new Map(); // local citation index -> provisional/global citation index
-const pendingProvisionalBySourceKey = new Map(); // source key -> provisional citation index for this turn
-let pendingAiCitationRemap = new Map(); // local citation index -> global session citation index
-let pendingProvisionalNextIndex = sourcePanel.getNextDisplayIndex();
-let aiStreamingTranscript = '';
-let lastSearchTelemetry = null;
-
-// Word to utterance mapping for audio playback
-const wordToUtteranceMap = new Map();
+const citationTurnState = new CitationTurnState(sourcePanel);
+const retrievalCoordinator = new RetrievalCitationCoordinator({
+  citationTurnState,
+  sourcePanel
+});
+let utteranceEventProcessor = null;
+let realtimeEventCoordinator = null;
 
 // Audio playback for 3D words
 function playAudioFor(word) {
-  const utteranceData = wordToUtteranceMap.get(word.toLowerCase());
-  
-  if (utteranceData && utteranceData.audioURL) {
-    // Play the original utterance audio
-    const audio = new Audio(utteranceData.audioURL);
-    audio.play().catch(err => {
-      console.warn('Failed to play utterance audio:', err);
-      // Fallback to TTS
-      playTTSFallback(word);
-    });
-  } else {
-    // Fallback to Text-to-Speech
-    playTTSFallback(word);
+  if (utteranceEventProcessor) {
+    utteranceEventProcessor.playAudioFor(word, playTTSFallback);
+    return;
   }
+  playTTSFallback(word);
 }
 
 // Text-to-Speech fallback for words without utterance audio
@@ -282,91 +98,14 @@ function playTTSFallback(word) {
     utterance.volume = 0.7;
     speechSynthesis.speak(utterance);
   } else {
-    console.warn('Speech synthesis not supported - no audio playback available');
+    logger.warn('Speech synthesis not supported - no audio playback available');
   }
-}
-
-function remapCitationMarkers(text, localToGlobalMap) {
-  if (!text || !localToGlobalMap || localToGlobalMap.size === 0) return text;
-
-  let rewritten = text.replace(/\[(\d+)\]/g, (match, n) => {
-    const local = Number(n);
-    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
-    return `[${localToGlobalMap.get(local)}]`;
-  });
-
-  rewritten = rewritten.replace(/\((\d+)\)/g, (match, n) => {
-    const local = Number(n);
-    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
-    return `[${localToGlobalMap.get(local)}]`;
-  });
-
-  rewritten = rewritten.replace(/(?:source|fuente)\s*#?\s*(\d+)/gi, (match, n) => {
-    const local = Number(n);
-    if (!Number.isFinite(local) || !localToGlobalMap.has(local)) return match;
-    return `[${localToGlobalMap.get(local)}]`;
-  });
-
-  return rewritten;
-}
-
-function extractCitationIndexesInOrder(text = '') {
-  if (!text) return [];
-  const ordered = [];
-  const seen = new Set();
-  const citationPattern = /\[(\d+)\]|\((\d+)\)|(?:source|fuente)\s*#?\s*(\d+)/gi;
-  let match = citationPattern.exec(text);
-  while (match !== null) {
-    const raw = match[1] || match[2] || match[3];
-    const citationIndex = Number(raw);
-    if (Number.isFinite(citationIndex) && citationIndex > 0 && !seen.has(citationIndex)) {
-      seen.add(citationIndex);
-      ordered.push(citationIndex);
-    }
-    match = citationPattern.exec(text);
-  }
-  return ordered;
-}
-
-function assignStreamingCitationIndexes(transcript = '') {
-  const citedIndexes = extractCitationIndexesInOrder(transcript);
-  citedIndexes.forEach((localIndex) => {
-    if (pendingLocalToGlobalCitations.has(localIndex)) return;
-    if (!pendingRetrievedSources.has(localIndex)) return;
-
-    const source = pendingRetrievedSources.get(localIndex);
-    const existingIndex = sourcePanel.getExistingDisplayIndexForSource(source);
-    if (Number.isFinite(existingIndex)) {
-      pendingLocalToGlobalCitations.set(localIndex, existingIndex);
-      return;
-    }
-
-    const sourceKey = sourcePanel.getSourceKey(source);
-    if (pendingProvisionalBySourceKey.has(sourceKey)) {
-      pendingLocalToGlobalCitations.set(localIndex, pendingProvisionalBySourceKey.get(sourceKey));
-      return;
-    }
-
-    const provisionalIndex = pendingProvisionalNextIndex;
-    pendingProvisionalNextIndex += 1;
-    pendingProvisionalBySourceKey.set(sourceKey, provisionalIndex);
-    pendingLocalToGlobalCitations.set(localIndex, provisionalIndex);
-  });
-  return citedIndexes;
-}
-
-function resetPendingCitationState() {
-  pendingRetrievedSources.clear();
-  pendingLocalToGlobalCitations.clear();
-  pendingProvisionalBySourceKey.clear();
-  pendingProvisionalNextIndex = sourcePanel.getNextDisplayIndex();
-  aiStreamingTranscript = '';
 }
 
 // Initialize scene and OpenAI Realtime
-console.log('🚀 Starting scene initialization...');
+logger.log('🚀 Starting scene initialization...');
 createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _numPoints, lineSegments, gel, controls: _controls, recentlyAdded, labels, textManager }) => {
-  console.log('✅ Scene created successfully');
+  logger.log('✅ Scene created successfully');
   const renderer = createRenderer();
   
   // Initialize controls with the renderer's DOM element
@@ -399,47 +138,11 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   renderer.domElement.addEventListener('pointerdown', markUserInteraction);
   renderer.domElement.addEventListener('touchstart', markUserInteraction, { passive: true });
 
-  // 🏷 Tooltip for hovered words
-  const tooltip = document.createElement('div');
-  tooltip.id = 'wordTooltip';
-  Object.assign(tooltip.style, {
-    position: 'absolute',
-    pointerEvents: 'none',
-    padding: '2px 6px',
-    background: 'rgba(0,0,0,0.7)',
-    color: '#fff',
-    fontSize: '12px',
-    borderRadius: '4px',
-    display: 'none',
-    zIndex: 1000
-  });
-  document.body.appendChild(tooltip);
-
-  const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
-
-  function onPointerMove(e) {
-    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObject(mesh);
-    if (hits.length > 0 && hits[0].instanceId != null) {
-      const id = hits[0].instanceId;
-      const label = labels[id];
-      if (label) {
-        tooltip.textContent = label;
-        tooltip.style.left = e.clientX + 8 + 'px';
-        tooltip.style.top = e.clientY + 8 + 'px';
-        tooltip.style.display = 'block';
-        return;
-      }
-    }
-    tooltip.style.display = 'none';
-  }
-
-  renderer.domElement.addEventListener('mousemove', onPointerMove);
-  renderer.domElement.addEventListener('mouseleave', () => {
-    tooltip.style.display = 'none';
+  const sceneInteractionController = createSceneInteractionController({
+    domElement: renderer.domElement,
+    camera,
+    mesh,
+    labels
   });
 
   // Initialize OpenAI Realtime with a callback to handle the remote audio stream
@@ -447,317 +150,50 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     mobileDebug('Initializing OpenAI Realtime for mobile device');
   }
   
-  console.log('🎤 Initializing OpenAI Realtime...');
+  logger.log('🎤 Initializing OpenAI Realtime...');
+  let remoteAudioEl = document.getElementById('remoteAiAudio');
+  if (!remoteAudioEl) {
+    remoteAudioEl = document.createElement('audio');
+    remoteAudioEl.id = 'remoteAiAudio';
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.muted = false;
+    remoteAudioEl.volume = 1.0;
+    remoteAudioEl.preload = 'auto';
+    remoteAudioEl.style.position = 'fixed';
+    remoteAudioEl.style.width = '1px';
+    remoteAudioEl.style.height = '1px';
+    remoteAudioEl.style.left = '-9999px';
+    remoteAudioEl.style.top = '0';
+    remoteAudioEl.style.opacity = '0';
+    remoteAudioEl.style.pointerEvents = 'none';
+    document.body.appendChild(remoteAudioEl);
+  }
+  remoteAudioEl.muted = false;
+  remoteAudioEl.volume = 1.0;
+  remoteAudioEl.playsInline = true;
+  remoteAudioEl.autoplay = true;
+
   initOpenAIRealtime(
     (remoteStream) => {
-      const audio = new Audio();
-      audio.srcObject = remoteStream;
-      audio.autoplay = true;
-      // eslint-disable-next-line no-console
-      audio.play().catch(err => console.error("Audio play error:", err));
+      remoteAudioEl.srcObject = remoteStream;
+      const tryPlay = () => {
+        remoteAudioEl.play().catch(err => logger.error('Audio play error:', err));
+      };
+      tryPlay();
+
+      const retryOnGesture = () => {
+        tryPlay();
+        window.removeEventListener('pointerdown', retryOnGesture);
+        window.removeEventListener('touchstart', retryOnGesture);
+        window.removeEventListener('keydown', retryOnGesture);
+      };
+      window.addEventListener('pointerdown', retryOnGesture, { once: true });
+      window.addEventListener('touchstart', retryOnGesture, { once: true });
+      window.addEventListener('keydown', retryOnGesture, { once: true });
     },
     (event) => {
-
-      if (event.type === 'input_audio_buffer.speech_started') {
-        bubbleManager.beginTurn('user');
-      }
-      
-      if (event.type === 'input_audio_buffer.speech_stopped') {
-        // User stopped speaking - the final transcription will replace the placeholder
-      }
-      
-      // ① Handle delta events by accumulating text in the bubble
-      if (
-        event.type === 'response.audio_transcript.delta' &&
-        typeof event.delta === 'string'
-      ) {
-        aiStreamingTranscript += event.delta;
-        assignStreamingCitationIndexes(aiStreamingTranscript);
-        const remappedStreamingTranscript = remapCitationMarkers(
-          aiStreamingTranscript,
-          pendingLocalToGlobalCitations
-        );
-        const completedWords = bubbleManager.appendDelta('ai', event.delta, {
-          displayText: remappedStreamingTranscript
-        });
-        completedWords.forEach((word) => addWord(word, 'ai', { skipBubble: true }));
-      }
-
-      // ② Handle individual word events 
-      if (event.type === 'transcript.word' && typeof event.word === 'string') {
-        const speaker = event.speaker || 'ai';
-        
-        // For user speech, only process words if there's an active bubble (from PTT press)
-        // This prevents creating new bubbles but allows updating existing placeholder
-        if (speaker === 'user') {
-          bubbleManager.appendWord({ speaker, word: event.word, onWordClick: playAudioFor });
-          addWord(event.word, speaker, { skipBubble: true });
-          return;
-        }
-        
-        // For AI speech, only process word events if we don't have an active delta-based bubble
-        // This prevents conflicts between delta and word event processing
-        if (!bubbleManager.hasActiveDelta(speaker)) {
-          addWord(event.word, speaker);
-        } else {
-          // We have delta-based content, just add to word cloud without UI update
-          const key = event.word.trim().toLowerCase();
-          if (!usedWords.has(key)) {
-            addWord(event.word, speaker, { skipBubble: true });
-          }
-        }
-      }
-
-      // ③ final utterance record with audio & timings with mobile-specific duplicate prevention
-      if (event.type === 'utterance.added' && event.record) {
-        const { speaker = 'ai', id, text: rawText, wordTimings } = event.record;
-        let text = rawText;
-        const eventDeviceType = event.deviceType || 'unknown';
-        
-        if (!bubbleManager.shouldProcessUtterance(event.record, eventDeviceType)) {
-          return;
-        }
-
-        if (speaker === 'ai' && text && text !== '...' && pendingAiCitationRemap.size > 0) {
-          text = remapCitationMarkers(text, pendingAiCitationRemap);
-          event.record.text = text;
-          if (typeof event.record.fullText === 'string') {
-            event.record.fullText = remapCitationMarkers(event.record.fullText, pendingAiCitationRemap);
-          }
-          pendingAiCitationRemap = new Map();
-        }
-        
-        // Map words to utterance for audio playback
-        if (event.record.audioURL && event.record.wordTimings) {
-          event.record.wordTimings.forEach(wordTiming => {
-            const word = wordTiming.word.toLowerCase().replace(/[^\w]/g, ''); // Clean word
-            if (word) {
-              wordToUtteranceMap.set(word, {
-                audioURL: event.record.audioURL,
-                wordTiming: wordTiming,
-                utteranceId: id,
-                speaker: speaker
-              });
-            }
-          });
-        } else if (event.record.audioURL && text && text !== '...') {
-          // If no word timings, map entire text for utterance-level playback
-          const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-          words.forEach(word => {
-            if (!wordToUtteranceMap.has(word)) {
-              wordToUtteranceMap.set(word, {
-                audioURL: event.record.audioURL,
-                utteranceId: id,
-                speaker: speaker
-              });
-            }
-          });
-        }
-        
-        // Handle placeholder records - they need processing to set up bubble tracking
-        // even if they don't have final content yet
-        const isPlaceholder = text === '...' && (!wordTimings || wordTimings.length === 0);
-        
-        if (isPlaceholder) {
-          bubbleManager.setUtteranceId(speaker, id);
-          const placeholderDelay = speaker === 'user' ? 2000 : 1000;
-          bubbleManager.scheduleFinalize(speaker, placeholderDelay, (words) => {
-            words.forEach((word) => addWord(word, speaker, { skipBubble: true }));
-          });
-          return;
-        }
-
-        // Cancel any pending finalization timer since we're processing the final utterance now
-        bubbleManager.clearFinalizeTimer(speaker);
-        bubbleManager.setUtteranceId(speaker, id);
-        
-        // 🏷️ Track last utterance for 3D text labels
-        if (text && text !== '...') {
-          try {
-            const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-            lastUtteranceWords = words;
-            // lastUtteranceSpeaker = speaker;
-            
-            console.log('🏷️ Processing utterance for 3D labels:', { text, words, speaker });
-            console.log('🏷️ WordPositions map size:', wordPositions.size);
-            console.log('🏷️ Available positions:', Array.from(wordPositions.keys()).slice(0, 10));
-            
-            // Get current positions from optimizer
-            const currentPositions = new Map();
-            words.forEach(word => {
-              const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
-              if (cleanWord && wordIndices.has(cleanWord)) {
-                const index = wordIndices.get(cleanWord);
-                const optimizedPositions = optimizer.getPositions();
-                if (optimizedPositions[index]) {
-                  const pos = optimizedPositions[index].clone().multiplyScalar(SCALE);
-                  currentPositions.set(cleanWord, pos);
-                }
-              }
-            });
-            
-            console.log('📍 Current positions for utterance:', currentPositions.size, 'words');
-            
-            // Show 3D text labels for the last utterance with current positions
-            textManager.showLabelsForUtterance(words, speaker, currentPositions);
-          } catch (error) {
-            console.error('❌ 3D text label error:', error);
-            // Don't break utterance processing
-          }
-        }
-        
-        panel.add(event.record); // DialoguePanel should now find and replace the existing bubble
-        scrollToBottom();
-        
-        // For AI responses, don't set a short finalization timer since we're handling it in output_audio_buffer.stopped
-        // For user responses, set a short timer since they don't have buffer events
-        if (speaker === 'user') {
-          bubbleManager.scheduleFinalize(speaker, 300);
-        }
-        // AI finalization is handled by output_audio_buffer.stopped event
-        return;
-      }
-
-      // ④ handle AI buffer stopped - this signals end of AI response
-      if (event.type === 'output_audio_buffer.stopped') {
-        bubbleManager.scheduleFinalize('ai', 1000, (words) => {
-          words.forEach((word) => addWord(word, 'ai', { skipBubble: true }));
-        });
-      }
-
-      // ⑤ handle final AI transcript completion
-      if (
-        event.type === 'response.audio_transcript.done' &&
-        typeof event.transcript === 'string'
-      ) {
-        const speaker = 'ai'; // This event is always from AI
-        const transcript = event.transcript.trim();
-        aiStreamingTranscript = transcript;
-        
-        // If we have a final transcript but no utterance.added event yet,
-        // this helps ensure we don't lose the final transcription
-        // The actual processing will happen when utterance.added arrives
-        if (transcript && !bubbleManager.getActiveBubble(speaker)) {
-          // eslint-disable-next-line no-console
-          console.warn('Got final transcript but no active AI bubble - transcript may be lost');
-        }
-
-        // Commit only sources actually cited in the final assistant transcript.
-        const citedIndexes = assignStreamingCitationIndexes(transcript);
-        const sourceKeysInCitationOrder = [];
-        const sourceByKey = new Map();
-        const provisionalIndexByKey = new Map();
-
-        citedIndexes.forEach((localIndex) => {
-          if (!pendingRetrievedSources.has(localIndex)) return;
-          const source = pendingRetrievedSources.get(localIndex);
-          const sourceKey = sourcePanel.getSourceKey(source);
-          if (!sourceByKey.has(sourceKey)) {
-            sourceByKey.set(sourceKey, source);
-            sourceKeysInCitationOrder.push(sourceKey);
-          }
-          if (!provisionalIndexByKey.has(sourceKey)) {
-            const existing = sourcePanel.getExistingDisplayIndexForSource(source);
-            if (Number.isFinite(existing)) {
-              provisionalIndexByKey.set(sourceKey, existing);
-            } else if (pendingLocalToGlobalCitations.has(localIndex)) {
-              provisionalIndexByKey.set(sourceKey, pendingLocalToGlobalCitations.get(localIndex));
-            }
-          }
-        });
-
-        const committedIndexBySourceKey = new Map();
-        sourceKeysInCitationOrder.forEach((sourceKey) => {
-          const source = sourceByKey.get(sourceKey);
-          const existing = sourcePanel.getExistingDisplayIndexForSource(source);
-          if (Number.isFinite(existing)) {
-            committedIndexBySourceKey.set(sourceKey, existing);
-          }
-        });
-
-        sourceKeysInCitationOrder
-          .filter((sourceKey) => !committedIndexBySourceKey.has(sourceKey))
-          .sort((a, b) => {
-            const aIdx = provisionalIndexByKey.get(a);
-            const bIdx = provisionalIndexByKey.get(b);
-            const aNum = Number.isFinite(aIdx) ? aIdx : Number.MAX_SAFE_INTEGER;
-            const bNum = Number.isFinite(bIdx) ? bIdx : Number.MAX_SAFE_INTEGER;
-            return aNum - bNum;
-          })
-          .forEach((sourceKey) => {
-            const source = sourceByKey.get(sourceKey);
-            const committed = sourcePanel.getDisplayIndexForSource(source);
-            committedIndexBySourceKey.set(sourceKey, committed);
-          });
-
-        const localToGlobalMap = new Map();
-        const usedSourcesByKey = new Map();
-        citedIndexes.forEach((localIndex) => {
-          if (!pendingRetrievedSources.has(localIndex)) return;
-          const source = pendingRetrievedSources.get(localIndex);
-          const sourceKey = sourcePanel.getSourceKey(source);
-          if (!committedIndexBySourceKey.has(sourceKey)) return;
-          const globalIndex = committedIndexBySourceKey.get(sourceKey);
-          localToGlobalMap.set(localIndex, globalIndex);
-          if (!usedSourcesByKey.has(sourceKey)) {
-            usedSourcesByKey.set(sourceKey, {
-              ...source,
-              display_index: globalIndex
-            });
-          }
-        });
-
-        const usedSources = Array.from(usedSourcesByKey.values())
-          .sort((a, b) => (a.display_index || 0) - (b.display_index || 0));
-
-        pendingAiCitationRemap = localToGlobalMap;
-        sourcePanel.updateFromSearchResults(usedSources);
-        if (lastSearchTelemetry) {
-          sourcePanel.updateTelemetry({
-            ...lastSearchTelemetry,
-            citedCount: usedSources.length
-          });
-        }
-        resetPendingCitationState();
-      }
-
-      if (event.type === 'tool.search_knowledge.result') {
-        const results = event?.result?.results || [];
-        results.forEach((item) => {
-          const index = Number(item?.citation_index);
-          if (Number.isFinite(index) && index > 0) {
-            pendingRetrievedSources.set(index, item);
-          }
-        });
-
-        if (aiStreamingTranscript) {
-          assignStreamingCitationIndexes(aiStreamingTranscript);
-          const remappedStreamingTranscript = remapCitationMarkers(
-            aiStreamingTranscript,
-            pendingLocalToGlobalCitations
-          );
-          bubbleManager.appendDelta('ai', '', {
-            displayText: remappedStreamingTranscript
-          });
-        }
-
-        lastSearchTelemetry = event?.telemetry || null;
-        sourcePanel.updateTelemetry(lastSearchTelemetry);
-      }
-
-      if (event.type === 'tool.search_knowledge.started') {
-        resetPendingCitationState();
-        const args = event?.args || {};
-        sourcePanel.updateTelemetry({
-          queryOriginal: args.query_original || '',
-          queryEn: args.query_en || '',
-          language: args.language || '',
-          topK: args.top_k || '',
-          durationMs: 0,
-          resultCount: 0,
-          status: 'loading'
-        });
-      }
+      realtimeEventCoordinator.handleEvent(event);
     }
   ,
   // Token usage callback for progress bar
@@ -766,440 +202,116 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   }
   )
   .then(() => {
-    console.log('✅ OpenAI Realtime initialized successfully');
+    logger.log('✅ OpenAI Realtime initialized successfully');
   })
-  // eslint-disable-next-line no-console
-  .catch(err => console.error("⚠️ Realtime init error:", err));
+  .catch(err => logger.error('⚠️ Realtime init error:', err));
   const { getSpeed, dispose: disposeTouch } = setupTouchRotation(mesh);
 
-  // Performance optimization: Load vocabulary in stages for 5000+ words
-  let totalVocabularySize = 0;
-  let loadedWordCount = 0;
-  let isLoadingBatch = false;
+  const vocabularyHydrator = new VocabularyHydrator({
+    vocabularyStorage,
+    usedWords,
+    optimizer,
+    mesh,
+    labels,
+    wordPositions,
+    wordIndices,
+    gel,
+    scale: SCALE,
+    makeColorForSpeaker: (speaker) => (
+      speaker === 'user'
+        ? new THREE.Color('#69ea4f')
+        : new THREE.Color(0x5a005a)
+    ),
+    makeVector3: (x, y, z) => new THREE.Vector3(x, y, z),
+    shouldEnableDemoSeed: () => shouldEnableDemoSeed(localStorage),
+    applyDemoSeedVocabulary: () => applyDemoSeedVocabulary(vocabularyStorage)
+  });
 
-  async function loadExistingVocabulary() {
-    console.log('📚 Loading vocabulary with performance optimization...');
-    try {
-      // Quick check of total vocabulary size
-      let fullVocabulary = vocabularyStorage.loadVocabulary();
-      totalVocabularySize = fullVocabulary.length;
-      
-      if (totalVocabularySize === 0) {
-        const demoEnabled = shouldEnableDemoSeed();
-        if (demoEnabled) {
-          const seededCount = applyDemoSeedVocabulary();
-          console.log(`📚 Added ${seededCount} demo seed words for first-time experience`);
-          fullVocabulary = vocabularyStorage.loadVocabulary();
-          totalVocabularySize = fullVocabulary.length;
-        } else {
-          console.log('📚 No previous vocabulary found - starting fresh');
-          return;
-        }
-      }
+  const wordIngestionService = new WordIngestionService({
+    bubbleManager,
+    onWordClick: playAudioFor,
+    usedWords,
+    optimizer,
+    mesh,
+    gel,
+    recentlyAdded,
+    labels,
+    wordPositions,
+    wordIndices,
+    scale: SCALE,
+    vocabularyStorage,
+    apiUrl: __API_URL__
+  });
 
-      console.log(`📚 Found ${totalVocabularySize} words total - using progressive loading`);
-      
-      // Stage 1: Load recent words immediately (fast startup)
-      const recentWords = vocabularyStorage.loadRecentWords(150);
-      if (recentWords.length > 0) {
-        gel.visible = true;
-        await loadWordsToScene(recentWords, 'recent');
-        
-        // Stage 2: Progressive loading of older words in background
-        if (totalVocabularySize > 150) {
-          setTimeout(() => loadOlderWordsBatch(), 1000);
-        }
-      }
-    } catch (error) {
-      console.warn('📚 Error loading vocabulary:', error);
+  // Queue preserves word order while async embedding requests complete.
+  const wordQueue = new AsyncWordQueue({
+    processor: async ({ word, speaker, options = {} }) => {
+      await wordIngestionService.processWord(word, speaker, options);
+    },
+    onError: (err, item) => {
+      logger.error('Error processing word:', item?.word, 'Error:', err);
+      // Continue processing other words even if one fails.
     }
-  }
-
-  async function loadWordsToScene(words, batchType = 'batch') {
-    //console.log(`📚 Loading ${words.length} words to scene (${batchType})`);
-    
-    for (const item of words) {
-      try {
-        const key = item.word.trim().toLowerCase();
-        if (!usedWords.has(key)) {
-          usedWords.add(key);
-          
-          // Add to optimizer
-          optimizer.addPoint(item.position);
-          const id = optimizer.getPositions().length - 1;
-          mesh.count = id + 1;
-          
-          // Set color based on speaker
-          const colour = item.speaker === 'user'
-            ? new THREE.Color('#69ea4f')       // green
-            : new THREE.Color(0x5a005a);       // purple
-          
-          mesh.setColorAt(id, colour);
-          
-          // Set label for tooltip
-          labels[id] = item.word;
-          
-          // 📍 Track word position and index for 3D text labels
-          const position = new THREE.Vector3(item.position.x * SCALE, item.position.y * SCALE, item.position.z * SCALE);
-          wordPositions.set(key, position);
-          wordIndices.set(key, id); // Track the index in the optimizer
-          console.log('📍 Loaded word position:', key, position, 'index:', id);
-          
-          loadedWordCount++;
-        }
-      } catch (error) {
-        console.warn(`📚 Failed to restore word "${item.word}":`, error);
-      }
-    }
-    
-    // Batch update for better performance
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.instanceMatrix.needsUpdate = true;
-    
-    //console.log(`📚 ${batchType}: Loaded ${loadedWordCount}/${totalVocabularySize} words`);
-  }
-
-  async function loadOlderWordsBatch() {
-    if (isLoadingBatch || loadedWordCount >= totalVocabularySize) return;
-    
-    isLoadingBatch = true;
-    try {
-      const batchSize = 100;
-      const remainingWords = totalVocabularySize - loadedWordCount;
-      const wordsToLoad = Math.min(batchSize, remainingWords);
-      
-      // Load older words (excluding the recent ones already loaded)
-      const offset = Math.max(0, totalVocabularySize - 150 - wordsToLoad);
-      const batch = vocabularyStorage.loadVocabularyBatch(offset, wordsToLoad);
-      
-      if (batch.length > 0) {
-        await loadWordsToScene(batch, 'background');
-        
-        // Continue loading if more words remain
-        if (loadedWordCount < totalVocabularySize) {
-          setTimeout(() => loadOlderWordsBatch(), 500);
-        }
-      }
-    } catch (error) {
-      console.warn('📚 Error loading vocabulary batch:', error);
-    } finally {
-      isLoadingBatch = false;
-    }
-  }
-
-  // Queue to preserve word order while async embedding requests complete
-  const wordQueue = [];
-  let processingWordQueue = false;
-
-  async function processWordQueue() {
-    if (processingWordQueue) return;
-    processingWordQueue = true;
-    try {
-      while (wordQueue.length > 0) {
-        const { word, speaker, options = {} } = wordQueue.shift();
-        try {
-          await processWord(word, speaker, options);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error('Error processing word:', word, 'Error:', err);
-          // Continue processing other words even if one fails
-        }
-      }
-    } finally {
-      // Always reset the flag, even if errors occurred
-      processingWordQueue = false;
-    }
-  }
+  });
 
   function addWord(word, speaker = 'ai', options = {}) {
-    wordQueue.push({ word, speaker, options });
-    processWordQueue();
+    wordQueue.enqueue({ word, speaker, options });
   }
 
-  // Set up post-processing
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  realtimeEventCoordinator = new RealtimeEventCoordinator({
+    bubbleManager,
+    retrievalCoordinator,
+    addWord,
+    playAudioFor,
+    usedWords,
+    warn: (message) => logger.warn(message)
+  });
 
-  const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.9, 0.8, 0.2
-  );
-  composer.addPass(bloomPass);
+  utteranceEventProcessor = new UtteranceEventProcessor({
+    bubbleManager,
+    retrievalCoordinator,
+    panel,
+    scrollToBottom,
+    addWord,
+    textManager,
+    wordIndices,
+    optimizer,
+    scale: SCALE
+  });
+  realtimeEventCoordinator.setUtteranceEventProcessor(utteranceEventProcessor);
 
-  const rgbShiftPass = createRGBShiftPass();
-  composer.addPass(rgbShiftPass);
-
-  // Add VHS CRT shader pass for retro 80s aesthetic
-  // const vhsCrtPass = createVHSCRTPass();
-  // composer.addPass(vhsCrtPass);
-  
-
-  async function processWord(word, speaker = "ai", options = {}) {
-    try {
-      if (!options.skipBubble) {
-        bubbleManager.appendWord({ speaker, word, onWordClick: playAudioFor });
-      }
-
-      // SECOND: Process embeddings asynchronously (won't affect word order)
-      const key = word.trim().toLowerCase();
-      if (!usedWords.has(key)) {
-        usedWords.add(key);
-        let newPoint = {
-          x: (Math.random() - 0.5) * 2, // Random between -1 and 1
-          y: (Math.random() - 0.5) * 2, // Random between -1 and 1
-          z: (Math.random() - 0.5) * 2  // Random between -1 and 1
-        };
-        
-        try {
-          const res = await fetch(`${__API_URL__}/embed-word?word=${encodeURIComponent(word)}`);
-          if (res.ok) {
-            const data = await res.json();
-            newPoint = { x: data.x, y: data.y, z: data.z };
-            // eslint-disable-next-line no-console
-            console.log('Got embedding for word:', word, newPoint);
-          } else {
-            // eslint-disable-next-line no-console
-            console.warn('Embedding service unavailable, using random position for word:', word);
-          }
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('Embedding service unavailable, using random fallback position for word:', word, err.message);
-        }
-        
-        try {
-          optimizer.addPoint(newPoint);
-
-          // --- make room first ---
-          const id = optimizer.getPositions().length - 1;
-          mesh.count = id + 1;                // ensure the new slot exists
-
-          // ✅ Show gel shell when first word is added
-          if (mesh.count === 1) {
-            gel.visible = true;
-          }
-
-          // pick the colour
-          const colour = speaker === 'user'
-            ? new THREE.Color('#69ea4f')       // green
-            : new THREE.Color(0x5a005a);       // purple
-
-          mesh.setColorAt(id, colour);
-          mesh.instanceColor.needsUpdate = true;
-
-          recentlyAdded.set(id, performance.now());
-          labels[id] = word;
-          
-          // 📍 Track word position and index for 3D text labels
-          const position = new THREE.Vector3(newPoint.x * SCALE, newPoint.y * SCALE, newPoint.z * SCALE);
-          wordPositions.set(key, position);
-          wordIndices.set(key, id); // Track the index in the optimizer
-          console.log('📍 Tracked word position:', key, position, 'index:', id);
-          
-          // 💾 Save new word to vocabulary storage for persistence
-          vocabularyStorage.saveWord(word, newPoint, speaker);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error('Error adding point to 3D scene for word:', word, 'Error:', err);
-          // Don't rethrow - UI update was successful
-        }
-      } else {
-        // Word already exists - make sure it's tracked for 3D text labels
-        if (!wordIndices.has(key)) {
-          // Find the existing word in the labels array
-          for (let i = 0; i < labels.length; i++) {
-            if (labels[i] && labels[i].toLowerCase() === key) {
-              wordIndices.set(key, i);
-              
-              // Also get the current position from the optimizer
-              const optimizedPositions = optimizer.getPositions();
-              if (optimizedPositions[i]) {
-                const position = new THREE.Vector3(
-                  optimizedPositions[i].x * SCALE,
-                  optimizedPositions[i].y * SCALE,
-                  optimizedPositions[i].z * SCALE
-                );
-                wordPositions.set(key, position);
-              }
-              
-              console.log('📍 Found existing word index:', key, 'index:', i);
-              break;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Critical error in processWord for:', word, 'Error:', err);
-      throw err; // Rethrow critical errors that affect UI
+  const sceneRuntimeController = createSceneRuntimeController({
+    scene,
+    camera,
+    renderer,
+    mesh,
+    optimizer,
+    dummy,
+    lineSegments,
+    recentlyAdded,
+    orbitControls,
+    getTouchSpeed: getSpeed,
+    utteranceEventProcessor,
+    getIsUserOrbiting: () => isUserOrbiting,
+    getLastUserInteractionTime: () => lastUserInteractionTime,
+    scale: SCALE,
+    idleConfig: IDLE_CONFIG,
+    warnTextLabelError: (error) => {
+      logger.error('❌ TextManager update error:', error);
     }
-  }
-
-  // Performance optimization variables
-  const MAX_RENDER_DISTANCE = 30; // Hide points beyond this distance
-  const LOD_DISTANCES = [10, 20, MAX_RENDER_DISTANCE]; // Different detail levels
-  let frameCount = 0;
-  let lastFrameTimeMs = performance.now();
-  let currentIdleRotateSpeed = 0;
-
-  // Animation loop with LOD optimization
-  function animate(t) {
-    requestAnimationFrame(animate);
-    const deltaSeconds = Math.min(0.05, Math.max(0.0, (t - lastFrameTimeMs) / 1000));
-    lastFrameTimeMs = t;
-
-    optimizer.step();
-  
-    const updatedPositions = optimizer.getPositions();
-    const now = performance.now();
-    const scale = SCALE;
-    frameCount++;
-    
-    // LOD optimization: skip distant point updates on some frames for performance
-    const skipDistantUpdates = frameCount % 3 !== 0; // Update distant points every 3rd frame
-    
-    for (let i = 0; i < updatedPositions.length; i++) {
-      const pos = updatedPositions[i].clone().multiplyScalar(scale);
-      dummy.position.copy(pos);
-  
-      const distToCam = camera.position.distanceTo(pos);
-      
-      // LOD: Hide very distant points to improve performance
-      if (distToCam > MAX_RENDER_DISTANCE) {
-        dummy.scale.setScalar(0); // Hide point
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-        continue;
-      }
-      
-      // LOD: Skip updates for distant points on some frames
-      if (skipDistantUpdates && distToCam > LOD_DISTANCES[1]) {
-        continue; // Keep previous matrix
-      }
-      
-      let pointScale = 0.03 * (1 / (1 + distToCam * 0.3));
-      
-      // LOD: Reduce detail for distant points
-      if (distToCam > LOD_DISTANCES[0]) {
-        pointScale *= 0.7; // Smaller scale for distant points
-      }
-  
-      // 🌟 Apply glow effect to newly added points
-      if (recentlyAdded.has(i)) {
-        const age = (now - recentlyAdded.get(i)) / 1000; // in seconds
-        if (age < 20) {
-          const pulse = 1 + Math.sin(age * Math.PI) * 4;
-          pointScale *= pulse;
-        } else {
-          recentlyAdded.delete(i);
-        }
-      }
-  
-      dummy.scale.setScalar(pointScale);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-  
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.count = updatedPositions.length; 
-
-    // 🔁 Rebuild filaments (also scale-aligned)
-    const maxDistSq = 0.45 * 0.45;
-    const linePositions = [];
-    const maxConnections = 10; // Maximum connections per point
-    const connectionCounts = new Array(updatedPositions.length).fill(0); // Track connections
-
-    for (let i = 0; i < updatedPositions.length; i++) {
-      for (let j = i + 1; j < updatedPositions.length; j++) {
-      if (connectionCounts[i] < maxConnections && connectionCounts[j] < maxConnections) {
-        const a = updatedPositions[i];
-        const b = updatedPositions[j];
-        if (a.distanceToSquared(b) < maxDistSq) {
-        const pa = a.clone().multiplyScalar(scale);
-        const pb = b.clone().multiplyScalar(scale);
-        linePositions.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
-        connectionCounts[i]++;
-        connectionCounts[j]++;
-        }
-      }
-      }
-    }
-  
-    lineSegments.geometry.dispose();
-    lineSegments.geometry = new THREE.BufferGeometry();
-    lineSegments.geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(linePositions, 3)
-    );
-    
-    const idleElapsed = performance.now() - lastUserInteractionTime;
-    const shouldIdleRotate = !isUserOrbiting && idleElapsed > IDLE_RESUME_DELAY_MS;
-    if (shouldIdleRotate) {
-      currentIdleRotateSpeed = Math.min(
-        IDLE_AUTO_ROTATE_TARGET_SPEED,
-        currentIdleRotateSpeed + IDLE_AUTO_ROTATE_ACCEL_PER_SEC * deltaSeconds
-      );
-    } else {
-      currentIdleRotateSpeed = Math.max(
-        0,
-        currentIdleRotateSpeed - IDLE_AUTO_ROTATE_DECEL_PER_SEC * deltaSeconds
-      );
-    }
-    orbitControls.autoRotate = currentIdleRotateSpeed > 0;
-    orbitControls.autoRotateSpeed = currentIdleRotateSpeed;
-    orbitControls.update(deltaSeconds);
-
-    // eslint-disable-next-line no-unused-vars
-    const { speed, offsetX: _offsetX, offsetY: _offsetY } = getSpeed();
-
-    // ✨ Apply RGB shift only when user is dragging
-    rgbShiftPass.uniforms['amount'].value = speed > 0.1 ? speed * 0.002 : 0.0;
-    
-    // Update VHS CRT shader time for animated effects
-    // vhsCrtPass.uniforms.time.value = performance.now() * 0.001;
-    
-    // 🏷️ Update 3D text labels to face camera and follow moving points
-    try {
-      // Update positions of text labels to follow the optimized positions
-      if (lastUtteranceWords.length > 0) {
-        const currentPositions = new Map();
-        
-        // Get positions for all active labels (both user and AI)
-        textManager.activeLabels.forEach((textGroup, word) => {
-          const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
-          if (cleanWord && wordIndices.has(cleanWord)) {
-            const index = wordIndices.get(cleanWord);
-            const optimizedPositions = optimizer.getPositions();
-            if (optimizedPositions[index]) {
-              const pos = optimizedPositions[index].clone().multiplyScalar(SCALE);
-              currentPositions.set(cleanWord, pos);
-            }
-          }
-        });
-        
-        // Update text manager with current positions
-        textManager.updatePositions(currentPositions);
-      }
-      
-      textManager.updateLabels(camera);
-    } catch (error) {
-      console.error('❌ TextManager update error:', error);
-      // Don't break the animation loop
-    }
-    
-    composer.render();
-  }
+  });
 
   // Load existing vocabulary before starting animation
-  console.log('📚 Loading vocabulary...');
+  logger.log('📚 Loading vocabulary...');
   try {
-    await loadExistingVocabulary();
-    console.log('✅ Vocabulary loaded successfully');
+    await vocabularyHydrator.loadExistingVocabulary();
+    logger.log('✅ Vocabulary loaded successfully');
   } catch (error) {
-    console.error('❌ Vocabulary loading failed:', error);
+    logger.error('❌ Vocabulary loading failed:', error);
   }
   
-  console.log('🎬 Starting animation...');
-  animate();
+  logger.log('🎬 Starting animation...');
+  sceneRuntimeController.start();
   
   // Handle cleanup on page unload
   window.addEventListener('beforeunload', () => {
@@ -1209,7 +321,12 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     if (typeof disposeTouch === 'function') {
       disposeTouch();
     }
+    sceneInteractionController.dispose();
+    if (remoteAudioEl) {
+      remoteAudioEl.srcObject = null;
+      remoteAudioEl.remove();
+    }
   });
 }).catch(error => {
-  console.error('❌ Scene initialization failed:', error);
+  logger.error('❌ Scene initialization failed:', error);
 });

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { ViscoElasticOptimizer } from '../utils/ViscoElasticOptimizer.js';
+import { createLogger } from '../utils/logger.js';
 // import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 // import { Text } from 'troika-three-text';
+const logger = createLogger('scene');
 export const SCALE = 4; // 🔁 central scale value
 const recentlyAdded = new Map();
 
@@ -20,7 +22,7 @@ class TextManager {
 
   // Show 3D text labels for words from the last utterance
   showLabelsForUtterance(words, speaker, wordPositions) {
-    console.log('🏷️ TextManager.showLabelsForUtterance called:', { words, speaker, wordPositionsSize: wordPositions.size });
+    logger.log('🏷️ TextManager.showLabelsForUtterance called:', { words, speaker, wordPositionsSize: wordPositions.size });
     
     // Clear only the labels for this speaker
     this.clearLabelsForSpeaker(speaker);
@@ -30,11 +32,11 @@ class TextManager {
     // Add new labels for current utterance
     words.forEach(word => {
       const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
-      console.log('🏷️ Processing word:', { word, cleanWord, hasPosition: wordPositions.has(cleanWord) });
+      logger.log('🏷️ Processing word:', { word, cleanWord, hasPosition: wordPositions.has(cleanWord) });
       
       if (cleanWord && wordPositions.has(cleanWord)) {
         const position = wordPositions.get(cleanWord);
-        console.log('🏷️ Creating label for:', cleanWord, 'at position:', position);
+        logger.log('🏷️ Creating label for:', cleanWord, 'at position:', position);
         
         // Use speaker-specific key to allow same word for both speakers
         const labelKey = `${speaker}-${cleanWord}`;
@@ -50,12 +52,12 @@ class TextManager {
       }
     });
     
-    console.log('🏷️ Total labels created:', labelsCreated);
+    logger.log('🏷️ Total labels created:', labelsCreated);
   }
 
   // Create a 3D text label at the given position
   createLabel(labelKey, word, position, speaker) {
-    console.log('🏷️ createLabel called for:', word, 'at position:', position, 'key:', labelKey);
+    logger.log('🏷️ createLabel called for:', word, 'at position:', position, 'key:', labelKey);
     try {
       // Create a group to hold the text
       const textGroup = new THREE.Group();
@@ -83,7 +85,7 @@ class TextManager {
       const textPlane = new THREE.Mesh(planeGeometry, planeMaterial);
       textPlane.position.set(0, 0.1, 0);
       
-      console.log('🏷️ Text plane created for:', word);
+      logger.log('🏷️ Text plane created for:', word);
       
       // Add only the text plane to group
       textGroup.add(textPlane);
@@ -92,10 +94,10 @@ class TextManager {
       this.scene.add(textGroup);
       this.activeLabels.set(labelKey, textGroup);
       
-      console.log('🏷️ Text group added to scene. Scene children count:', this.scene.children.length);
-      console.log('🏷️ Text setup complete. Visible:', textGroup.visible);
+      logger.log('🏷️ Text group added to scene. Scene children count:', this.scene.children.length);
+      logger.log('🏷️ Text setup complete. Visible:', textGroup.visible);
     } catch (error) {
-      console.error('❌ Error creating 3D text label for word:', word, error);
+      logger.error('❌ Error creating 3D text label for word:', word, error);
       // Continue without breaking
     }
   }
@@ -163,7 +165,7 @@ class TextManager {
   // Update labels to face camera with distance-based optimization
   updateLabels(camera) {
     if (this.activeLabels.size > 0) {
-      console.log('🏷️ Updating', this.activeLabels.size, 'text labels');
+      logger.log('🏷️ Updating', this.activeLabels.size, 'text labels');
     }
     
     this.activeLabels.forEach((textGroup, labelKey) => {
@@ -190,14 +192,14 @@ class TextManager {
       textGroup.scale.setScalar(scale);
       
       if (this.activeLabels.size <= 3) { // Only log first few to avoid spam
-        console.log('🏷️ Updated label:', labelKey, 'distance:', distance.toFixed(2), 'visible:', textGroup.visible);
+        logger.log('🏷️ Updated label:', labelKey, 'distance:', distance.toFixed(2), 'visible:', textGroup.visible);
       }
     });
   }
 
   // Fade in animation
   fadeIn(textMesh) {
-    console.log('🏷️ Starting fade-in animation for text mesh');
+    logger.log('🏷️ Starting fade-in animation for text mesh');
     const startTime = Date.now();
     const duration = 500; // 500ms fade in
     
@@ -210,7 +212,7 @@ class TextManager {
       if (progress < 1) {
         requestAnimationFrame(animate);
       } else {
-        console.log('🏷️ Fade-in animation complete. Final opacity:', textMesh.material.opacity);
+        logger.log('🏷️ Fade-in animation complete. Final opacity:', textMesh.material.opacity);
       }
     };
     
@@ -293,7 +295,7 @@ export async function createScene() {
   const white   = new Float32Array(nVerts * 3).fill(1); // 1,1,1 for each
   geometry.setAttribute('color', new THREE.BufferAttribute(white, 3));
   } catch (error) {
-    console.error('❌ Geometry creation error:', error);
+    logger.error('❌ Geometry creation error:', error);
     throw error;
   }
 
@@ -306,7 +308,7 @@ export async function createScene() {
       vertexColors: true          // keep this boolean flag for r174
     });
   } catch (error) {
-    console.error('❌ Material creation error:', error);
+    logger.error('❌ Material creation error:', error);
     throw error;
   }
 
@@ -321,17 +323,17 @@ export async function createScene() {
   if (instancedMesh.instanceColor) {
     instancedMesh.instanceColor.needsUpdate = true;
   } else {
-    console.log('⚠️ InstancedMesh instanceColor not available yet');
+    logger.warn('⚠️ InstancedMesh instanceColor not available yet');
   }
 
   if (instancedMesh.instanceMatrix) {
     instancedMesh.instanceMatrix.needsUpdate = true;
   } else {
-    console.log('⚠️ InstancedMesh instanceMatrix not available yet');
+    logger.warn('⚠️ InstancedMesh instanceMatrix not available yet');
   }
   
   scene.add(instancedMesh);
-  console.log('🎭 Adding scene elements...');
+  logger.log('🎭 Adding scene elements...');
 
   // 🧫 Add gel shell around the point cloud
   const gelGeometry = new THREE.SphereGeometry(4.3, 64, 64);
@@ -393,9 +395,9 @@ export async function createScene() {
   let textManager;
   try {
     textManager = new TextManager(scene);
-    console.log('✅ TextManager initialized successfully');
+    logger.log('✅ TextManager initialized successfully');
   } catch (error) {
-    console.error('❌ TextManager initialization failed:', error);
+    logger.error('❌ TextManager initialization failed:', error);
     // Create a fallback textManager with no-op methods
     textManager = {
       showLabelsForUtterance: () => {},

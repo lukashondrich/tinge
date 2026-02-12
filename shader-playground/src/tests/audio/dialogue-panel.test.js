@@ -444,6 +444,31 @@ describe('DialoguePanel Audio Functionality', () => {
       const playButtons = container.querySelectorAll('.play-utterance');
       expect(playButtons.length).toBe(1);
     });
+
+    test('prefers exact utterance-id match over older unfinalized user bubble', async () => {
+      const oldBubble = document.createElement('div');
+      oldBubble.className = 'bubble user';
+      oldBubble.innerHTML = '<p><span class="highlighted-text">Speaking...</span></p>';
+      container.appendChild(oldBubble);
+
+      const currentBubble = document.createElement('div');
+      currentBubble.className = 'bubble user';
+      currentBubble.dataset.utteranceId = 'u-new';
+      currentBubble.innerHTML = '<p class="transcript"><span class="highlighted-text">temporary</span></p>';
+      container.appendChild(currentBubble);
+
+      const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
+      await panel.add({
+        id: 'u-new',
+        speaker: 'user',
+        text: 'Final user utterance',
+        audioBlob: mockBlob,
+        audioURL: 'blob:mock-url'
+      });
+
+      expect(currentBubble.textContent).toContain('Final user utterance');
+      expect(oldBubble.querySelector('.highlighted-text').textContent).toContain('Speaking...');
+    });
   });
 
   describe('Audio Buffer Caching', () => {

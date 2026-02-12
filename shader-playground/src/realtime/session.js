@@ -2,8 +2,16 @@ import jsyaml from 'js-yaml';
 import { AudioManager } from '../audio/audioManager.js';
 import { StorageService } from '../core/storageService.js';
 import { handleGetUserProfile, handleUpdateUserProfile } from '../core/userProfile.js';
+import { createLogger } from '../utils/logger.js';
+import { TokenUsageTracker } from './tokenUsageTracker.js';
+import { KnowledgeSearchService } from './knowledgeSearchService.js';
+import { FunctionCallService } from './functionCallService.js';
+import { PttOrchestrator } from './pttOrchestrator.js';
+import { ConnectionBootstrapService } from './connectionBootstrapService.js';
+import { WebRtcTransportService } from './webrtcTransportService.js';
 
 const ENABLE_SEMANTIC_VAD = false;
+const logger = createLogger('realtime-session');
 
 /**
  * RealtimeSession encapsulates the WebRTC connection and push-to-talk loop.
@@ -37,11 +45,79 @@ export class RealtimeSession {
     this.aiRecordingStartTime = null;
     this.aiWordOffsets = [];
     this.aiTranscript = '';
-
-    // Token estimation batching
-    this.tokenEstimationTimeout = null;
-    this.accumulatedText = '';
-    this.accumulatedAudioDuration = 0;
+    this.aiAudioReady = false;
+    this.aiAudioReadyWarningShown = false;
+    this.seenRemoteAudioTrackIds = new Set();
+    this.tokenUsageTracker = new TokenUsageTracker({
+      apiUrl: this.apiUrl,
+      getEphemeralKey: () => this.currentEphemeralKey,
+      onUsage: (usage) => {
+        if (this.tokenUsageCallback) {
+          this.tokenUsageCallback(usage);
+        }
+      },
+      warn: (...args) => logger.warn(...args)
+    });
+    this.knowledgeSearchService = new KnowledgeSearchService({
+      apiUrl: this.apiUrl
+    });
+    this.functionCallService = new FunctionCallService({
+      getUserProfile: (args) => handleGetUserProfile(args),
+      updateUserProfile: (args) => handleUpdateUserProfile(args),
+      searchKnowledge: (args) => this.searchKnowledge(args),
+      onEvent: (payload) => {
+        if (this.onEventCallback) this.onEventCallback(payload);
+      },
+      sendJson: (payload) => {
+        this.dataChannel.send(JSON.stringify(payload));
+      },
+      error: (...args) => logger.error(...args)
+    });
+    this.connectionBootstrapService = new ConnectionBootstrapService({
+      apiUrl: this.apiUrl,
+      mobileDebug: (...args) => this.mobileDebug(...args),
+      deviceType: this.deviceType,
+      onTokenUsage: (usage) => {
+        if (this.tokenUsageCallback) {
+          this.tokenUsageCallback(usage);
+        }
+      }
+    });
+    this.webrtcTransportService = new WebRtcTransportService({
+      mobileDebug: (...args) => this.mobileDebug(...args),
+      onIceDisconnected: () => {},
+      onIceFailed: () => {
+        logger.error('ICE connection failed - marking disconnected');
+        this.isConnected = false;
+        this.setPTTStatus('Reconnect', '#888');
+      }
+    });
+    this.pttOrchestrator = new PttOrchestrator({
+      getPTTButton: () => this.pttButton,
+      getIsMicActive: () => this.isMicActive,
+      setIsMicActive: (value) => {
+        this.isMicActive = value;
+      },
+      getIsConnected: () => this.isConnected,
+      getIsConnecting: () => this.isConnecting,
+      getAudioTrack: () => this.audioTrack,
+      getDataChannel: () => this.dataChannel,
+      resetPendingRecording: () => this.resetPendingRecording(),
+      setPendingUserRecord: (record) => {
+        this.pendingUserRecord = record;
+      },
+      setPendingUserRecordPromise: (promise) => {
+        this.pendingUserRecordPromise = promise;
+      },
+      checkTokenLimit: () => this.checkTokenLimit(),
+      connect: () => this.connect(),
+      waitForDataChannelOpen: () => this.waitForDataChannelOpen(5000),
+      userAudioMgr: this.userAudioMgr,
+      onEvent: (event) => {
+        if (this.onEventCallback) this.onEventCallback(event);
+      },
+      error: (...args) => logger.error(...args)
+    });
   }
 
   attachPTTButton(button) {
@@ -54,7 +130,6 @@ export class RealtimeSession {
     this.tokenUsageCallback = onTokenUsage;
 
     await this.userAudioMgr.init();
-    await this.aiAudioMgr.init();
   }
 
   setCallbacks({ onRemoteStream, onEvent, onTokenUsage }) {
@@ -64,61 +139,11 @@ export class RealtimeSession {
   }
 
   updateTokenUsageEstimate(text, audioDuration) {
-    if (!this.currentEphemeralKey) return;
-
-    if (text) this.accumulatedText += text;
-    if (audioDuration) this.accumulatedAudioDuration += audioDuration;
-
-    if (this.tokenEstimationTimeout) {
-      clearTimeout(this.tokenEstimationTimeout);
-    }
-
-    this.tokenEstimationTimeout = setTimeout(async () => {
-      try {
-        const response = await fetch(`${this.apiUrl}/token-usage/${this.currentEphemeralKey}/estimate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: this.accumulatedText,
-            audioDuration: this.accumulatedAudioDuration
-          })
-        });
-
-        if (response.ok) {
-          const usage = await response.json();
-          if (this.tokenUsageCallback) {
-            this.tokenUsageCallback(usage);
-          }
-          this.accumulatedText = '';
-          this.accumulatedAudioDuration = 0;
-          return usage;
-        }
-      } catch (error) {
-        console.warn('Failed to update estimated token usage:', error); // eslint-disable-line no-console
-      }
-    }, 200);
+    this.tokenUsageTracker.updateEstimate(text, audioDuration);
   }
 
   async updateTokenUsageActual(usageData) {
-    if (!this.currentEphemeralKey) return;
-
-    try {
-      const response = await fetch(`${this.apiUrl}/token-usage/${this.currentEphemeralKey}/actual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usageData })
-      });
-
-      if (response.ok) {
-        const usage = await response.json();
-        if (this.tokenUsageCallback) {
-          this.tokenUsageCallback(usage);
-        }
-        return usage;
-      }
-    } catch (error) {
-      console.warn('Failed to update actual token usage:', error); // eslint-disable-line no-console
-    }
+    return this.tokenUsageTracker.updateActual(usageData);
   }
 
   async fetchWordTimings(blob) {
@@ -131,72 +156,11 @@ export class RealtimeSession {
   }
 
   async searchKnowledge(args) {
-    const queryOriginal = String(args?.query_original || '').trim();
-    const queryEn = String(args?.query_en || queryOriginal).trim();
-    const payload = {
-      query_original: queryOriginal,
-      query_en: queryEn,
-      // EN-only retrieval corpus: always filter to English documents.
-      language: 'en',
-      ...(args?.top_k ? { top_k: args.top_k } : {})
-    };
-
-    const controller = new AbortController();
-    const timeoutMs = 8000;
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const startedAt = performance.now();
-    let response;
-    try {
-      response = await fetch(`${this.apiUrl}/knowledge/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-    } catch (error) {
-      if (error && error.name === 'AbortError') {
-        throw new Error(`Knowledge search timed out after ${timeoutMs}ms`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (!response.ok) {
-      let detail = '';
-      try {
-        detail = await response.text();
-      } catch (err) {
-        detail = 'No error detail available';
-      }
-      throw new Error(`Knowledge search failed (${response.status}): ${detail}`);
-    }
-
-    const data = await response.json();
-    if (Array.isArray(data.results)) {
-      data.results = this.attachCitationIndexes(data.results);
-    }
-    const durationMs = Math.round(performance.now() - startedAt);
-    return {
-      data,
-      telemetry: {
-        queryOriginal: payload.query_original || '',
-        queryEn: payload.query_en || '',
-        language: payload.language || '',
-        topK: payload.top_k || '',
-        durationMs,
-        resultCount: Array.isArray(data.results) ? data.results.length : 0,
-        status: 'ok'
-      }
-    };
+    return this.knowledgeSearchService.searchKnowledge(args);
   }
 
   attachCitationIndexes(results = []) {
-    return results.map((item, idx) => ({
-      ...item,
-      citation_index: idx + 1
-    }));
+    return this.knowledgeSearchService.attachCitationIndexes(results);
   }
 
   async stopAndTranscribe(audioMgr, transcriptText) {
@@ -208,7 +172,7 @@ export class RealtimeSession {
           record.wordTimings = words;
           record.fullText = fullText;
         } catch (err) {
-          console.error(`Word timing fetch failed: ${err.message}`); // eslint-disable-line no-console
+          logger.error(`Word timing fetch failed: ${err.message}`);
           record.wordTimings = [];
           record.fullText = record.text;
         }
@@ -232,7 +196,7 @@ export class RealtimeSession {
         return { allowed: true, usage };
       }
     } catch (error) {
-      console.warn('Failed to check token limit:', error); // eslint-disable-line no-console
+      logger.warn('Failed to check token limit:', error);
       return { allowed: true, reason: 'check_failed' };
     }
     return { allowed: true, reason: 'unknown' };
@@ -244,111 +208,27 @@ export class RealtimeSession {
   }
 
   setPTTStatus(text, color) {
-    if (!this.pttButton) return;
-    this.pttButton.innerText = text;
-    this.pttButton.style.backgroundColor = color;
+    this.pttOrchestrator.setPTTStatus(text, color);
   }
 
   setPTTReadyStatus() {
-    // Guard against async connect callbacks overriding active recording state.
-    if (this.isMicActive) return;
-    this.setPTTStatus('Push to Talk', '#44f');
+    this.pttOrchestrator.setPTTReadyStatus();
   }
 
   enableMicrophone() {
-    if (this.audioTrack && this.isConnected) {
-      this.audioTrack.enabled = true;
-      this.isMicActive = true;
-      this.setPTTStatus('Talking', '#f00');
-    } else {
-      console.error('Cannot enable microphone - no audio track available'); // eslint-disable-line no-console
-    }
+    this.pttOrchestrator.enableMicrophone();
   }
 
   disableMicrophone() {
-    if (this.audioTrack) {
-      this.audioTrack.enabled = false;
-    }
-    this.isMicActive = false;
-    if (this.isConnected) {
-      this.setPTTReadyStatus();
-    }
+    this.pttOrchestrator.disableMicrophone();
   }
 
   async handlePTTPress() {
-    if (this.isConnecting) {
-      return { allowed: false, reason: 'connecting' };
-    }
-
-    this.resetPendingRecording();
-
-    const limitCheck = await this.checkTokenLimit();
-    if (!limitCheck.allowed) {
-      return { allowed: false, reason: limitCheck.reason };
-    }
-
-    if (!this.isConnected) {
-      try {
-        await this.connect();
-        if (!this.isConnected) {
-          return { allowed: false, reason: 'not_connected' };
-        }
-      } catch (error) {
-        console.error(`Connection failed: ${error.message}`); // eslint-disable-line no-console
-        return { allowed: false, reason: 'connection_failed', error };
-      }
-    }
-
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify({
-        type: 'input_audio_buffer.clear',
-        event_id: crypto.randomUUID()
-      }));
-    } else {
-      console.error('Cannot clear buffer - data channel not open'); // eslint-disable-line no-console
-    }
-
-    this.userAudioMgr.startRecording();
-    if (this.onEventCallback) {
-      this.onEventCallback({ type: 'input_audio_buffer.speech_started' });
-    }
-    this.enableMicrophone();
-    return { allowed: true };
+    return this.pttOrchestrator.handlePTTPress();
   }
 
   handlePTTRelease({ bufferTime }) {
-    if (this.userAudioMgr.isRecording) {
-      this.pendingUserRecordPromise = this.userAudioMgr
-        .stopRecording('...')
-        .then((record) => {
-          if (!record) return null;
-          this.pendingUserRecord = record;
-          return record;
-        })
-        .catch((err) => {
-          console.error(`User stop error: ${err}`); // eslint-disable-line no-console
-          return null;
-        });
-    }
-
-    setTimeout(() => {
-      this.disableMicrophone();
-      if (this.onEventCallback) {
-        this.onEventCallback({ type: 'input_audio_buffer.speech_stopped' });
-      }
-      if (this.dataChannel && this.dataChannel.readyState === 'open') {
-        this.dataChannel.send(JSON.stringify({
-          type: 'input_audio_buffer.commit',
-          event_id: crypto.randomUUID()
-        }));
-        this.dataChannel.send(JSON.stringify({
-          type: 'response.create',
-          event_id: crypto.randomUUID()
-        }));
-      } else {
-        console.error('Cannot commit audio - data channel not open'); // eslint-disable-line no-console
-      }
-    }, bufferTime);
+    this.pttOrchestrator.handlePTTRelease({ bufferTime });
   }
 
   async connect() {
@@ -369,13 +249,13 @@ export class RealtimeSession {
 
       await this.establishPeerConnection(EPHEMERAL_KEY);
 
-      console.log('OpenAI Realtime connection established'); // eslint-disable-line no-console
+      logger.log('OpenAI Realtime connection established');
       this.mobileDebug('🎉 OpenAI Realtime connection fully established!');
       this.isConnected = true;
       this.setPTTReadyStatus();
     } catch (error) {
-      console.error(`OpenAI connection error: ${error.message}`); // eslint-disable-line no-console
-      console.error('Error details:', error); // eslint-disable-line no-console
+      logger.error(`OpenAI connection error: ${error.message}`);
+      logger.error('Error details:', error);
       this.handleConnectError(error);
       throw error;
     } finally {
@@ -383,143 +263,50 @@ export class RealtimeSession {
     }
   }
 
+  async waitForDataChannelOpen(timeoutMs = 5000) {
+    const dataChannel = this.dataChannel;
+    if (!dataChannel) return false;
+    if (dataChannel.readyState === 'open') return true;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        dataChannel.removeEventListener('open', onOpen);
+        dataChannel.removeEventListener('close', onCloseOrError);
+        dataChannel.removeEventListener('error', onCloseOrError);
+        resolve(value);
+      };
+      const onOpen = () => finish(true);
+      const onCloseOrError = () => finish(false);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+
+      dataChannel.addEventListener('open', onOpen, { once: true });
+      dataChannel.addEventListener('close', onCloseOrError, { once: true });
+      dataChannel.addEventListener('error', onCloseOrError, { once: true });
+    });
+  }
+
   async initializeMobileMicrophone() {
-    try {
-      this.mobileDebug('Starting mobile audio initialization...');
-      const mobileStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.mobileDebug('Mobile microphone access granted successfully');
-      this.audioTrack = mobileStream.getAudioTracks()[0];
-      mobileStream.getTracks().forEach((track) => track.stop());
-      this.mobileDebug('Mobile audio track stored and test stream stopped');
-    } catch (mobileAudioError) {
-      this.mobileDebug(`Mobile audio failed: ${mobileAudioError.name} - ${mobileAudioError.message}`);
-      throw new Error(`Mobile microphone error: ${mobileAudioError.message}`);
-    }
+    this.audioTrack = await this.connectionBootstrapService.initializeMobileMicrophone();
   }
 
   async verifyBackendReachable() {
-    try {
-      this.mobileDebug('Testing backend connectivity...');
-      this.mobileDebug(`Backend URL: ${this.apiUrl}`);
-      const healthResponse = await fetch(`${this.apiUrl}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(8000),
-        mode: 'cors',
-        credentials: 'omit',
-        headers: {
-          Accept: 'application/json',
-          'Cache-Control': 'no-cache'
-        }
-      });
-      if (healthResponse.ok) {
-        this.mobileDebug('Backend health check passed');
-        const healthData = await healthResponse.text();
-        this.mobileDebug(`Health response: ${healthData.substring(0, 50)}...`);
-      } else {
-        this.mobileDebug(`Backend health check failed: ${healthResponse.status}`);
-        throw new Error(`Backend health check failed: ${healthResponse.status}`);
-      }
-    } catch (healthError) {
-      this.mobileDebug(`Backend unreachable: ${healthError.name} - ${healthError.message}`);
-      this.mobileDebug('Mobile browser can reach backend, trying simplified fetch...');
-      try {
-        const simpleResponse = await fetch(`${this.apiUrl}/health`, {
-          signal: AbortSignal.timeout(5000)
-        });
-        if (simpleResponse.ok) {
-          this.mobileDebug('Simplified fetch succeeded!');
-        } else {
-          throw new Error(`Simplified fetch failed: ${simpleResponse.status}`);
-        }
-      } catch (simpleError) {
-        this.mobileDebug(`Simplified fetch failed: ${simpleError.message}`);
-        this.mobileDebug('Continuing despite fetch failure since browser access works...');
-      }
-      this.mobileDebug('Proceeding with token request despite connectivity test failures...');
-    }
+    await this.connectionBootstrapService.verifyBackendReachable();
   }
 
   async requestEphemeralKey() {
-    this.mobileDebug('Requesting OpenAI token...');
-    const tokenController = new AbortController();
-    const tokenTimeout = setTimeout(() => {
-      tokenController.abort();
-      this.mobileDebug('Token request timed out after 10 seconds');
-    }, 10000);
-
-    try {
-      let tokenResponse;
-      try {
-        this.mobileDebug('Trying minimal token fetch...');
-        tokenResponse = await fetch(`${this.apiUrl}/token`, {
-          signal: tokenController.signal
-        });
-      } catch (minimalError) {
-        this.mobileDebug(`Minimal fetch failed: ${minimalError.message}`);
-        this.mobileDebug('Trying CORS-explicit token fetch...');
-        tokenResponse = await fetch(`${this.apiUrl}/token`, {
-          signal: tokenController.signal,
-          method: 'GET',
-          mode: 'cors',
-          credentials: 'omit',
-          headers: { Accept: '*/*' }
-        });
-      }
-
-      clearTimeout(tokenTimeout);
-
-      if (!tokenResponse.ok) {
-        this.mobileDebug(`Token request failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
-        throw new Error(`Failed to get token: ${tokenResponse.status}`);
-      }
-
-      this.mobileDebug('Token response received, parsing JSON...');
-      const data = await tokenResponse.json();
-      const ephemeralKey = data.client_secret.value;
-      if (this.tokenUsageCallback && data.tokenUsage) {
-        this.tokenUsageCallback(data.tokenUsage);
-      }
-      this.mobileDebug('OpenAI token received and parsed successfully');
-      return ephemeralKey;
-    } catch (tokenError) {
-      clearTimeout(tokenTimeout);
-      if (tokenError.name === 'AbortError') {
-        this.mobileDebug('Token request was aborted due to timeout');
-        throw new Error('Token request timed out - check network connection');
-      } else {
-        this.mobileDebug(`Token request failed: ${tokenError.name} - ${tokenError.message}`);
-        if (this.deviceType === 'mobile') {
-          this.mobileDebug('MOBILE WORKAROUND: Try opening the backend URL directly in browser and copying the token manually if needed');
-          this.mobileDebug(`Backend token URL: ${this.apiUrl}/token`);
-        }
-        throw new Error(`Token request failed: ${tokenError.message}`);
-      }
-    }
+    return this.connectionBootstrapService.requestEphemeralKey();
   }
 
   async establishPeerConnection(ephemeralKey) {
-    this.mobileDebug('Creating WebRTC PeerConnection...');
-    this.peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    this.mobileDebug('PeerConnection created and audio transceiver added');
-
-    this.peerConnection.oniceconnectionstatechange = () => {
-      const state = this.peerConnection.iceConnectionState;
-      if (state === 'disconnected') {
-        this.peerConnection.restartIce();
-      }
-      if (state === 'failed') {
-        console.error('ICE connection failed - marking disconnected'); // eslint-disable-line no-console
-        this.isConnected = false;
-        this.setPTTStatus('Reconnect', '#888');
-      }
-    };
-
-    const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    this.audioTrack = mediaStream.getTracks()[0];
-    this.audioTrack.enabled = false;
-    this.peerConnection.addTrack(this.audioTrack);
-    this.dataChannel = this.peerConnection.createDataChannel('oai-events');
+    const { peerConnection, dataChannel, audioTrack } =
+      await this.webrtcTransportService.establishPeerConnection(ephemeralKey);
+    this.peerConnection = peerConnection;
+    this.dataChannel = dataChannel;
+    this.audioTrack = audioTrack;
 
     this.dataChannel.onclose = () => {
       this.isConnected = false;
@@ -534,34 +321,9 @@ export class RealtimeSession {
     };
 
     this.setupPeerTrackHandling();
+    await this.tryHydrateExistingRemoteAudioTrack();
     this.setupDataChannelEvents();
 
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-
-    const baseUrl = 'https://api.openai.com/v1/realtime';
-    const model = 'gpt-4o-mini-realtime-preview-2024-12-17';
-
-    const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
-      method: 'POST',
-      body: this.peerConnection.localDescription.sdp,
-      headers: {
-        Authorization: `Bearer ${ephemeralKey}`,
-        'Content-Type': 'application/sdp'
-      }
-    });
-
-    if (!sdpResponse.ok) {
-      const errorText = await sdpResponse.text();
-      this.mobileDebug(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
-      this.mobileDebug(`Error details: ${errorText.substring(0, 100)}...`);
-      throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
-    }
-
-    const sdpText = await sdpResponse.text();
-    const answer = { type: 'answer', sdp: sdpText };
-    await this.peerConnection.setRemoteDescription(answer);
-    this.mobileDebug('Remote SDP description set successfully');
   }
 
   async sendSystemPrompt() {
@@ -584,7 +346,7 @@ export class RealtimeSession {
       };
       this.dataChannel.send(JSON.stringify(sysEvent));
     } catch (err) {
-      console.error(`Failed to load system prompt YAML: ${err.message}`); // eslint-disable-line no-console
+      logger.error(`Failed to load system prompt YAML: ${err.message}`);
     }
   }
 
@@ -786,29 +548,66 @@ export class RealtimeSession {
     try {
       this.dataChannel.send(JSON.stringify(sessionUpdate));
     } catch (err) {
-      console.error('Failed to send session configuration:', err); // eslint-disable-line no-console
+      logger.error('Failed to send session configuration:', err);
     }
   }
 
   setupPeerTrackHandling() {
     this.peerConnection.ontrack = async (event) => {
-      const remoteStream = event.streams[0];
-      if (this.onRemoteStreamCallback) {
-        this.onRemoteStreamCallback(remoteStream);
-      } else {
-        const remoteAudio = document.createElement('audio');
-        remoteAudio.srcObject = remoteStream;
-        remoteAudio.autoplay = true;
-        document.body.appendChild(remoteAudio);
+      const remoteStream = event.streams?.[0]
+        || (event.track ? new MediaStream([event.track]) : null);
+      if (!remoteStream) {
+        logger.error('Received track event without a usable remote stream');
+        return;
       }
-
-      this.aiAudioMgr.stream = remoteStream;
-      try {
-        await this.aiAudioMgr.init();
-      } catch (err) {
-        console.error(`AI AudioManager init error: ${err}`); // eslint-disable-line no-console
-      }
+      await this.handleIncomingRemoteStream(remoteStream);
     };
+  }
+
+  async tryHydrateExistingRemoteAudioTrack() {
+    if (!this.peerConnection || typeof this.peerConnection.getReceivers !== 'function') {
+      return;
+    }
+
+    const receiver = this.peerConnection
+      .getReceivers()
+      .find((r) => r?.track && r.track.kind === 'audio' && r.track.readyState === 'live');
+    if (!receiver?.track) {
+      return;
+    }
+
+    const stream = new MediaStream([receiver.track]);
+    await this.handleIncomingRemoteStream(stream);
+  }
+
+  async handleIncomingRemoteStream(remoteStream) {
+    const track = remoteStream.getAudioTracks?.()[0] || null;
+    if (track?.id && this.seenRemoteAudioTrackIds.has(track.id)) {
+      return;
+    }
+    if (track?.id) {
+      this.seenRemoteAudioTrackIds.add(track.id);
+    }
+
+    if (this.onRemoteStreamCallback) {
+      this.onRemoteStreamCallback(remoteStream);
+    } else {
+      const remoteAudio = document.createElement('audio');
+      remoteAudio.srcObject = remoteStream;
+      remoteAudio.autoplay = true;
+      document.body.appendChild(remoteAudio);
+    }
+
+    this.aiAudioMgr.stream = remoteStream;
+    try {
+      await this.aiAudioMgr.init();
+      this.aiAudioReady = true;
+      this.aiAudioReadyWarningShown = false;
+      logger.log('AI audio recorder attached to remote stream');
+    } catch (err) {
+      this.aiAudioReady = false;
+      logger.error(`AI AudioManager init error: ${err}`);
+    }
   }
 
   setupDataChannelEvents() {
@@ -823,14 +622,23 @@ export class RealtimeSession {
 
       if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
         if (!this.aiAudioMgr.isRecording) {
-          this.aiRecordingStartTime = performance.now();
-          this.aiWordOffsets = [];
-          this.aiAudioMgr.startRecording();
-          this.aiTranscript = '';
+          if (!this.aiAudioReady) {
+            if (!this.aiAudioReadyWarningShown) {
+              logger.warn('AI audio recorder not ready when transcript delta arrived; skipping AI clip capture for this turn');
+              this.aiAudioReadyWarningShown = true;
+            }
+          } else {
+            this.aiRecordingStartTime = performance.now();
+            this.aiWordOffsets = [];
+            this.aiAudioMgr.startRecording();
+            this.aiTranscript = '';
+          }
         }
-        const offsetMs = performance.now() - this.aiRecordingStartTime;
-        this.aiWordOffsets.push({ word: event.delta, offsetMs });
-        this.aiTranscript += event.delta;
+        if (this.aiRecordingStartTime !== null) {
+          const offsetMs = performance.now() - this.aiRecordingStartTime;
+          this.aiWordOffsets.push({ word: event.delta, offsetMs });
+          this.aiTranscript += event.delta;
+        }
         this.updateTokenUsageEstimate(event.delta);
       }
 
@@ -839,7 +647,7 @@ export class RealtimeSession {
           const transcript = this.aiTranscript.trim();
           this.stopAndTranscribe(this.aiAudioMgr, transcript).then((record) => {
             if (!record) {
-              console.error('AI stopAndTranscribe returned null record'); // eslint-disable-line no-console
+              logger.error('AI stopAndTranscribe returned null record');
               return;
             }
             if (this.onEventCallback) {
@@ -848,7 +656,7 @@ export class RealtimeSession {
             this.aiRecordingStartTime = null;
             this.aiWordOffsets = [];
             this.aiTranscript = '';
-          }).catch((err) => console.error(`AI transcription error: ${err}`)); // eslint-disable-line no-console
+          }).catch((err) => logger.error(`AI transcription error: ${err}`));
         }
       }
 
@@ -903,7 +711,7 @@ export class RealtimeSession {
         record.wordTimings = timings;
         record.fullText = fullText;
       } catch (err) {
-        console.error(`Word timing fetch failed: ${err.message}`); // eslint-disable-line no-console
+        logger.error(`Word timing fetch failed: ${err.message}`);
         record.wordTimings = [];
         record.fullText = transcript;
       }
@@ -916,107 +724,28 @@ export class RealtimeSession {
     };
 
     if (this.pendingUserRecord) {
-      enhanceRecord(this.pendingUserRecord).catch((err) => console.error(`User record enhancement error: ${err}`)); // eslint-disable-line no-console
+      enhanceRecord(this.pendingUserRecord).catch((err) => logger.error(`User record enhancement error: ${err}`));
     } else if (this.pendingUserRecordPromise) {
       this.pendingUserRecordPromise
         .then((record) => {
           if (record) {
             enhanceRecord(record);
           } else {
-            console.error('pendingUserRecordPromise resolved to null'); // eslint-disable-line no-console
+            logger.error('pendingUserRecordPromise resolved to null');
           }
         })
-        .catch((err) => console.error(`User transcription promise error: ${err}`)); // eslint-disable-line no-console
+        .catch((err) => logger.error(`User transcription promise error: ${err}`));
     } else {
       this.stopAndTranscribe(this.userAudioMgr, transcript)
         .then((record) => {
           if (record) enhanceRecord(record);
         })
-        .catch((err) => console.error(`User transcription fallback error: ${err}`)); // eslint-disable-line no-console
+        .catch((err) => logger.error(`User transcription fallback error: ${err}`));
     }
   }
 
   async handleFunctionCall(event) {
-    let output;
-    try {
-      const args = JSON.parse(event.arguments);
-      let result = null;
-      if (event.name === 'get_user_profile') {
-        result = await handleGetUserProfile(args);
-      } else if (event.name === 'update_user_profile') {
-        result = await handleUpdateUserProfile(args);
-      } else if (event.name === 'search_knowledge') {
-        if (this.onEventCallback) {
-          this.onEventCallback({
-            type: 'tool.search_knowledge.started',
-            args
-          });
-        }
-        const searchPayload = await this.searchKnowledge(args);
-        result = searchPayload.data;
-        if (this.onEventCallback) {
-          this.onEventCallback({
-            type: 'tool.search_knowledge.result',
-            result: searchPayload.data,
-            telemetry: searchPayload.telemetry,
-            args
-          });
-        }
-      } else {
-        console.error(`Unknown function call: ${event.name}`); // eslint-disable-line no-console
-        result = { error: `Unknown function: ${event.name}` };
-      }
-      output = result;
-    } catch (error) {
-      console.error(`Function call error: ${error.message}`); // eslint-disable-line no-console
-      console.error(`Error stack: ${error.stack}`); // eslint-disable-line no-console
-      output = { error: error.message };
-      if (event.name === 'search_knowledge' && this.onEventCallback) {
-        const parsedArgs = (() => {
-          try {
-            return JSON.parse(event.arguments || '{}');
-          } catch (err) {
-            return {};
-          }
-        })();
-        this.onEventCallback({
-          type: 'tool.search_knowledge.result',
-          result: { results: [], error: error.message },
-          telemetry: {
-            queryOriginal: parsedArgs.query_original || '',
-            queryEn: parsedArgs.query_en || '',
-            language: parsedArgs.language || '',
-            topK: parsedArgs.top_k || '',
-            durationMs: 0,
-            resultCount: 0,
-            status: 'error',
-            error: error.message
-          },
-          args: parsedArgs
-        });
-      }
-    }
-
-    try {
-      const errorResultEvent = {
-        type: 'conversation.item.create',
-        event_id: crypto.randomUUID(),
-        item: {
-          type: 'function_call_output',
-          call_id: event.call_id,
-          output: JSON.stringify(output)
-        }
-      };
-      this.dataChannel.send(JSON.stringify(errorResultEvent));
-
-      const responseEvent = {
-        type: 'response.create',
-        event_id: crypto.randomUUID()
-      };
-      this.dataChannel.send(JSON.stringify(responseEvent));
-    } catch (sendError) {
-      console.error(`Failed to send function output/response.create: ${sendError.message}`); // eslint-disable-line no-console
-    }
+    return this.functionCallService.handleFunctionCall(event);
   }
 
   handleConnectError(error) {
@@ -1038,7 +767,7 @@ export class RealtimeSession {
         if (mobileHelp) {
           mobileHelp.style.display = 'block';
         }
-        console.log('Mobile microphone troubleshooting: Check browser permissions, try refreshing, or use Chrome/Safari'); // eslint-disable-line no-console
+        logger.log('Mobile microphone troubleshooting: Check browser permissions, try refreshing, or use Chrome/Safari');
       } else {
         this.setPTTStatus('Try Again', '#44f');
       }
@@ -1047,7 +776,7 @@ export class RealtimeSession {
 
   sendTextMessage(text) {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.error('Cannot send message: data channel not open'); // eslint-disable-line no-console
+      logger.error('Cannot send message: data channel not open');
       return false;
     }
 
@@ -1081,7 +810,7 @@ export class RealtimeSession {
       try {
         this.dataChannel.close();
       } catch (err) {
-        console.warn('Error closing data channel:', err); // eslint-disable-line no-console
+        logger.warn('Error closing data channel:', err);
       }
       this.dataChannel = null;
     }
@@ -1093,7 +822,7 @@ export class RealtimeSession {
         });
         this.peerConnection.close();
       } catch (err) {
-        console.warn('Error closing peer connection:', err); // eslint-disable-line no-console
+        logger.warn('Error closing peer connection:', err);
       }
       this.peerConnection = null;
     }
@@ -1114,11 +843,9 @@ export class RealtimeSession {
     this.aiRecordingStartTime = null;
     this.aiWordOffsets = [];
     this.aiTranscript = '';
-    if (this.tokenEstimationTimeout) {
-      clearTimeout(this.tokenEstimationTimeout);
-      this.tokenEstimationTimeout = null;
-    }
-    this.accumulatedText = '';
-    this.accumulatedAudioDuration = 0;
+    this.aiAudioReady = false;
+    this.aiAudioReadyWarningShown = false;
+    this.seenRemoteAudioTrackIds.clear();
+    this.tokenUsageTracker.reset();
   }
 }

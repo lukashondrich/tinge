@@ -93,4 +93,22 @@ describe('SourcePanel', () => {
     const index = panel.getDisplayIndexForSource(createSource({ title: 'Fresh Source' }));
     expect(index).toBe(1);
   });
+
+  it('reuses citation index when URL is the same but title text changes', () => {
+    const panel = new SourcePanel({ maxVisible: 4 });
+    const base = createSource({
+      title: 'Barcelona',
+      url: 'https://en.wikipedia.org/wiki/Barcelona'
+    });
+    const recitedVariant = createSource({
+      title: 'Barcelona - History and Facts',
+      url: 'https://en.wikipedia.org/wiki/Barcelona'
+    });
+
+    const first = panel.getDisplayIndexForSource(base);
+    const second = panel.getDisplayIndexForSource(recitedVariant);
+
+    expect(first).toBe(1);
+    expect(second).toBe(1);
+  });
 });

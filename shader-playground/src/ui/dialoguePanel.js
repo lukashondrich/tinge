@@ -16,7 +16,6 @@ async function ensureAudioContext() {
       // eslint-disable-next-line no-console
       console.log('🔈 Resuming AudioContext for playback');
       await audioCtx.resume();
-      audioCtx.state = 'running';
       // eslint-disable-next-line no-console
       console.log('✅ AudioContext state:', audioCtx.state);
     } catch (err) {
@@ -170,6 +169,8 @@ export class DialoguePanel {
       // This ensures the "Speaking..." placeholder gets replaced with final transcription
       let existing = null;
       if (record.speaker === 'user' && record.text !== '...') {
+        existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+        if (!existing) {
         const userBubbles = this.container.querySelectorAll(`.bubble.user`);
         for (let i = userBubbles.length - 1; i >= 0; i--) {
           const bubble = userBubbles[i];
@@ -187,6 +188,7 @@ DialoguePanel.resetCache = function resetCache() {
   bufferCache.clear();
   stopActiveAudio();
 };
+      }
       } else {
         // For AI speech, use the original detection logic
         existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);

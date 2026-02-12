@@ -89,19 +89,27 @@ async function attemptPTTStart() {
 }
 
 async function connectOnly() {
-  const started = await attemptPTTStart();
-  if (!started) return false;
+  if (session.isConnectedToOpenAI()) {
+    isFirstConnectionPress = false;
+    return false;
+  }
 
-  // If this was a first-press connect action, stop immediately and return
-  // to idle so subsequent presses are true hold-to-talk interactions.
-  session.handlePTTRelease({
-    bufferTime: 0
-  });
-  isFirstConnectionPress = false;
-  isPTTPressed = false;
   if (pttButton) {
-    pttButton.innerText = 'Push to Talk';
-    pttButton.style.backgroundColor = '#44f';
+    pttButton.innerText = 'Connecting...';
+    pttButton.style.backgroundColor = '#666';
+  }
+
+  try {
+    await session.connect();
+    isFirstConnectionPress = false;
+  } catch (err) {
+    return false;
+  } finally {
+    isPTTPressed = false;
+    if (pttButton) {
+      pttButton.innerText = 'Push to Talk';
+      pttButton.style.backgroundColor = '#44f';
+    }
   }
   return false;
 }
