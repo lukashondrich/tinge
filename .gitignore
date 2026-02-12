@@ -22,6 +22,10 @@ node_modules/
 dist/
 .vite/
 *.log
+*.bak
+*.orig
+test-results/
+coverage/
 
 # OS files
 .DS_Store
