@@ -1109,18 +1109,29 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
     const connectionCounts = new Array(updatedPositions.length).fill(0); // Track connections
 
     for (let i = 0; i < updatedPositions.length; i++) {
+      const neighbors = [];
       for (let j = i + 1; j < updatedPositions.length; j++) {
-      if (connectionCounts[i] < maxConnections && connectionCounts[j] < maxConnections) {
+        const distSq = updatedPositions[i].distanceToSquared(updatedPositions[j]);
+        if (distSq < maxDistSq) {
+          neighbors.push({ j, distSq });
+        }
+      }
+      neighbors.sort((a, b) => a.distSq - b.distSq);
+      for (const { j } of neighbors) {
+        if (
+          connectionCounts[i] >= maxConnections ||
+          connectionCounts[j] >= maxConnections
+        ) {
+          continue;
+        }
         const a = updatedPositions[i];
         const b = updatedPositions[j];
-        if (a.distanceToSquared(b) < maxDistSq) {
         const pa = a.clone().multiplyScalar(scale);
         const pb = b.clone().multiplyScalar(scale);
         linePositions.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
         connectionCounts[i]++;
         connectionCounts[j]++;
-        }
-      }
+        if (connectionCounts[i] >= maxConnections) break;
       }
     }
   
