@@ -37,6 +37,14 @@ Practical batch workflow:
 2. Run `make rag-scale-loop`.
 3. Review eval metrics and decide to keep/revert batch.
 
+Data policy note:
+- large generated import files should normally live outside the repository
+  working tree and be passed to merge commands via explicit path.
+- run `cd retrieval-service && make data-policy` before committing retrieval
+  data changes.
+- top-level wiki fetch defaults to external output path:
+  `/tmp/tinge-rag-data/wiki_en_articles.jsonl` (override via `WIKI_EN_OUTPUT`).
+
 Build a real EN Wikipedia batch (recommended for large-scale corpus):
 
 ```bash

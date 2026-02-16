@@ -49,6 +49,51 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 3004
 ```
 
+## Developer Task Contract
+
+From `retrieval-service/`, use the local task surface:
+
+```bash
+make format
+make lint
+make test
+make typecheck
+make check
+```
+
+Dev tooling dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+## Data Asset Policy
+
+Repository policy keeps retrieval data reproducible without letting generated
+large assets sprawl in git history.
+
+- Run policy check:
+
+```bash
+cd retrieval-service
+make data-policy
+```
+
+- Policy guardrails are enforced by:
+  - `scripts/check_data_policy.py`
+  - `data/data_asset_allowlist.txt`
+  - `data/CORPUS_STORAGE_POLICY.md`
+
+Current default limits:
+- `data/corpus.jsonl`: up to 15MB
+- `data/import/*`: up to 0.5MB unless explicitly allowlisted
+- other `data/*`: up to 1MB unless explicitly allowlisted
+
+Recommended workflow for large generated batches:
+- write generated files outside repo (for example `/tmp/tinge-rag-data/`),
+- merge into canonical corpus via explicit path input,
+- keep allowlist entries minimal and intentional.
+
 ## Example
 
 ```bash
@@ -100,12 +145,23 @@ Fetch real EN Wikipedia articles into import batch:
 ```bash
 cd retrieval-service
 python3 scripts/fetch_wikipedia_en.py \
-  --output data/import/wiki_en_articles.jsonl \
+  --output /tmp/tinge-rag-data/wiki_en_articles.jsonl \
   --seed-profile iberia_latam \
   --target-docs 10000 \
   --fallback-single-page \
   --fetch-batch-size 40 \
   --overwrite
+```
+
+For top-level Make targets, generated wiki batch output defaults to:
+- `/tmp/tinge-rag-data/wiki_en_articles.jsonl`
+
+Override explicitly for repo-local output only when intentional:
+
+```bash
+make rag-fetch-wiki-en \
+  WIKI_EN_TARGET_DOCS=10000 \
+  WIKI_EN_OUTPUT=retrieval-service/data/import/wiki_en_articles.jsonl
 ```
 
 Available seed profiles:

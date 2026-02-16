@@ -108,5 +108,14 @@ describe('Citation path E2E (integration)', () => {
       .map((node) => node.textContent.trim());
     expect(labels.length).toBe(1);
     expect(labels[0].startsWith('1.')).toBe(true);
+    expect(labels[0]).toContain('architecture overview');
+
+    const link = panel.list.querySelector('.source-panel-link');
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('https://en.wikipedia.org/wiki/Barcelona');
+
+    const meta = panel.list.querySelector('.source-panel-meta');
+    expect(meta).not.toBeNull();
+    expect(meta.textContent.trim()).toBe('Wikipedia');
   });
 });

@@ -22,6 +22,7 @@ describe('PttOrchestrator', () => {
     };
     const onEvent = vi.fn();
     const error = vi.fn();
+    const interruptAssistantResponse = vi.fn();
     const checkTokenLimit = vi.fn(async () => ({ allowed: true }));
     const connect = vi.fn(async () => {});
     let scheduled = null;
@@ -49,10 +50,12 @@ describe('PttOrchestrator', () => {
       checkTokenLimit,
       connect,
       waitForDataChannelOpen: vi.fn(async () => true),
+      interruptAssistantResponse,
       userAudioMgr,
       onEvent,
       error,
       makeEventId: () => 'evt-1',
+      now: () => 12345,
       schedule: (fn) => {
         scheduled = fn;
         return 1;
@@ -69,6 +72,7 @@ describe('PttOrchestrator', () => {
       userAudioMgr,
       onEvent,
       error,
+      interruptAssistantResponse,
       checkTokenLimit,
       connect,
       runScheduled: async () => {
@@ -84,8 +88,18 @@ describe('PttOrchestrator', () => {
     expect(result).toEqual({ allowed: true });
     expect(ctx.userAudioMgr.startRecording).toHaveBeenCalledTimes(1);
     expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'response.cancel', event_id: 'evt-1' })
+    );
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'input_audio_buffer.clear', event_id: 'evt-1' })
     );
+    expect(ctx.interruptAssistantResponse).toHaveBeenCalledWith({
+      interruptedUtteranceId: 'interrupted-12345'
+    });
+    expect(ctx.onEvent).toHaveBeenCalledWith({
+      type: 'assistant.interrupted',
+      utteranceId: 'interrupted-12345'
+    });
     expect(ctx.onEvent).toHaveBeenCalledWith({ type: 'input_audio_buffer.speech_started' });
     expect(ctx.state.isMicActive).toBe(true);
     expect(ctx.audioTrack.enabled).toBe(true);
@@ -98,6 +112,25 @@ describe('PttOrchestrator', () => {
     });
     const result = await ctx.orchestrator.handlePTTPress();
     expect(result).toEqual({ allowed: false, reason: 'connecting' });
+  });
+
+  it('returns connecting when connect leaves session in-flight', async () => {
+    const stateRef = { current: null };
+    const ctx = setup({
+      getIsConnected: () => stateRef.current.isConnected,
+      getIsConnecting: () => stateRef.current.isConnecting,
+      connect: vi.fn(async () => {
+        stateRef.current.isConnecting = true;
+      })
+    });
+    stateRef.current = ctx.state;
+    ctx.state.isConnected = false;
+    ctx.state.isConnecting = false;
+
+    const result = await ctx.orchestrator.handlePTTPress();
+
+    expect(result).toEqual({ allowed: false, reason: 'connecting' });
+    expect(ctx.userAudioMgr.startRecording).not.toHaveBeenCalled();
   });
 
   it('blocks start when data channel does not open in time', async () => {

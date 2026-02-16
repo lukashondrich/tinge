@@ -1,4 +1,3 @@
-import jsyaml from 'js-yaml';
 import { AudioManager } from '../audio/audioManager.js';
 import { StorageService } from '../core/storageService.js';
 import { handleGetUserProfile, handleUpdateUserProfile } from '../core/userProfile.js';
@@ -9,6 +8,17 @@ import { FunctionCallService } from './functionCallService.js';
 import { PttOrchestrator } from './pttOrchestrator.js';
 import { ConnectionBootstrapService } from './connectionBootstrapService.js';
 import { WebRtcTransportService } from './webrtcTransportService.js';
+import { UserTranscriptionService } from './userTranscriptionService.js';
+import { DataChannelEventRouter } from './dataChannelEventRouter.js';
+import { SessionConnectionState, CONNECTION_STATES } from './sessionConnectionState.js';
+import { ConnectionLifecycleService } from './connectionLifecycleService.js';
+import { buildSessionUpdate } from './sessionConfigurationBuilder.js';
+import { SystemPromptService } from './systemPromptService.js';
+import { RemoteAudioStreamService } from './remoteAudioStreamService.js';
+import { TokenLimitService } from './tokenLimitService.js';
+import { UtteranceTranscriptionService } from './utteranceTranscriptionService.js';
+import { ConnectionErrorPresenter } from './connectionErrorPresenter.js';
+import { OutboundMessageService } from './outboundMessageService.js';
 
 const ENABLE_SEMANTIC_VAD = false;
 const logger = createLogger('realtime-session');
@@ -36,18 +46,19 @@ export class RealtimeSession {
     this.tokenUsageCallback = null;
     this.pttButton = null;
 
+    this.connectionStateMachine = new SessionConnectionState({
+      warn: (...args) => logger.warn(...args)
+    });
+    const initialConnectionSnapshot = this.connectionStateMachine.getSnapshot();
+    this.connectionState = initialConnectionSnapshot.state;
+    this.isConnected = initialConnectionSnapshot.isConnected;
+    this.isConnecting = initialConnectionSnapshot.isConnecting;
+
     this.isMicActive = false;
-    this.isConnected = false;
-    this.isConnecting = false;
     this.currentEphemeralKey = null;
     this.pendingUserRecordPromise = null;
     this.pendingUserRecord = null;
-    this.aiRecordingStartTime = null;
-    this.aiWordOffsets = [];
-    this.aiTranscript = '';
     this.aiAudioReady = false;
-    this.aiAudioReadyWarningShown = false;
-    this.seenRemoteAudioTrackIds = new Set();
     this.tokenUsageTracker = new TokenUsageTracker({
       apiUrl: this.apiUrl,
       getEphemeralKey: () => this.currentEphemeralKey,
@@ -57,6 +68,15 @@ export class RealtimeSession {
         }
       },
       warn: (...args) => logger.warn(...args)
+    });
+    this.tokenLimitService = new TokenLimitService({
+      apiUrl: this.apiUrl,
+      getEphemeralKey: () => this.currentEphemeralKey,
+      warn: (...args) => logger.warn(...args)
+    });
+    this.utteranceTranscriptionService = new UtteranceTranscriptionService({
+      apiUrl: this.apiUrl,
+      error: (...args) => logger.error(...args)
     });
     this.knowledgeSearchService = new KnowledgeSearchService({
       apiUrl: this.apiUrl
@@ -73,6 +93,40 @@ export class RealtimeSession {
       },
       error: (...args) => logger.error(...args)
     });
+    this.userTranscriptionService = new UserTranscriptionService({
+      deviceType: this.deviceType,
+      userAudioMgr: this.userAudioMgr,
+      fetchWordTimings: (blob) => this.fetchWordTimings(blob),
+      stopAndTranscribe: (audioMgr, transcriptText) => this.stopAndTranscribe(audioMgr, transcriptText),
+      updateTokenUsageEstimate: (text, audioDuration) => this.updateTokenUsageEstimate(text, audioDuration),
+      onEvent: (payload) => {
+        if (this.onEventCallback) this.onEventCallback(payload);
+      },
+      addUtterance: (record) => StorageService.addUtterance(record),
+      getPendingUserRecord: () => this.pendingUserRecord,
+      setPendingUserRecord: (record) => {
+        this.pendingUserRecord = record;
+      },
+      getPendingUserRecordPromise: () => this.pendingUserRecordPromise,
+      setPendingUserRecordPromise: (promise) => {
+        this.pendingUserRecordPromise = promise;
+      },
+      error: (...args) => logger.error(...args)
+    });
+    this.dataChannelEventRouter = new DataChannelEventRouter({
+      aiAudioMgr: this.aiAudioMgr,
+      getAiAudioReady: () => this.aiAudioReady,
+      updateTokenUsageEstimate: (text, audioDuration) => this.updateTokenUsageEstimate(text, audioDuration),
+      updateTokenUsageActual: (usageData) => this.updateTokenUsageActual(usageData),
+      stopAndTranscribe: (audioMgr, transcriptText) => this.stopAndTranscribe(audioMgr, transcriptText),
+      handleUserTranscription: (event) => this.userTranscriptionService.handleTranscriptionCompleted(event),
+      handleFunctionCall: (event) => this.handleFunctionCall(event),
+      onEvent: (payload) => {
+        if (this.onEventCallback) this.onEventCallback(payload);
+      },
+      warn: (...args) => logger.warn(...args),
+      error: (...args) => logger.error(...args)
+    });
     this.connectionBootstrapService = new ConnectionBootstrapService({
       apiUrl: this.apiUrl,
       mobileDebug: (...args) => this.mobileDebug(...args),
@@ -85,10 +139,13 @@ export class RealtimeSession {
     });
     this.webrtcTransportService = new WebRtcTransportService({
       mobileDebug: (...args) => this.mobileDebug(...args),
-      onIceDisconnected: () => {},
+      onIceDisconnected: () => {
+        this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'ice_disconnected');
+        this.setPTTStatus('Reconnect', '#888');
+      },
       onIceFailed: () => {
         logger.error('ICE connection failed - marking disconnected');
-        this.isConnected = false;
+        this.transitionConnectionState(CONNECTION_STATES.FAILED, 'ice_failed');
         this.setPTTStatus('Reconnect', '#888');
       }
     });
@@ -112,10 +169,63 @@ export class RealtimeSession {
       checkTokenLimit: () => this.checkTokenLimit(),
       connect: () => this.connect(),
       waitForDataChannelOpen: () => this.waitForDataChannelOpen(5000),
+      interruptAssistantResponse: (payload) => this.dataChannelEventRouter.abortAiTurnCapture(payload),
       userAudioMgr: this.userAudioMgr,
       onEvent: (event) => {
         if (this.onEventCallback) this.onEventCallback(event);
       },
+      error: (...args) => logger.error(...args)
+    });
+    this.connectionLifecycleService = new ConnectionLifecycleService({
+      deviceType: this.deviceType,
+      getIsConnecting: () => this.isConnecting,
+      getPTTButton: () => this.pttButton,
+      setPTTStatus: (text, color) => this.setPTTStatus(text, color),
+      setPTTReadyStatus: () => this.setPTTReadyStatus(),
+      transitionConnectionState: (nextState, reason) => this.transitionConnectionState(nextState, reason),
+      initializeMobileMicrophone: () => this.initializeMobileMicrophone(),
+      verifyBackendReachable: () => this.verifyBackendReachable(),
+      requestEphemeralKey: () => this.requestEphemeralKey(),
+      setCurrentEphemeralKey: (ephemeralKey) => {
+        this.currentEphemeralKey = ephemeralKey;
+      },
+      establishTransport: (ephemeralKey) => this.webrtcTransportService.establishPeerConnection(ephemeralKey),
+      setTransport: ({ peerConnection, dataChannel, audioTrack }) => {
+        this.peerConnection = peerConnection;
+        this.dataChannel = dataChannel;
+        this.audioTrack = audioTrack;
+      },
+      setupPeerTrackHandling: () => this.setupPeerTrackHandling(),
+      tryHydrateExistingRemoteAudioTrack: () => this.tryHydrateExistingRemoteAudioTrack(),
+      setupDataChannelEvents: () => this.setupDataChannelEvents(),
+      sendSystemPrompt: () => this.sendSystemPrompt(),
+      sendSessionConfiguration: () => this.sendSessionConfiguration(),
+      handleConnectError: (error) => this.handleConnectError(error),
+      getDataChannel: () => this.dataChannel,
+      mobileDebug: (...args) => this.mobileDebug(...args),
+      log: (...args) => logger.log(...args),
+      error: (...args) => logger.error(...args)
+    });
+    this.systemPromptService = new SystemPromptService({
+      error: (...args) => logger.error(...args)
+    });
+    this.connectionErrorPresenter = new ConnectionErrorPresenter({
+      deviceType: this.deviceType,
+      setPTTStatus: (text, color) => this.setPTTStatus(text, color),
+      log: (...args) => logger.log(...args)
+    });
+    this.outboundMessageService = new OutboundMessageService({
+      getDataChannel: () => this.dataChannel,
+      error: (...args) => logger.error(...args)
+    });
+    this.remoteAudioStreamService = new RemoteAudioStreamService({
+      aiAudioMgr: this.aiAudioMgr,
+      dataChannelEventRouter: this.dataChannelEventRouter,
+      getOnRemoteStreamCallback: () => this.onRemoteStreamCallback,
+      setAiAudioReady: (ready) => {
+        this.aiAudioReady = ready;
+      },
+      log: (...args) => logger.log(...args),
       error: (...args) => logger.error(...args)
     });
   }
@@ -147,12 +257,7 @@ export class RealtimeSession {
   }
 
   async fetchWordTimings(blob) {
-    const fd = new FormData();
-    fd.append('file', blob, 'utterance.webm');
-    const res = await fetch(`${this.apiUrl}/transcribe`, { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(`Transcription API error ${res.status}`);
-    const { words, fullText } = await res.json();
-    return { words, fullText };
+    return this.utteranceTranscriptionService.fetchWordTimings(blob);
   }
 
   async searchKnowledge(args) {
@@ -164,42 +269,11 @@ export class RealtimeSession {
   }
 
   async stopAndTranscribe(audioMgr, transcriptText) {
-    return audioMgr.stopRecording(transcriptText)
-      .then(async (record) => {
-        if (!record) return null;
-        try {
-          const { words, fullText } = await this.fetchWordTimings(record.audioBlob);
-          record.wordTimings = words;
-          record.fullText = fullText;
-        } catch (err) {
-          logger.error(`Word timing fetch failed: ${err.message}`);
-          record.wordTimings = [];
-          record.fullText = record.text;
-        }
-        return record;
-      });
+    return this.utteranceTranscriptionService.stopAndTranscribe(audioMgr, transcriptText);
   }
 
   async checkTokenLimit() {
-    if (!this.currentEphemeralKey) return { allowed: true, reason: 'no_key' };
-    try {
-      const response = await fetch(`${this.apiUrl}/token-usage/${this.currentEphemeralKey}`);
-      if (response.ok) {
-        const usage = await response.json();
-        if (usage.isAtLimit) {
-          return {
-            allowed: false,
-            reason: 'token_limit_exceeded',
-            usage
-          };
-        }
-        return { allowed: true, usage };
-      }
-    } catch (error) {
-      logger.warn('Failed to check token limit:', error);
-      return { allowed: true, reason: 'check_failed' };
-    }
-    return { allowed: true, reason: 'unknown' };
+    return this.tokenLimitService.checkTokenLimit();
   }
 
   resetPendingRecording() {
@@ -231,62 +305,20 @@ export class RealtimeSession {
     this.pttOrchestrator.handlePTTRelease({ bufferTime });
   }
 
+  transitionConnectionState(nextState, reason = '') {
+    const snapshot = this.connectionStateMachine.transition(nextState, { reason });
+    this.connectionState = snapshot.state;
+    this.isConnected = snapshot.isConnected;
+    this.isConnecting = snapshot.isConnecting;
+    return snapshot;
+  }
+
   async connect() {
-    if (this.isConnecting) return;
-    this.isConnecting = true;
-    try {
-      if (this.pttButton) {
-        this.setPTTStatus('Connecting...', '#666');
-      }
-
-      if (this.deviceType === 'mobile') {
-        await this.initializeMobileMicrophone();
-        await this.verifyBackendReachable();
-      }
-
-      const EPHEMERAL_KEY = await this.requestEphemeralKey();
-      this.currentEphemeralKey = EPHEMERAL_KEY;
-
-      await this.establishPeerConnection(EPHEMERAL_KEY);
-
-      logger.log('OpenAI Realtime connection established');
-      this.mobileDebug('🎉 OpenAI Realtime connection fully established!');
-      this.isConnected = true;
-      this.setPTTReadyStatus();
-    } catch (error) {
-      logger.error(`OpenAI connection error: ${error.message}`);
-      logger.error('Error details:', error);
-      this.handleConnectError(error);
-      throw error;
-    } finally {
-      this.isConnecting = false;
-    }
+    return this.connectionLifecycleService.connect();
   }
 
   async waitForDataChannelOpen(timeoutMs = 5000) {
-    const dataChannel = this.dataChannel;
-    if (!dataChannel) return false;
-    if (dataChannel.readyState === 'open') return true;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (value) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        dataChannel.removeEventListener('open', onOpen);
-        dataChannel.removeEventListener('close', onCloseOrError);
-        dataChannel.removeEventListener('error', onCloseOrError);
-        resolve(value);
-      };
-      const onOpen = () => finish(true);
-      const onCloseOrError = () => finish(false);
-      const timer = setTimeout(() => finish(false), timeoutMs);
-
-      dataChannel.addEventListener('open', onOpen, { once: true });
-      dataChannel.addEventListener('close', onCloseOrError, { once: true });
-      dataChannel.addEventListener('error', onCloseOrError, { once: true });
-    });
+    return this.connectionLifecycleService.waitForDataChannelOpen(timeoutMs);
   }
 
   async initializeMobileMicrophone() {
@@ -302,248 +334,19 @@ export class RealtimeSession {
   }
 
   async establishPeerConnection(ephemeralKey) {
-    const { peerConnection, dataChannel, audioTrack } =
-      await this.webrtcTransportService.establishPeerConnection(ephemeralKey);
-    this.peerConnection = peerConnection;
-    this.dataChannel = dataChannel;
-    this.audioTrack = audioTrack;
-
-    this.dataChannel.onclose = () => {
-      this.isConnected = false;
-      this.setPTTStatus('Reconnect', '#888');
-    };
-
-    this.dataChannel.onopen = async () => {
-      this.isConnected = true;
-      this.setPTTReadyStatus();
-      await this.sendSystemPrompt();
-      await this.sendSessionConfiguration();
-    };
-
-    this.setupPeerTrackHandling();
-    await this.tryHydrateExistingRemoteAudioTrack();
-    this.setupDataChannelEvents();
-
+    return this.connectionLifecycleService.establishPeerConnection(ephemeralKey);
   }
 
   async sendSystemPrompt() {
-    try {
-      const res = await fetch('/prompts/systemPrompt.yaml');
-      if (!res.ok) throw new Error(`YAML load failed: ${res.status}`);
-      const yamlText = await res.text();
-      const obj = jsyaml.load(yamlText);
-      const sysText = obj.prompt;
-      const sysEvent = {
-        type: 'conversation.item.create',
-        event_id: crypto.randomUUID(),
-        item: {
-          type: 'message',
-          role: 'system',
-          content: [
-            { type: 'input_text', text: sysText }
-          ]
-        }
-      };
-      this.dataChannel.send(JSON.stringify(sysEvent));
-    } catch (err) {
-      logger.error(`Failed to load system prompt YAML: ${err.message}`);
-    }
+    return this.systemPromptService.sendSystemPrompt({
+      dataChannel: this.dataChannel
+    });
   }
 
   async sendSessionConfiguration() {
-    const sessionUpdate = {
-      type: 'session.update',
-      session: {
-        input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
-        turn_detection: ENABLE_SEMANTIC_VAD ? {
-          type: 'semantic_vad',
-          eagerness: 'low',
-          create_response: true,
-          interrupt_response: false
-        } : null,
-        tools: [
-          {
-            type: 'function',
-            name: 'get_user_profile',
-            description: 'Retrieve the user\'s current learning profile to personalize the tutoring session.',
-            parameters: {
-              type: 'object',
-              properties: {
-                user_id: {
-                  type: 'string',
-                  description: 'The user\'s unique identifier'
-                }
-              },
-              required: ['user_id']
-            }
-          },
-          {
-            type: 'function',
-            name: 'update_user_profile',
-            description: 'Update the user\'s learning profile with new session insights.',
-            parameters: {
-              type: 'object',
-              properties: {
-                user_id: {
-                  type: 'string',
-                  description: 'The user\'s unique identifier'
-                },
-                updates: {
-                  type: 'object',
-                  properties: {
-                    reference_language: {
-                      type: 'string',
-                      description: 'Learner\'s native or strongest language'
-                    },
-                    l1: {
-                      type: 'object',
-                      description: 'Primary target language updates',
-                      properties: {
-                        language: { type: 'string' },
-                        level: {
-                          type: 'string',
-                          enum: [
-                            'beginner',
-                            'elementary',
-                            'intermediate',
-                            'upper-intermediate',
-                            'advanced',
-                            'proficient'
-                          ]
-                        },
-                        mistake_patterns: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            properties: {
-                              type: {
-                                type: 'string',
-                                enum: ['grammar', 'vocabulary', 'pronunciation', 'pragmatics', 'fluency']
-                              },
-                              specific: { type: 'string' },
-                              example: { type: 'string' }
-                            }
-                          }
-                        },
-                        mastery_updates: {
-                          type: 'object',
-                          properties: {
-                            learned: { type: 'array', items: { type: 'string' } },
-                            struggling: { type: 'array', items: { type: 'string' } },
-                            forgotten: { type: 'array', items: { type: 'string' } }
-                          }
-                        },
-                        specific_goals: { type: 'array', items: { type: 'string' } }
-                      }
-                    },
-                    l2: {
-                      type: 'object',
-                      description: 'Secondary target language updates (optional)'
-                    },
-                    l3: {
-                      type: 'object',
-                      description: 'Tertiary target language updates (optional)'
-                    },
-                    learning_style: {
-                      type: 'object',
-                      properties: {
-                        correction_style: {
-                          type: 'string',
-                          enum: ['gentle', 'direct', 'delayed', 'implicit', 'explicit']
-                        },
-                        challenge_level: {
-                          type: 'string',
-                          enum: ['comfortable', 'moderate', 'challenging']
-                        },
-                        session_structure: {
-                          type: 'string',
-                          enum: ['structured', 'flexible', 'conversation-focused', 'task-based']
-                        },
-                        cultural_learning_interests: { type: 'array', items: { type: 'string' } }
-                      }
-                    },
-                    personal_context: {
-                      type: 'object',
-                      properties: {
-                        goals_and_timeline: {
-                          type: 'object',
-                          properties: {
-                            short_term: { type: 'string' },
-                            long_term: { type: 'string' },
-                            timeline: { type: 'string' }
-                          }
-                        },
-                        immediate_needs: { type: 'array', items: { type: 'string' } },
-                        motivation_sources: { type: 'array', items: { type: 'string' } }
-                      }
-                    },
-                    communication_patterns: {
-                      type: 'object',
-                      properties: {
-                        conversation_starters: { type: 'array', items: { type: 'string' } },
-                        humor_style: { type: 'string' },
-                        cultural_background: { type: 'string' },
-                        professional_context: { type: 'string' }
-                      }
-                    },
-                    practical_usage: {
-                      type: 'object',
-                      properties: {
-                        social_connections: { type: 'array', items: { type: 'string' } },
-                        geographic_relevance: { type: 'string' }
-                      }
-                    },
-                    meta_learning: {
-                      type: 'object',
-                      properties: {
-                        strategy_preferences: { type: 'array', items: { type: 'string' } },
-                        confidence_building_needs: { type: 'array', items: { type: 'string' } }
-                      }
-                    },
-                    conversation_notes: {
-                      type: 'string',
-                      description: 'General observations about the session'
-                    }
-                  },
-                  required: ['user_id', 'updates']
-                }
-              },
-              required: ['user_id', 'updates']
-            }
-          },
-          {
-            type: 'function',
-            name: 'search_knowledge',
-            description: 'Search trusted knowledge snippets for factual questions and provide source metadata for citations.',
-            parameters: {
-              type: 'object',
-              properties: {
-                query_original: {
-                  type: 'string',
-                  description: 'Original query in the user\'s language.'
-                },
-                query_en: {
-                  type: 'string',
-                  description: 'English translation/paraphrase of query_original for EN-only retrieval.'
-                },
-                language: {
-                  type: 'string',
-                  enum: ['en'],
-                  description: 'Document language filter. Use "en".'
-                },
-                top_k: {
-                  type: 'integer',
-                  minimum: 1,
-                  maximum: 10,
-                  description: 'Number of top results to return.'
-                }
-              },
-              required: ['query_original', 'query_en']
-            }
-          }
-        ]
-      }
-    };
+    const sessionUpdate = buildSessionUpdate({
+      enableSemanticVad: ENABLE_SEMANTIC_VAD
+    });
 
     try {
       this.dataChannel.send(JSON.stringify(sessionUpdate));
@@ -553,195 +356,19 @@ export class RealtimeSession {
   }
 
   setupPeerTrackHandling() {
-    this.peerConnection.ontrack = async (event) => {
-      const remoteStream = event.streams?.[0]
-        || (event.track ? new MediaStream([event.track]) : null);
-      if (!remoteStream) {
-        logger.error('Received track event without a usable remote stream');
-        return;
-      }
-      await this.handleIncomingRemoteStream(remoteStream);
-    };
+    this.remoteAudioStreamService.setupPeerTrackHandling(this.peerConnection);
   }
 
   async tryHydrateExistingRemoteAudioTrack() {
-    if (!this.peerConnection || typeof this.peerConnection.getReceivers !== 'function') {
-      return;
-    }
-
-    const receiver = this.peerConnection
-      .getReceivers()
-      .find((r) => r?.track && r.track.kind === 'audio' && r.track.readyState === 'live');
-    if (!receiver?.track) {
-      return;
-    }
-
-    const stream = new MediaStream([receiver.track]);
-    await this.handleIncomingRemoteStream(stream);
+    return this.remoteAudioStreamService.tryHydrateExistingRemoteAudioTrack(this.peerConnection);
   }
 
   async handleIncomingRemoteStream(remoteStream) {
-    const track = remoteStream.getAudioTracks?.()[0] || null;
-    if (track?.id && this.seenRemoteAudioTrackIds.has(track.id)) {
-      return;
-    }
-    if (track?.id) {
-      this.seenRemoteAudioTrackIds.add(track.id);
-    }
-
-    if (this.onRemoteStreamCallback) {
-      this.onRemoteStreamCallback(remoteStream);
-    } else {
-      const remoteAudio = document.createElement('audio');
-      remoteAudio.srcObject = remoteStream;
-      remoteAudio.autoplay = true;
-      document.body.appendChild(remoteAudio);
-    }
-
-    this.aiAudioMgr.stream = remoteStream;
-    try {
-      await this.aiAudioMgr.init();
-      this.aiAudioReady = true;
-      this.aiAudioReadyWarningShown = false;
-      logger.log('AI audio recorder attached to remote stream');
-    } catch (err) {
-      this.aiAudioReady = false;
-      logger.error(`AI AudioManager init error: ${err}`);
-    }
+    return this.remoteAudioStreamService.handleIncomingRemoteStream(remoteStream);
   }
 
   setupDataChannelEvents() {
-    this.dataChannel.addEventListener('message', async (e) => {
-      const event = JSON.parse(e.data);
-      if (!event.timestamp) event.timestamp = new Date().toLocaleTimeString();
-      if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
-        event.transcript = event.transcript.trim();
-        event.speaker = 'ai';
-      }
-      if (this.onEventCallback) this.onEventCallback(event);
-
-      if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
-        if (!this.aiAudioMgr.isRecording) {
-          if (!this.aiAudioReady) {
-            if (!this.aiAudioReadyWarningShown) {
-              logger.warn('AI audio recorder not ready when transcript delta arrived; skipping AI clip capture for this turn');
-              this.aiAudioReadyWarningShown = true;
-            }
-          } else {
-            this.aiRecordingStartTime = performance.now();
-            this.aiWordOffsets = [];
-            this.aiAudioMgr.startRecording();
-            this.aiTranscript = '';
-          }
-        }
-        if (this.aiRecordingStartTime !== null) {
-          const offsetMs = performance.now() - this.aiRecordingStartTime;
-          this.aiWordOffsets.push({ word: event.delta, offsetMs });
-          this.aiTranscript += event.delta;
-        }
-        this.updateTokenUsageEstimate(event.delta);
-      }
-
-      if (event.type === 'output_audio_buffer.stopped') {
-        if (this.aiAudioMgr.isRecording) {
-          const transcript = this.aiTranscript.trim();
-          this.stopAndTranscribe(this.aiAudioMgr, transcript).then((record) => {
-            if (!record) {
-              logger.error('AI stopAndTranscribe returned null record');
-              return;
-            }
-            if (this.onEventCallback) {
-              this.onEventCallback({ type: 'utterance.added', record });
-            }
-            this.aiRecordingStartTime = null;
-            this.aiWordOffsets = [];
-            this.aiTranscript = '';
-          }).catch((err) => logger.error(`AI transcription error: ${err}`));
-        }
-      }
-
-      if (event.type === 'conversation.item.input_audio_transcription.completed') {
-        await this.handleUserTranscription(event);
-        return;
-      }
-
-      if (event.type === 'response.function_call_arguments.done') {
-        await this.handleFunctionCall(event);
-      }
-
-      if (event.type === 'response.done' && event.response && event.response.usage) {
-        this.updateTokenUsageActual(event.response.usage);
-      }
-
-      if (event.type === 'session.updated' && event.session && event.session.usage) {
-        this.updateTokenUsageActual(event.session.usage);
-      }
-    });
-  }
-
-  async handleUserTranscription(event) {
-    const transcript = (event.transcript || '').trim();
-    if (!transcript) return;
-
-    const transcriptKey = `${this.deviceType}-user-${transcript.substring(0, 20)}-${Date.now()}`;
-
-    const words = transcript.split(/\s+/);
-    for (const w of words) {
-      if (this.onEventCallback) {
-        this.onEventCallback({
-          type: 'transcript.word',
-          word: w,
-          speaker: 'user',
-          deviceType: this.deviceType,
-          transcriptKey
-        });
-      }
-    }
-
-    this.updateTokenUsageEstimate(transcript);
-
-    const enhanceRecord = async (record) => {
-      record.text = transcript;
-      record.deviceType = this.deviceType;
-      if (record.audioBlob && !record.audioURL) {
-        record.audioURL = URL.createObjectURL(record.audioBlob);
-      }
-      try {
-        const { words: timings, fullText } = await this.fetchWordTimings(record.audioBlob);
-        record.wordTimings = timings;
-        record.fullText = fullText;
-      } catch (err) {
-        logger.error(`Word timing fetch failed: ${err.message}`);
-        record.wordTimings = [];
-        record.fullText = transcript;
-      }
-      StorageService.addUtterance(record);
-      if (this.onEventCallback) {
-        this.onEventCallback({ type: 'utterance.added', record, deviceType: this.deviceType, transcriptKey });
-      }
-      if (this.pendingUserRecord === record) this.pendingUserRecord = null;
-      this.pendingUserRecordPromise = null;
-    };
-
-    if (this.pendingUserRecord) {
-      enhanceRecord(this.pendingUserRecord).catch((err) => logger.error(`User record enhancement error: ${err}`));
-    } else if (this.pendingUserRecordPromise) {
-      this.pendingUserRecordPromise
-        .then((record) => {
-          if (record) {
-            enhanceRecord(record);
-          } else {
-            logger.error('pendingUserRecordPromise resolved to null');
-          }
-        })
-        .catch((err) => logger.error(`User transcription promise error: ${err}`));
-    } else {
-      this.stopAndTranscribe(this.userAudioMgr, transcript)
-        .then((record) => {
-          if (record) enhanceRecord(record);
-        })
-        .catch((err) => logger.error(`User transcription fallback error: ${err}`));
-    }
+    this.dataChannelEventRouter.bind(this.dataChannel);
   }
 
   async handleFunctionCall(event) {
@@ -749,56 +376,11 @@ export class RealtimeSession {
   }
 
   handleConnectError(error) {
-    let errorText = 'Error';
-    if (error.message.includes('getUserMedia') || error.message.includes('Permission')) {
-      errorText = this.deviceType === 'mobile' ? 'Mic Access' : 'Mic Error';
-    } else if (error.message.includes('SDP') || error.message.includes('WebRTC')) {
-      errorText = this.deviceType === 'mobile' ? 'Connection' : 'WebRTC Error';
-    } else if (error.message.includes('token') || error.message.includes('fetch')) {
-      errorText = 'Network';
-    }
-
-    this.setPTTStatus(errorText, '#c00');
-
-    setTimeout(() => {
-      if (this.deviceType === 'mobile' && errorText === 'Mic Access') {
-        this.setPTTStatus('Allow Mic', '#44f');
-        const mobileHelp = document.getElementById('mobileHelp');
-        if (mobileHelp) {
-          mobileHelp.style.display = 'block';
-        }
-        logger.log('Mobile microphone troubleshooting: Check browser permissions, try refreshing, or use Chrome/Safari');
-      } else {
-        this.setPTTStatus('Try Again', '#44f');
-      }
-    }, 3000);
+    return this.connectionErrorPresenter.handleConnectError(error);
   }
 
   sendTextMessage(text) {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      logger.error('Cannot send message: data channel not open');
-      return false;
-    }
-
-    const event = {
-      type: 'conversation.item.create',
-      event_id: crypto.randomUUID(),
-      item: {
-        type: 'message',
-        role: 'user',
-        content: [
-          { type: 'input_text', text }
-        ]
-      }
-    };
-    this.dataChannel.send(JSON.stringify(event));
-
-    const responseEvent = {
-      type: 'response.create',
-      event_id: crypto.randomUUID()
-    };
-    this.dataChannel.send(JSON.stringify(responseEvent));
-    return true;
+    return this.outboundMessageService.sendTextMessage(text);
   }
 
   isConnectedToOpenAI() {
@@ -806,6 +388,8 @@ export class RealtimeSession {
   }
 
   cleanup() {
+    this.dataChannelEventRouter.unbind();
+
     if (this.dataChannel) {
       try {
         this.dataChannel.close();
@@ -836,16 +420,12 @@ export class RealtimeSession {
       this.audioTrack = null;
     }
 
-    this.isConnected = false;
     this.isMicActive = false;
     this.currentEphemeralKey = null;
     this.resetPendingRecording();
-    this.aiRecordingStartTime = null;
-    this.aiWordOffsets = [];
-    this.aiTranscript = '';
-    this.aiAudioReady = false;
-    this.aiAudioReadyWarningShown = false;
-    this.seenRemoteAudioTrackIds.clear();
+    this.remoteAudioStreamService.reset();
+    this.dataChannelEventRouter.reset();
     this.tokenUsageTracker.reset();
+    this.transitionConnectionState(CONNECTION_STATES.IDLE, 'cleanup');
   }
 }

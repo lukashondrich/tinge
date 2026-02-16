@@ -7,6 +7,20 @@ Use this file as the starting point for future coding sessions.
 - Primary plan: `docs/tech_debt_register.md`
 - Related architecture hardening context: `docs/realtime_hardening_plan.md`
 
+## Architecture Docs Map (Progressive Disclosure)
+
+Start here when taking a new task:
+1. `docs/architecture/README.md`
+2. `docs/architecture/system-overview.md`
+3. Load only the subsystem doc you need:
+- Frontend runtime composition: `docs/architecture/frontend-runtime.md`
+- Frontend realtime/PTT/session path: `docs/architecture/frontend-realtime-session.md`
+- Frontend citations/dialogue/source panel path: `docs/architecture/frontend-citations-dialogue.md`
+- Backend API gateway: `docs/architecture/backend-api.md`
+- Retrieval service internals/policy: `docs/architecture/retrieval-service.md`
+- Embedding service internals: `docs/architecture/embedding-service.md`
+- Test/guard command map: `docs/architecture/testing-guardrails.md`
+
 ## Current Status (as of 2026-02-11)
 
 - Tech debt register created and prioritized (top 15 items).
@@ -206,12 +220,619 @@ Use this file as the starting point for future coding sessions.
     in `shader-playground/src/realtime/realtimeEventCoordinator.js`,
   - kept runtime logs cleaner by removing temporary remote-track diagnostics from
     `shader-playground/src/main.js` and keeping attachment logs debug-gated.
+- 2026-02-15: Milestone C continued (session message/transcription extraction + PTT interrupt hardening):
+  - extracted data-channel event handling from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/dataChannelEventRouter.js`,
+  - extracted user transcription reconciliation/enrichment from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/userTranscriptionService.js`,
+  - `RealtimeSession` now delegates message routing and transcription lifecycle
+    through the new services (session reduced from 851 LOC to 753 LOC),
+  - added explicit PTT interruption wiring:
+    - `response.cancel` is sent on PTT press via
+      `shader-playground/src/realtime/pttOrchestrator.js`,
+    - emitted `assistant.interrupted` UI event and finalized active AI bubble on
+      interrupt in `shader-playground/src/realtime/realtimeEventCoordinator.js`,
+    - reset in-progress AI local capture state on interrupt via
+      `dataChannelEventRouter.abortAiTurnCapture()`,
+  - added coverage:
+    - `shader-playground/src/tests/realtime/data-channel-event-router.test.js`
+    - `shader-playground/src/tests/realtime/user-transcription-service.test.js`
+    - updated `ptt-orchestrator` and `realtime-event-coordinator` tests.
+- 2026-02-15: Milestone C continued (connection-state hardening + interrupt race coverage):
+  - added explicit connection state machine module
+    `shader-playground/src/realtime/sessionConnectionState.js`
+    (`idle` / `connecting` / `connected` / `reconnecting` / `failed`) and
+    rewired `session.js` connection flags to transition through it,
+  - updated session reconnect/failure transitions to flow through
+    `transitionConnectionState(...)` (data-channel close/open, ICE
+    disconnected/failed, connect errors, cleanup),
+  - hardened interrupt path in realtime routing:
+    - `DataChannelEventRouter` now suppresses stale assistant transcript events
+      after interrupt until a drain signal (`output_audio_buffer.stopped` or
+      `response.done`) or timeout,
+    - `RealtimeEventCoordinator` now clears pending response-text buffers and
+      marks interrupted AI bubbles with synthetic utterance IDs before finalize,
+      preventing the next assistant turn from reusing the same bubble,
+    - `RetrievalCitationCoordinator` adds `resetStreamingTranscript()` so
+      interrupted turns do not leak stale streaming text/citation remaps.
+  - added/updated coverage:
+    - `shader-playground/src/tests/realtime/session-connection-state.test.js`
+    - `shader-playground/tests/integration/ptt-interrupt-path.integration.test.js`
+    - `shader-playground/src/tests/ui/retrieval-citation-coordinator.test.js`
+      (stream reset assertion)
+    - expanded router/coordinator interruption assertions.
+- 2026-02-15: Milestone C continued (connection lifecycle extraction):
+  - extracted connect/peer bootstrap orchestration from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/connectionLifecycleService.js`,
+  - `RealtimeSession` now delegates:
+    - `connect()`
+    - `waitForDataChannelOpen()`
+    - `establishPeerConnection()`
+    through `connectionLifecycleService`,
+  - preserved compatibility wrappers for mobile bootstrap/token request methods
+    in `session.js` while removing inline connection orchestration,
+  - added dedicated unit coverage in
+    `shader-playground/src/tests/realtime/connection-lifecycle-service.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 770 LOC to 731 LOC.
+- 2026-02-15: Milestone C continued (session config/prompt + remote audio extraction):
+  - extracted session `session.update` payload/tool schema construction from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/sessionConfigurationBuilder.js`,
+  - extracted system prompt YAML fetch/parse/send flow from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/systemPromptService.js`,
+  - extracted remote audio track orchestration (ontrack wiring, live receiver
+    hydration, dedupe, AI recorder attachment) into
+    `shader-playground/src/realtime/remoteAudioStreamService.js`,
+  - `RealtimeSession` now delegates:
+    - `sendSessionConfiguration()`
+    - `sendSystemPrompt()`
+    - `setupPeerTrackHandling()`
+    - `tryHydrateExistingRemoteAudioTrack()`
+    - `handleIncomingRemoteStream()`
+    via dedicated services,
+  - added dedicated tests:
+    - `shader-playground/src/tests/realtime/session-configuration-builder.test.js`
+    - `shader-playground/src/tests/realtime/system-prompt-service.test.js`
+    - `shader-playground/src/tests/realtime/remote-audio-stream-service.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 731 LOC to 490 LOC.
+- 2026-02-15: Milestone C follow-up (interrupted AI bubble playback finalize):
+  - wired a stable interrupted utterance id through PTT interrupt events in
+    `shader-playground/src/realtime/pttOrchestrator.js` and
+    `shader-playground/src/realtime/realtimeEventCoordinator.js`,
+  - updated interrupt capture flow in
+    `shader-playground/src/realtime/dataChannelEventRouter.js` to emit
+    `utterance.added` from partial AI capture on interrupt (instead of dropping
+    the record), allowing interrupted AI bubbles to receive playback controls
+    when audio is available,
+  - added/updated regression coverage:
+    - `shader-playground/src/tests/realtime/data-channel-event-router.test.js`
+    - `shader-playground/src/tests/realtime/ptt-orchestrator.test.js`
+    - `shader-playground/src/tests/realtime/realtime-event-coordinator.test.js`
+    - `shader-playground/tests/integration/ptt-interrupt-path.integration.test.js`.
+- 2026-02-15: Milestone C continuation (token limit extraction):
+  - extracted token limit preflight check from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/tokenLimitService.js`,
+  - kept compatibility wrapper `RealtimeSession.checkTokenLimit()` as a
+    delegate to `tokenLimitService`,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/token-limit-service.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 490 LOC to 478 LOC.
+- 2026-02-15: Milestone C continuation (utterance transcription extraction):
+  - extracted transcription upload/word-timing enrichment flow from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/utteranceTranscriptionService.js`,
+  - `RealtimeSession.fetchWordTimings()` and
+    `RealtimeSession.stopAndTranscribe()` now delegate to the service while
+    preserving compatibility for downstream modules,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/utterance-transcription-service.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 478 LOC to 465 LOC.
+- 2026-02-15: Milestone C continuation (connect error presenter extraction):
+  - extracted connect-error status mapping + delayed UI fallback from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/connectionErrorPresenter.js`,
+  - `RealtimeSession.handleConnectError()` now delegates through the presenter
+    while preserving existing lifecycle integration behavior,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/connection-error-presenter.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 465 LOC to 449 LOC.
+- 2026-02-15: Milestone C continuation (reconnect integration coverage):
+  - added integration test
+    `shader-playground/tests/integration/reconnect-ptt-path.integration.test.js`
+    covering:
+    - data-channel close -> `reconnecting` state transition,
+    - resumed PTT press triggering reconnect bootstrap,
+    - successful post-reconnect PTT turn start (`response.cancel`,
+      `input_audio_buffer.clear`, mic enable + speech-start event),
+  - validated with targeted lifecycle/PTT/connection-state suite.
+- 2026-02-15: Milestone C continuation (outbound text message extraction):
+  - extracted `sendTextMessage` payload/send logic from
+    `shader-playground/src/realtime/session.js` into
+    `shader-playground/src/realtime/outboundMessageService.js`,
+  - `RealtimeSession.sendTextMessage()` now delegates through the service while
+    preserving API behavior,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/outbound-message-service.test.js`,
+  - reduced `shader-playground/src/realtime/session.js` from 449 LOC to 431 LOC.
+- 2026-02-15: Milestone B continuation (main remote-audio bootstrap extraction):
+  - extracted remote AI audio element creation/playback gesture-retry lifecycle
+    from `shader-playground/src/main.js` into
+    `shader-playground/src/realtime/remoteAudioController.js`,
+  - `main.js` now delegates remote stream attach + cleanup via
+    `createRemoteAudioController(...)`,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/remote-audio-controller.test.js`,
+  - reduced `shader-playground/src/main.js` from 332 LOC to 298 LOC.
+- 2026-02-15: Milestone B continuation (main orbit interaction extraction):
+  - extracted OrbitControls setup + user interaction tracking/listener cleanup
+    from `shader-playground/src/main.js` into
+    `shader-playground/src/realtime/sceneOrbitInteractionController.js`,
+  - `main.js` now delegates controls init + interaction state getters + dispose
+    through `createSceneOrbitInteractionController(...)`,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/scene-orbit-interaction-controller.test.js`,
+  - reduced `shader-playground/src/main.js` from 298 LOC to 275 LOC.
+- 2026-02-15: Milestone B continuation (scene bootstrap composition extraction):
+  - extracted scene bootstrap composition from `shader-playground/src/main.js`
+    into `shader-playground/src/realtime/sceneBootstrapController.js`, covering:
+    - renderer + orbit interaction + scene interaction + remote audio bootstrap,
+    - touch rotation hook wiring,
+    - composed beforeunload cleanup registration/disposal,
+  - `main.js` now delegates bootstrap and beforeunload cleanup through
+    `createSceneBootstrapController(...)`,
+  - added dedicated coverage in
+    `shader-playground/src/tests/realtime/scene-bootstrap-controller.test.js`,
+  - reduced `shader-playground/src/main.js` from 275 LOC to 248 LOC.
+- 2026-02-15: Milestone B checkpoint decision (`main.js` composition root):
+  - reviewed remaining `shader-playground/src/main.js` wiring after recent
+    extractions (`remoteAudioController`, `sceneOrbitInteractionController`,
+    `sceneBootstrapController`),
+  - decision: keep `main.js` as composition root for now; further splitting
+    would mostly move dependency wiring without reducing behavioral risk,
+  - prioritize integration coverage + non-`main.js` debt unless new coupling
+    emerges in future feature work.
+- 2026-02-15: Milestone C/backend continuation (knowledge route extraction):
+  - extracted `/knowledge/search` request normalization + timeout/proxy behavior
+    from `backend/server.js` into
+    `backend/src/routes/knowledgeSearchRoute.js`,
+  - rewired `server.js` route registration to delegate through
+    `createKnowledgeSearchHandler(...)`,
+  - reduced `backend/server.js` from 340 LOC to 280 LOC,
+  - validated behavior with backend tests/lint:
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- server.js src/routes/knowledgeSearchRoute.js`.
+- 2026-02-15: Milestone C/backend continuation (token route extraction):
+  - extracted `/token` request/response + OpenAI error mapping + token usage init
+    from `backend/server.js` into `backend/src/routes/tokenRoute.js`,
+  - rewired `server.js` token route registration to delegate through
+    `createTokenHandler(...)`,
+  - reduced `backend/server.js` from 280 LOC to 206 LOC,
+  - validated behavior with backend tests/lint:
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- server.js src/routes/tokenRoute.js src/routes/knowledgeSearchRoute.js`.
+- 2026-02-15: Milestone C/backend continuation (transcribe route extraction):
+  - extracted `/transcribe` multipart/form-data OpenAI proxy flow from
+    `backend/server.js` into `backend/src/routes/transcribeRoute.js`,
+  - rewired `server.js` transcribe route registration to delegate through
+    `createTranscribeHandler(...)`,
+  - reduced `backend/server.js` from 206 LOC to 185 LOC,
+  - validated behavior with backend tests/lint:
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- server.js src/routes/tokenRoute.js src/routes/transcribeRoute.js src/routes/knowledgeSearchRoute.js`.
+- 2026-02-15: Milestone C/backend continuation (middleware/config extraction):
+  - extracted backend CORS policy builder to
+    `backend/src/config/corsOptions.js`,
+  - extracted request logging middleware to
+    `backend/src/middleware/requestLogger.js`,
+  - extracted startup banner logging to
+    `backend/src/logging/startupBanner.js`,
+  - rewired `backend/server.js` to compose these modules while preserving
+    existing behavior.
+- 2026-02-15: Milestone C/backend continuation (token usage route extraction):
+  - extracted `/token-usage/*` + `/token-stats` endpoints from
+    `backend/server.js` into `backend/src/routes/tokenUsageRoutes.js`,
+  - rewired `server.js` via `app.use(createTokenUsageRouter(...))`,
+  - reduced `backend/server.js` from 185 LOC to 96 LOC,
+  - validated behavior with backend tests/lint:
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- server.js src/config/corsOptions.js src/middleware/requestLogger.js src/logging/startupBanner.js src/routes/tokenRoute.js src/routes/transcribeRoute.js src/routes/knowledgeSearchRoute.js src/routes/tokenUsageRoutes.js`.
+- 2026-02-15: realtime AI-bubble visibility hotfix (live transcript gaps):
+  - added AI capture fallback start on `output_audio_buffer.started` in
+    `shader-playground/src/realtime/dataChannelEventRouter.js` so AI clip
+    recording/transcription still proceeds when transcript deltas are delayed or
+    missing,
+  - added AI bubble-start fallback on `output_audio_buffer.started` in
+    `shader-playground/src/realtime/realtimeEventCoordinator.js`,
+  - updated `shader-playground/src/realtime/utteranceTranscriptionService.js`
+    to promote transcription `fullText` into `record.text` when initial text is
+    empty, ensuring rendered AI bubble text after fallback capture,
+  - added/updated coverage:
+    - `src/tests/realtime/data-channel-event-router.test.js`
+    - `src/tests/realtime/realtime-event-coordinator.test.js`
+    - `src/tests/realtime/utterance-transcription-service.test.js`.
+- 2026-02-15: Milestone C/backend continuation (logging policy extension):
+  - added backend shared logger utility:
+    `backend/src/utils/logger.js` with env-gated debug/info/log
+    (`TINGE_BACKEND_DEBUG_LOGS=1`) while keeping warn/error always visible,
+  - rewired `backend/server.js` extracted modules to use shared logger
+    (`corsOptions`, request logger, startup banner, token/transcribe/knowledge
+    routes),
+  - migrated `backend/src/services/tokenCounter.js` off direct `console.*` to
+    shared logger methods,
+  - `backend/server.js` now 98 LOC and remains composition root,
+  - validated behavior with backend tests/lint:
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- server.js src/utils/logger.js src/services/tokenCounter.js src/config/corsOptions.js src/middleware/requestLogger.js src/logging/startupBanner.js src/routes/tokenRoute.js src/routes/transcribeRoute.js src/routes/knowledgeSearchRoute.js src/routes/tokenUsageRoutes.js`.
+- 2026-02-15: Milestone C/auxiliary continuation (embedding logger policy extension):
+  - added shared logger utility to `embedding-service/logger.js` with
+    env-gated debug/info/log (`TINGE_EMBEDDING_DEBUG_LOGS=1`) while keeping
+    warn/error always visible,
+  - migrated `embedding-service/server.js` off direct `console.*` to shared
+    logger methods,
+  - validated with:
+    - `npm --prefix embedding-service test -- --runInBand`
+    - `npm --prefix embedding-service run lint -- server.js logger.js`.
+- 2026-02-15: Milestone C/backend continuation (extracted module coverage):
+  - added focused module-level tests for extracted backend modules in
+    `backend/tests/modules/extracted-modules.test.mjs`, covering:
+    - `src/utils/logger.js`
+    - `src/config/corsOptions.js`
+    - `src/middleware/requestLogger.js`
+    - `src/logging/startupBanner.js`
+    - `src/routes/tokenRoute.js`
+    - `src/routes/transcribeRoute.js`
+    - `src/routes/knowledgeSearchRoute.js`
+    - `src/routes/tokenUsageRoutes.js`,
+  - added backend script:
+    - `npm --prefix backend run test:modules`,
+  - validated with:
+    - `npm --prefix backend run test:modules`
+    - `npm --prefix backend test -- --runInBand tests/api.test.js tests/server.test.js`
+    - `npm --prefix backend run lint -- tests/modules/extracted-modules.test.mjs`.
+- 2026-02-15: Milestone C/auxiliary continuation (retrieval runtime logger extension):
+  - added retrieval runtime logger utility:
+    `retrieval-service/app/logger.py` with env-gated info/debug
+    (`TINGE_RETRIEVAL_DEBUG_LOGS=1`) and always-visible warnings,
+  - migrated runtime retrieval instrumentation from `print(...)` to logger
+    calls in `retrieval-service/app/search.py`,
+  - validated module syntax with:
+    - `PYTHONPYCACHEPREFIX=/tmp/pycache python3 -m compileall retrieval-service/app`.
+- 2026-02-15: frontend test-runner consolidation (Vitest + Playwright):
+  - removed remaining Jest usage from `shader-playground` script surface:
+    - `test:audio:integration` now uses Vitest
+      (`vitest run tests/integration/audio-integration.test.js`),
+    - updated `shader-playground/scripts/run-audio-tests.js` integration path
+      from Jest to Vitest and switched runner commands to `npx` for
+      PATH-independent execution,
+  - validated with:
+    - `npm --prefix shader-playground run test:audio:integration`
+    - `node shader-playground/scripts/run-audio-tests.js integration`.
+- 2026-02-15: Milestone C/frontend continuation (device profile adapter):
+  - added shared realtime device profile adapter:
+    `shader-playground/src/realtime/deviceProfile.js`,
+  - rewired `shader-playground/src/openaiRealtime.js` mobile-specific timings
+    and debug wiring through `resolveRealtimeDeviceProfile(...)`,
+  - removed unused touch-event counter state from `openaiRealtime.js`,
+  - added unit coverage:
+    - `shader-playground/src/tests/realtime/device-profile.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/device-profile.test.js tests/integration/ptt-interrupt-path.integration.test.js tests/integration/reconnect-ptt-path.integration.test.js`
+    - `npx eslint src/openaiRealtime.js src/realtime/deviceProfile.js src/tests/realtime/device-profile.test.js` (run from `shader-playground`).
+- 2026-02-15: retrieval Python task contract (format/lint/test/typecheck):
+  - added `retrieval-service/Makefile` command surface:
+    - `make format`
+    - `make lint`
+    - `make test`
+    - `make typecheck`
+    - `make check`,
+  - added `retrieval-service/requirements-dev.txt` for dev tooling
+    (`black`, `ruff`, `mypy`),
+  - added baseline unit tests in `retrieval-service/tests/`:
+    - `test_settings.py`
+    - `test_logger.py`,
+  - updated `retrieval-service/README.md` with task-contract usage,
+  - validated with:
+    - `cd retrieval-service && make test`
+    - `PYTHONPYCACHEPREFIX=/tmp/pycache python3 -m compileall retrieval-service/app retrieval-service/tests`.
+- 2026-02-15: script/doc contract cleanup:
+  - updated `embedding-service/package.json` lint scripts to prefer local
+    `eslint` binaries with temporary backend-path fallback for environments
+    missing local eslint installs,
+  - removed root `package.json` Jest scope config and kept root integration
+    ownership explicit via `test:integration`,
+  - refreshed `docs/realtime_hardening_plan.md` to current architecture and
+    remaining follow-up work only.
+- 2026-02-15: Milestone E start (word-ingestion retry/backoff hardening):
+  - added bounded embedding retry/backoff behavior to
+    `shader-playground/src/realtime/wordIngestionService.js` with injectable
+    fetch/timer hooks for deterministic tests,
+  - fallback behavior now explicitly retries before random-point degrade path,
+  - added failure-mode coverage in
+    `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    (retry success + retry exhaustion fallback),
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js`
+    - `npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js` (from `shader-playground`).
+- 2026-02-15: Milestone E continuation (word-ingestion circuit-breaker):
+  - added fail-fast circuit-breaker window to
+    `shader-playground/src/realtime/wordIngestionService.js` after repeated
+    embedding failures,
+  - added embedding health counters and `getEmbeddingHealthStats()` to track
+    retry/fallback/circuit-open/short-circuit/recovery/success transitions,
+  - added deterministic tests in
+    `shader-playground/src/tests/realtime/word-ingestion-service.test.js` for
+    circuit-open short-circuiting and post-cooldown recovery,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js`
+    - `npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js` (from `shader-playground`).
+- 2026-02-15: Milestone F start (retrieval data-asset policy guardrails):
+  - added enforceable retrieval data policy checker:
+    `retrieval-service/scripts/check_data_policy.py`,
+  - added explicit allowlist for intentional oversized assets:
+    `retrieval-service/data/data_asset_allowlist.txt`,
+  - wired policy into retrieval task contract:
+    - `retrieval-service/Makefile` `data-policy`
+    - `retrieval-service/Makefile` `check` includes `data-policy`,
+  - added unittest coverage:
+    - `retrieval-service/tests/test_data_asset_policy.py`,
+  - updated data workflow docs:
+    - `retrieval-service/README.md`
+    - `retrieval-service/data/import/README.md`,
+  - validated with:
+    - `cd retrieval-service && make data-policy`
+    - `cd retrieval-service && make test`.
+- 2026-02-15: Milestone E completion (word-ingestion health diagnostics wiring):
+  - added debug diagnostics helper:
+    `shader-playground/src/realtime/wordIngestionHealthReporter.js`,
+  - wired ingestion health snapshots + error-context stats into
+    `shader-playground/src/main.js` queue processing flow (debug logs only),
+  - added dedicated tests:
+    - `shader-playground/src/tests/realtime/word-ingestion-health-reporter.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js`
+    - `npx eslint src/main.js src/realtime/wordIngestionHealthReporter.js src/tests/realtime/word-ingestion-health-reporter.test.js src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js` (from `shader-playground`).
+- 2026-02-15: Milestone E continuation (word-ingestion browser telemetry events):
+  - extended `shader-playground/src/realtime/wordIngestionHealthReporter.js`
+    with telemetry event constants + callback plumbing,
+  - wired `shader-playground/src/main.js` queue diagnostics to emit:
+    - `tinge:word-ingestion-health`
+    - `tinge:word-ingestion-error`
+    via `window.dispatchEvent(new CustomEvent(...))`,
+  - expanded telemetry assertions in
+    `shader-playground/src/tests/realtime/word-ingestion-health-reporter.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js`
+    - `cd shader-playground && npx eslint src/main.js src/realtime/wordIngestionHealthReporter.js src/tests/realtime/word-ingestion-health-reporter.test.js`.
+- 2026-02-15: Milestone E continuation (word-ingestion telemetry sink extraction):
+  - extracted browser event dispatch/filtering from
+    `shader-playground/src/main.js` into
+    `shader-playground/src/realtime/wordIngestionTelemetrySink.js`,
+  - `main.js` now delegates ingestion telemetry emission via
+    `createWordIngestionTelemetrySink().emit`,
+  - added dedicated tests:
+    - `shader-playground/src/tests/realtime/word-ingestion-telemetry-sink.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-telemetry-sink.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js`
+    - `cd shader-playground && npx eslint src/main.js src/realtime/wordIngestionTelemetrySink.js src/realtime/wordIngestionHealthReporter.js src/tests/realtime/word-ingestion-telemetry-sink.test.js src/tests/realtime/word-ingestion-health-reporter.test.js`.
+- 2026-02-15: Milestone E continuation (non-retryable embedding failure hardening):
+  - updated `shader-playground/src/realtime/wordIngestionService.js` to fail
+    fast on non-retryable embedding HTTP statuses (e.g. 400) while retaining
+    retries for transient statuses (408/429/5xx),
+  - improved fallback warning diagnostics to report actual attempts made,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with:
+    - no retry on HTTP 400,
+    - retry-once and success flow for HTTP 429,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (embedding payload validation hardening):
+  - added embedding payload validation in
+    `shader-playground/src/realtime/wordIngestionService.js` so malformed `200`
+    coordinate payloads fail fast to fallback instead of writing invalid scene
+    positions,
+  - retained compatibility for numeric-string coordinates by coercing validated
+    values before scene writes,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with malformed-payload fallback and numeric-string acceptance coverage,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (circuit signal classification hardening):
+  - updated `shader-playground/src/realtime/wordIngestionService.js` to treat
+    non-retryable failures (`4xx` non-transient + malformed `200` payloads) as
+    fallback-only signals that do not open or feed the outage circuit breaker,
+  - non-retryable failure path now resets failure streak to prevent stale
+    transient-failure carryover into later words,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with assertions that:
+    - non-retryable/malformed failures keep `failureStreak` at `0`,
+    - repeated `400` responses do not trigger circuit open/short-circuit,
+    - `nonRetryableFailures`/`malformedPayloads` stats are tracked,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (strict coordinate parsing hardening):
+  - tightened coordinate parsing in
+    `shader-playground/src/realtime/wordIngestionService.js` to reject
+    `null`/`undefined`/empty-string coordinate values (instead of coercing to
+    `0`) while still accepting numeric-string values,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with malformed payload coverage for:
+    - `null` coordinates,
+    - empty-string coordinates,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (embedding request timeout hardening):
+  - added bounded request-timeout support in
+    `shader-playground/src/realtime/wordIngestionService.js` using abortable
+    fetch handling with injectable timeout/AbortController/timer hooks,
+  - timeout failures are now tracked in ingestion health stats (`timeouts`) and
+    handled as retryable transient failures,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with timeout-retry coverage and timeout stats assertions,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (empty-token ingestion guard):
+  - added defensive early-return in
+    `shader-playground/src/realtime/wordIngestionService.js` for empty or
+    whitespace-only word payloads before bubble/embedding/scene writes,
+  - prevents noisy transcript tokenization artifacts from polluting `usedWords`,
+    dialogue bubbles, and 3D point registry,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with empty/whitespace payload assertions (no fetch, no bubble, no scene write),
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (invalid input-type ingestion guard):
+  - tightened `shader-playground/src/realtime/wordIngestionService.js` input
+    validation to skip non-string word payloads instead of coercing values like
+    numbers/objects into ingestion tokens,
+  - added `skippedWords` diagnostics counter to embedding health stats so
+    dropped empty/non-string tokens are visible in snapshots,
+  - expanded `shader-playground/src/tests/realtime/word-ingestion-service.test.js`
+    with non-string input coverage and skipped-word counter assertions,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone E continuation (oversized-token ingestion guard):
+  - added max token-length guard in
+    `shader-playground/src/realtime/wordIngestionService.js`
+    (`maxWordLength`, default `128`) to skip malformed oversized tokens before
+    bubble/embedding/scene side effects,
+  - expanded ingestion health stats with `oversizedWords` counter,
+  - added oversized-token coverage in
+    `shader-playground/src/tests/realtime/word-ingestion-service.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `cd shader-playground && npx eslint src/realtime/wordIngestionService.js src/tests/realtime/word-ingestion-service.test.js`.
+- 2026-02-15: Milestone F continuation (externalized large-batch defaults):
+  - changed top-level Make defaults for generated wiki batch output to external
+    storage path:
+    - `RAG_LARGE_DATA_DIR=/tmp/tinge-rag-data`
+    - `WIKI_EN_OUTPUT=$(RAG_LARGE_DATA_DIR)/wiki_en_articles.jsonl`,
+  - updated retrieval docs to reflect externalized default output and explicit
+    repo-local override:
+    - `retrieval-service/README.md`
+    - `retrieval-service/data/import/README.md`,
+  - validated with:
+    - `make -n rag-fetch-wiki-en`
+    - `make -n rag-scale-wiki-en`
+    - `python3 retrieval-service/scripts/check_data_policy.py`.
+- 2026-02-15: Milestone F continuation (legacy generated import cleanup):
+  - removed tracked generated batch artifact:
+    `retrieval-service/data/import/wiki_en_articles.jsonl`,
+  - reduced `retrieval-service/data/data_asset_allowlist.txt` to intentional
+    long-lived corpus artifact only,
+  - validated with:
+    - `python3 retrieval-service/scripts/check_data_policy.py`.
+- 2026-02-15: Milestone F continuation (CI policy enforcement):
+  - added non-optional CI guard in `.github/workflows/ci.yml`:
+    - `python3 retrieval-service/scripts/check_data_policy.py`,
+  - retrieval data policy violations now fail PR/push CI early.
+- 2026-02-15: Milestone D continuation (realtime guard test contract):
+  - added explicit frontend script:
+    - `shader-playground/package.json` -> `test:realtime:guards`,
+  - wired non-optional CI step in `.github/workflows/ci.yml`:
+    - `cd shader-playground && npm run test:realtime:guards`,
+  - validated with:
+    - `npm --prefix shader-playground run test:realtime:guards`.
+- 2026-02-15: Milestone D continuation (guard contract expansion):
+  - expanded `test:realtime:guards` to include citation integration guard:
+    - `tests/integration/citation-path.e2e.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:realtime:guards`.
+- 2026-02-15: Milestone D continuation (reconnect timeout integration guard):
+  - expanded `shader-playground/tests/integration/reconnect-ptt-path.integration.test.js`
+    with reconnect timeout coverage where the new data channel remains
+    `connecting` and never opens before `waitForDataChannelOpen` timeout,
+  - guard now asserts safe-fail behavior (`data_channel_not_open`) with no
+    recording start and no `response.cancel`/`input_audio_buffer.clear` sends,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- tests/integration/reconnect-ptt-path.integration.test.js`
+    - `npm --prefix shader-playground run test:realtime:guards`
+    - `cd shader-playground && npx eslint tests/integration/reconnect-ptt-path.integration.test.js`.
+- 2026-02-15: Milestone D continuation (reconnect double-press race hardening):
+  - expanded `shader-playground/tests/integration/reconnect-ptt-path.integration.test.js`
+    to cover rapid double-press during pending reconnect bootstrap,
+  - hardened `shader-playground/src/realtime/pttOrchestrator.js` to return
+    `connecting` after `connect()` when bootstrap is still in-flight,
+    preventing fallback `not_connected` classification in this race window,
+  - added dedicated unit coverage in
+    `shader-playground/src/tests/realtime/ptt-orchestrator.test.js`,
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/ptt-orchestrator.test.js tests/integration/reconnect-ptt-path.integration.test.js`
+    - `npm --prefix shader-playground run test:realtime:guards`
+    - `cd shader-playground && npx eslint src/realtime/pttOrchestrator.js src/tests/realtime/ptt-orchestrator.test.js tests/integration/reconnect-ptt-path.integration.test.js`.
+- 2026-02-15: Milestone A continuation (root test contract guard):
+  - added root contract checker:
+    - `scripts/verify-root-test-contract.js`,
+  - added root script:
+    - `npm run check:root-test-contract`,
+  - wired non-optional CI step in `.github/workflows/ci.yml`:
+    - `npm run check:root-test-contract`,
+  - validated with:
+    - `npm run check:root-test-contract`.
+- 2026-02-15: Milestone A continuation (README contract sync):
+  - updated root README development script section with:
+    - reconnect/PTT guard integration command,
+    - `check:readme-scripts` and `check:root-test-contract` checks,
+  - validated with:
+    - `npm run check:readme-scripts`
+    - `npm run check:root-test-contract`.
+- 2026-02-15: Milestone C continuation (backend module guard in CI):
+  - added non-optional CI step in `.github/workflows/ci.yml`:
+    - `cd backend && npm run test:modules`,
+  - validated with:
+    - `npm --prefix backend run test:modules`.
+- 2026-02-15: Milestone A continuation (embedding lint decoupling complete):
+  - normalized `embedding-service/package.json` lint scripts to local eslint:
+    - `lint`: `eslint .`
+    - `lint:fix`: `eslint . --fix`,
+  - removed temporary backend-binary lint fallback coupling,
+  - validated with:
+    - `npm --prefix embedding-service run lint`
+    - `npm --prefix embedding-service test -- --runInBand`.
+- 2026-02-15: Milestone F continuation (canonical corpus policy documented):
+  - added canonical corpus decision record:
+    - `retrieval-service/data/CORPUS_STORAGE_POLICY.md`,
+  - policy now explicitly defines in-repo corpus decision + trigger-based
+    externalization criteria.
+- 2026-02-15: Milestone B continuation (citation/source-panel integration hardening):
+  - expanded `shader-playground/tests/integration/citation-path.e2e.test.js`
+    assertions to verify source-panel rendering behavior on re-citation
+    (index/title/url/meta),
+  - validated with:
+    - `npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js`
+    - `npm --prefix shader-playground run test:realtime:guards`.
+- 2026-02-15: Milestone F continuation (reintroduction guard):
+  - added `.gitignore` guard for removed generated import artifact:
+    - `retrieval-service/data/import/wiki_en_articles.jsonl`,
+  - prevents accidental re-tracking of oversized generated wiki batch output.
+- 2026-02-16: tech-debt stream close-out checkpoint (maintenance mode):
+  - re-ran maintenance guard suite:
+    - `npm --prefix shader-playground run test:realtime:guards`
+    - `npm --prefix shader-playground run test:run -- src/tests/realtime/word-ingestion-service.test.js src/tests/realtime/async-word-queue.test.js src/tests/realtime/word-ingestion-health-reporter.test.js src/tests/realtime/word-ingestion-telemetry-sink.test.js`
+    - `python3 retrieval-service/scripts/check_data_policy.py`
+  - all checks passed; further work is now incident-driven/maintenance-only
+    unless new concrete regressions appear.
+- 2026-02-16: architecture documentation baseline added for future agents:
+  - created progressive-disclosure architecture docs under `docs/architecture/`,
+  - linked subsystem docs from this file so agents can load only relevant context,
+  - documented composition roots, service ownership boundaries, and guard test map.
 
 ## Recommended Next Work Order
 
-1. Milestone A: script/test/lint consistency across services.
-2. Milestone B: split `shader-playground/src/main.js` by domain boundaries.
-3. Milestone C: split `shader-playground/src/realtime/session.js` and harden reconnect/race handling.
+1. Feature work first: keep this tech-debt stream in maintenance mode.
+2. Runtime guard maintenance: run `test:realtime:guards` + focused ingestion tests when touching realtime/ingestion paths.
+3. Data workflow policy monitoring: keep `check_data_policy.py` green; revisit only if `CORPUS_STORAGE_POLICY.md` triggers are hit.
 
 ## Handoff Notes
 

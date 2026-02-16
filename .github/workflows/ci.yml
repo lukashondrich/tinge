@@ -29,6 +29,12 @@ jobs:
 
     - name: Validate README npm scripts
       run: npm run check:readme-scripts
+
+    - name: Validate root test contract
+      run: npm run check:root-test-contract
+
+    - name: Enforce retrieval data asset policy
+      run: python3 retrieval-service/scripts/check_data_policy.py
     
     - name: Install backend dependencies
       run: |
@@ -39,11 +45,21 @@ jobs:
       run: |
         cd shader-playground
         npm install
+
+    - name: Run realtime guard integration tests
+      run: |
+        cd shader-playground
+        npm run test:realtime:guards
     
     - name: Install embedding service dependencies
       run: |
         cd embedding-service
         npm install
+
+    - name: Run backend extracted-module tests
+      run: |
+        cd backend
+        npm run test:modules
     
     - name: Run backend linting
       run: |

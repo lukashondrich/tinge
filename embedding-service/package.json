@@ -8,8 +8,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "../backend/node_modules/.bin/eslint .",
-    "lint:fix": "../backend/node_modules/.bin/eslint . --fix"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "express": "^4.18.2"

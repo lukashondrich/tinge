@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .config import settings
 from .indexing import build_chunk_records, load_corpus_records
+from .logger import get_logger
+
+logger = get_logger("retrieval-service")
 
 
 class RetrievalService:
@@ -57,8 +60,7 @@ class RetrievalService:
                 "Haystack pipeline components unavailable; using direct BM25 fallback. "
                 f"Detail: {err}"
             )
-            if settings.retrieval_log_timing:
-                print(f"[retrieval] {self._pipeline_warning}")
+            logger.warning(self._pipeline_warning)
             self._bootstrap_error = None
             return
 
@@ -95,8 +97,7 @@ class RetrievalService:
                 "Haystack pipeline graph unavailable; using direct BM25 fallback. "
                 f"Detail: {err}"
             )
-            if settings.retrieval_log_timing:
-                print(f"[retrieval] {self._pipeline_warning}")
+            logger.warning(self._pipeline_warning)
 
         self._dense_retriever = None
         self._pipeline_dense_single = None
@@ -171,8 +172,7 @@ class RetrievalService:
                     "Dense retrieval unavailable; using BM25 only. "
                     f"Detail: {err}"
                 )
-                if settings.retrieval_log_timing:
-                    print(f"[retrieval] {self._dense_warning}")
+                logger.warning(self._dense_warning)
 
         self._bootstrap_error = None
 
@@ -275,14 +275,16 @@ class RetrievalService:
             embedded_docs = output.get("documents", docs)
             if settings.retrieval_log_timing:
                 elapsed = (perf_counter() - started) * 1000.0
-                print(
+                logger.info(
                     f"[retrieval] mode=dense_index_embeddings docs={len(embedded_docs)} "
                     f"model={settings.retrieval_embed_model} elapsed_ms={elapsed:.1f}"
                 )
             return embedded_docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] dense document embedding failed; indexing BM25-only docs ({err})")
+                logger.warning(
+                    f"[retrieval] dense document embedding failed; indexing BM25-only docs ({err})"
+                )
             return docs
 
     def _resolve_branch_top_k(self, final_top_k: int) -> int:
@@ -323,7 +325,7 @@ class RetrievalService:
                 docs = output.get("bm25", {}).get("documents", [])
                 if settings.retrieval_log_timing:
                     elapsed = (perf_counter() - started) * 1000.0
-                    print(
+                    logger.info(
                         f"[retrieval] mode=bm25_pipeline_single "
                         f"query_len={len(queries[0])} docs={len(docs)} elapsed_ms={elapsed:.1f}"
                     )
@@ -346,7 +348,7 @@ class RetrievalService:
                 elapsed = (perf_counter() - started) * 1000.0
                 count_original = len(output.get("bm25_original", {}).get("documents", []))
                 count_en = len(output.get("bm25_en", {}).get("documents", []))
-                print(
+                logger.info(
                     f"[retrieval] mode=bm25_pipeline_dual join={settings.retrieval_query_join_mode} "
                     f"branch_top_k={branch_top_k} original_docs={count_original} "
                     f"query_en_docs={count_en} merged_docs={len(docs)} elapsed_ms={elapsed:.1f}"
@@ -354,7 +356,7 @@ class RetrievalService:
             return docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] pipeline run failed; falling back to legacy bm25 ({err})")
+                logger.warning(f"[retrieval] pipeline run failed; falling back to legacy bm25 ({err})")
             return self._run_legacy_bm25(queries, top_k)
 
     def _run_pipeline_dense(self, queries: Sequence[str], top_k: int) -> List[Any]:
@@ -375,7 +377,7 @@ class RetrievalService:
                 docs = output.get("dense", {}).get("documents", [])
                 if settings.retrieval_log_timing:
                     elapsed = (perf_counter() - started) * 1000.0
-                    print(
+                    logger.info(
                         f"[retrieval] mode=dense_pipeline_single model={settings.retrieval_embed_model} "
                         f"query_len={len(queries[0])} docs={len(docs)} elapsed_ms={elapsed:.1f}"
                     )
@@ -399,7 +401,7 @@ class RetrievalService:
                 elapsed = (perf_counter() - started) * 1000.0
                 count_original = len(output.get("dense_original", {}).get("documents", []))
                 count_en = len(output.get("dense_en", {}).get("documents", []))
-                print(
+                logger.info(
                     f"[retrieval] mode=dense_pipeline_dual model={settings.retrieval_embed_model} "
                     f"join={settings.retrieval_query_join_mode} original_docs={count_original} "
                     f"query_en_docs={count_en} merged_docs={len(docs)} elapsed_ms={elapsed:.1f}"
@@ -407,7 +409,7 @@ class RetrievalService:
             return docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] dense pipeline failed; using BM25-only ({err})")
+                logger.warning(f"[retrieval] dense pipeline failed; using BM25-only ({err})")
             return []
 
     def _rrf_merge_documents(self, ranked_lists: Sequence[Tuple[str, List[Any]]]) -> List[Any]:
@@ -436,7 +438,7 @@ class RetrievalService:
 
         if settings.retrieval_log_timing:
             counts = ", ".join(f"{name}:{len(docs)}" for name, docs in ranked_lists)
-            print(
+            logger.info(
                 f"[retrieval] mode=rrf_merge lists=[{counts}] fused_docs={len(fused_docs)} "
                 f"k={k:.0f}"
             )

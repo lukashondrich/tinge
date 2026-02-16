@@ -9,6 +9,7 @@ export class RealtimeEventCoordinator {
     addWord,
     playAudioFor,
     usedWords,
+    now = () => Date.now(),
     warn = (...args) => logger.warn(...args)
   }) {
     this.bubbleManager = bubbleManager;
@@ -16,6 +17,7 @@ export class RealtimeEventCoordinator {
     this.addWord = addWord;
     this.playAudioFor = playAudioFor;
     this.usedWords = usedWords;
+    this.now = now;
     this.warn = warn;
     this.utteranceEventProcessor = null;
     this.pendingResponseTextBuffer = '';
@@ -29,8 +31,29 @@ export class RealtimeEventCoordinator {
   handleEvent(event) {
     if (!event || typeof event.type !== 'string') return;
 
+    if (event.type === 'assistant.interrupted') {
+      const interruptedUtteranceId = event.utteranceId || `interrupted-${this.now()}`;
+      this.pendingResponseTextMode = 'idle';
+      this.pendingResponseTextBuffer = '';
+      if (typeof this.retrievalCoordinator?.resetStreamingTranscript === 'function') {
+        this.retrievalCoordinator.resetStreamingTranscript();
+      }
+      if (typeof this.bubbleManager?.setUtteranceId === 'function') {
+        this.bubbleManager.setUtteranceId('ai', interruptedUtteranceId);
+      }
+      this.bubbleManager.scheduleFinalize('ai', 0, (words) => {
+        words.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      });
+      return;
+    }
+
     if (event.type === 'input_audio_buffer.speech_started') {
       this.bubbleManager.beginTurn('user');
+      return;
+    }
+
+    if (event.type === 'output_audio_buffer.started') {
+      this.bubbleManager.beginTurn('ai');
       return;
     }
 

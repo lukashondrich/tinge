@@ -256,12 +256,16 @@ npm run dev:embedding      # Embedding service only
 npm test                   # Run all tests
 npm run test:watch         # Watch mode
 npm run test:coverage      # With coverage
+npm --prefix shader-playground run test:realtime:guards
+                           # Reconnect/PTT integration guard tests
 npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js
                            # Citation path integration test
 
 # Linting
 npm run lint              # Lint all services
 npm run lint:fix          # Fix linting issues
+npm run check:readme-scripts      # Verify README script references exist
+npm run check:root-test-contract  # Enforce explicit root test ownership contract
 
 # Docker
 npm run docker:build      # Build containers

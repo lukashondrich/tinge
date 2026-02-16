@@ -172,4 +172,17 @@ describe('RetrievalCitationCoordinator', () => {
     const remapped = coordinator.remapAssistantTextWithPendingCitations('Answer without explicit marker.');
     expect(remapped).toBe('Answer without explicit marker. [3]');
   });
+
+  it('resets streaming transcript and clears pending remap on interruption reset', () => {
+    const citationTurnState = new MockCitationTurnState();
+    const sourcePanel = new MockSourcePanel();
+    const coordinator = new RetrievalCitationCoordinator({ citationTurnState, sourcePanel });
+
+    coordinator.appendStreamingDelta('Partial [1]');
+    expect(coordinator.getStreamingTranscript()).toBe('Partial [1]');
+
+    coordinator.resetStreamingTranscript();
+    expect(coordinator.getStreamingTranscript()).toBe('');
+    expect(citationTurnState.clearPendingCalls).toBe(1);
+  });
 });

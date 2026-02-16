@@ -13,10 +13,12 @@ export class PttOrchestrator {
     checkTokenLimit,
     connect,
     waitForDataChannelOpen = async () => true,
+    interruptAssistantResponse = () => {},
     userAudioMgr,
     onEvent,
     error = () => {},
     makeEventId = () => crypto.randomUUID(),
+    now = () => Date.now(),
     schedule = (...args) => globalThis.setTimeout(...args)
   }) {
     this.getPTTButton = getPTTButton;
@@ -32,10 +34,12 @@ export class PttOrchestrator {
     this.checkTokenLimit = checkTokenLimit;
     this.connect = connect;
     this.waitForDataChannelOpen = waitForDataChannelOpen;
+    this.interruptAssistantResponse = interruptAssistantResponse;
     this.userAudioMgr = userAudioMgr;
     this.onEvent = onEvent;
     this.error = error;
     this.makeEventId = makeEventId;
+    this.now = now;
     this.schedule = schedule;
   }
 
@@ -87,6 +91,9 @@ export class PttOrchestrator {
     if (!this.getIsConnected()) {
       try {
         await this.connect();
+        if (this.getIsConnecting()) {
+          return { allowed: false, reason: 'connecting' };
+        }
         if (!this.getIsConnected()) {
           return { allowed: false, reason: 'not_connected' };
         }
@@ -104,6 +111,13 @@ export class PttOrchestrator {
 
     const dataChannel = this.getDataChannel();
     if (dataChannel && dataChannel.readyState === 'open') {
+      const interruptedUtteranceId = `interrupted-${this.now()}`;
+      dataChannel.send(JSON.stringify({
+        type: 'response.cancel',
+        event_id: this.makeEventId()
+      }));
+      this.interruptAssistantResponse({ interruptedUtteranceId });
+      this.onEvent?.({ type: 'assistant.interrupted', utteranceId: interruptedUtteranceId });
       dataChannel.send(JSON.stringify({
         type: 'input_audio_buffer.clear',
         event_id: this.makeEventId()

@@ -17,19 +17,19 @@ const __dirname = dirname(__filename);
 // Test configuration
 const TEST_CONFIG = {
   unit: {
-    command: 'vitest run --config src/tests/audio/vitest.config.js',
+    command: 'npx vitest run --config src/tests/audio/vitest.config.js',
     description: 'Audio Unit Tests'
   },
   integration: {
-    command: 'jest --config tests/integration/jest.config.js --testPathPattern=audio',
+    command: 'npx vitest run tests/integration/audio-integration.test.js',
     description: 'Audio Integration Tests'
   },
   e2e: {
-    command: 'playwright test --config playwright.config.js',
+    command: 'npx playwright test --config playwright.config.js',
     description: 'Audio E2E Tests'
   },
   coverage: {
-    command: 'vitest run --config src/tests/audio/vitest.config.js --coverage',
+    command: 'npx vitest run --config src/tests/audio/vitest.config.js --coverage',
     description: 'Audio Test Coverage'
   }
 };

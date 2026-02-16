@@ -14,6 +14,7 @@ describe('RealtimeEventCoordinator', () => {
       beginTurn: vi.fn(),
       appendDelta: vi.fn(() => ['done']),
       appendWord: vi.fn(),
+      setUtteranceId: vi.fn(),
       hasActiveDelta: vi.fn(() => false),
       getActiveBubble: vi.fn(() => ({})),
       scheduleFinalize: vi.fn()
@@ -22,7 +23,8 @@ describe('RealtimeEventCoordinator', () => {
       appendStreamingDelta: vi.fn(() => 'mapped'),
       handleFinalTranscript: vi.fn(() => 'final'),
       handleToolSearchResult: vi.fn(() => null),
-      handleToolSearchStarted: vi.fn()
+      handleToolSearchStarted: vi.fn(),
+      resetStreamingTranscript: vi.fn()
     };
     addWord = vi.fn();
     warn = vi.fn();
@@ -43,6 +45,18 @@ describe('RealtimeEventCoordinator', () => {
     expect(retrievalCoordinator.appendStreamingDelta).toHaveBeenCalledWith('hello');
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', 'hello', { displayText: 'mapped' });
     expect(addWord).toHaveBeenCalledWith('done', 'ai', { skipBubble: true });
+  });
+
+  it('starts an AI bubble when output audio begins', () => {
+    coordinator.handleEvent({ type: 'output_audio_buffer.started' });
+    expect(bubbleManager.beginTurn).toHaveBeenCalledWith('ai');
+  });
+
+  it('finalizes active AI bubble when assistant is interrupted by PTT', () => {
+    coordinator.handleEvent({ type: 'assistant.interrupted', utteranceId: 'interrupted-abc' });
+    expect(retrievalCoordinator.resetStreamingTranscript).toHaveBeenCalledTimes(1);
+    expect(bubbleManager.setUtteranceId).toHaveBeenCalledWith('ai', 'interrupted-abc');
+    expect(bubbleManager.scheduleFinalize).toHaveBeenCalledWith('ai', 0, expect.any(Function));
   });
 
   it('handles response.text.delta like transcript delta for progressive AI bubble updates', () => {

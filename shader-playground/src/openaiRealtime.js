@@ -2,29 +2,24 @@
 // Thin facade that wires UI controls to the RealtimeSession engine.
 
 import { RealtimeSession } from './realtime/session.js';
-import { isMobileDevice, createMobileDebug } from './utils/mobile.js';
+import { resolveRealtimeDeviceProfile } from './realtime/deviceProfile.js';
 
-const MOBILE_DEVICE = isMobileDevice();
-const DEVICE_TYPE = MOBILE_DEVICE ? 'mobile' : 'desktop';
-const mobileDebug = createMobileDebug(MOBILE_DEVICE);
+const DEVICE_PROFILE = resolveRealtimeDeviceProfile();
 
 const session = new RealtimeSession({
   apiUrl: __API_URL__,
-  mobileDebug,
-  deviceType: DEVICE_TYPE
+  mobileDebug: DEVICE_PROFILE.mobileDebug,
+  deviceType: DEVICE_PROFILE.deviceType
 });
 
 let pttButton = null;
 let isPTTPressed = false;
 let isFirstConnectionPress = true;
 let lastTouchEventTime = 0;
-let touchEventCount = 0;
-const MOBILE_DEBOUNCE_TIME = MOBILE_DEVICE ? 100 : 0;
-const CONNECTING_FEEDBACK_MS = 1200;
 
 export async function initOpenAIRealtime(streamCallback, eventCallback, usageCallback = null) {
-  if (MOBILE_DEVICE) {
-    mobileDebug('Initializing OpenAI Realtime for mobile device');
+  if (DEVICE_PROFILE.isMobile) {
+    DEVICE_PROFILE.mobileDebug('Initializing OpenAI Realtime for mobile device');
   }
 
   await session.init({
@@ -81,7 +76,7 @@ async function attemptPTTStart() {
           pttButton.innerText = 'Push to Talk';
           pttButton.style.backgroundColor = '#44f';
         }
-      }, CONNECTING_FEEDBACK_MS);
+      }, DEVICE_PROFILE.connectingFeedbackMs);
     }
     return false;
   }
@@ -132,7 +127,7 @@ function finishPTT() {
   if (!isPTTPressed) return;
   isPTTPressed = false;
   session.handlePTTRelease({
-    bufferTime: MOBILE_DEVICE ? 1000 : 500
+    bufferTime: DEVICE_PROFILE.releaseBufferMs
   });
 }
 
@@ -147,9 +142,8 @@ const handleMouseUp = () => {
 
 const handleTouchStart = async (e) => {
   const now = Date.now();
-  touchEventCount++;
 
-  if (MOBILE_DEVICE && (now - lastTouchEventTime) < MOBILE_DEBOUNCE_TIME) {
+  if (DEVICE_PROFILE.isMobile && (now - lastTouchEventTime) < DEVICE_PROFILE.touchDebounceMs) {
     e.preventDefault();
     return;
   }
@@ -208,7 +202,6 @@ export function cleanup() {
   isPTTPressed = false;
   isFirstConnectionPress = true;
   lastTouchEventTime = 0;
-  touchEventCount = 0;
 }
 
 // Show token limit reached message (copied from previous implementation)

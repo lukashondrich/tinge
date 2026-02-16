@@ -21,6 +21,11 @@ export class RetrievalCitationCoordinator {
     return this.aiStreamingTranscript;
   }
 
+  resetStreamingTranscript() {
+    this.aiStreamingTranscript = '';
+    this.citationTurnState.clearPendingAiCitationRemap();
+  }
+
   remapAssistantTextWithPendingCitations(text = '') {
     const pendingMap = this.citationTurnState.getPendingAiCitationRemap();
     const remapped = remapCitationMarkers(text, pendingMap);
