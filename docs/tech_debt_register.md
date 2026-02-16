@@ -11,6 +11,19 @@ Prioritized from a quick repository review on 2026-02-11.
     - `docs/architecture/frontend-correction-transparency.md`
     - updated `frontend-realtime-session`, `backend-api`, `system-overview`,
       and `testing-guardrails` docs to include planned correction pipeline.
+- 2026-02-16 transparent tutoring module Phase B started (detection plumbing):
+  - added realtime `log_correction` tool schema in
+    `shader-playground/src/realtime/sessionConfigurationBuilder.js`,
+  - extended function call dispatch to emit correction-detected events in
+    `shader-playground/src/realtime/functionCallService.js`
+    (`tool.log_correction.detected`),
+  - updated tutor prompts to explicitly call `log_correction` on explicit
+    language corrections:
+    - `shader-playground/public/prompts/systemPrompt.yaml`
+    - `shader-playground/public/prompts/systemPrompt_adapted.yaml`,
+  - added/updated unit coverage:
+    - `shader-playground/src/tests/realtime/session-configuration-builder.test.js`
+    - `shader-playground/src/tests/realtime/function-call-service.test.js`.
 - Milestone A: largely completed
   - repo hygiene cleanup landed (artifact/backup removal + ignore guards),
   - root/docs script drift guard added (`check:readme-scripts`) and wired into CI,

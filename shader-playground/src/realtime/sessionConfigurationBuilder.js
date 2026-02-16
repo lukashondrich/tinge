@@ -177,6 +177,38 @@ const SESSION_TOOLS = [
       },
       required: ['query_original', 'query_en']
     }
+  },
+  {
+    type: 'function',
+    name: 'log_correction',
+    description: 'Call whenever you explicitly correct learner language usage. Emit one call per distinct correction.',
+    parameters: {
+      type: 'object',
+      properties: {
+        original: {
+          type: 'string',
+          description: 'The original learner phrase that needs correction.'
+        },
+        corrected: {
+          type: 'string',
+          description: 'The corrected target phrase.'
+        },
+        correction_type: {
+          type: 'string',
+          enum: ['grammar', 'vocabulary', 'pronunciation', 'style_register'],
+          description: 'Correction category.'
+        },
+        learner_excerpt: {
+          type: 'string',
+          description: 'Optional short excerpt of learner utterance context.'
+        },
+        assistant_excerpt: {
+          type: 'string',
+          description: 'Optional short excerpt of assistant correction context.'
+        }
+      },
+      required: ['original', 'corrected', 'correction_type']
+    }
   }
 ];
 

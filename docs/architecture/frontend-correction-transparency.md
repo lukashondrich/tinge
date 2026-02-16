@@ -1,24 +1,26 @@
-# Frontend Correction Transparency (Planned)
+# Frontend Correction Transparency
 
 ## Scope
 
-Planned correction verifiability flow for realtime tutoring:
+Correction verifiability flow for realtime tutoring:
 - correction detection event capture,
 - async verification orchestration,
 - bubble-level correction rendering,
 - learner feedback persistence.
 
-Status: planning only (no runtime implementation yet).
+Status:
+- detection plumbing implemented,
+- verification + UI rendering still planned.
 
-## Planned Module Ownership
+## Module Ownership
 
 Realtime/session layer:
 - `shader-playground/src/realtime/sessionConfigurationBuilder.js`
-  - add `log_correction` tool schema.
+  - contains `log_correction` tool schema.
 - `shader-playground/src/realtime/functionCallService.js`
-  - parse and dispatch `log_correction` tool calls.
+  - parses and dispatches `log_correction` tool calls.
 - `shader-playground/src/realtime/realtimeEventCoordinator.js`
-  - mediate correction lifecycle events into bubble updates.
+  - planned mediation of correction lifecycle events into bubble updates.
 
 New frontend services (planned):
 - `shader-playground/src/realtime/correctionVerificationService.js`
@@ -33,17 +35,17 @@ UI layer:
   - expandable correction card,
   - feedback actions.
 
-## Planned Event Contract
+## Event Contract
 
-Detected:
+Implemented:
 - `tool.log_correction.detected`
 
-Verification lifecycle:
+Planned verification lifecycle:
 - `correction.verification.started`
 - `correction.verification.succeeded`
 - `correction.verification.failed`
 
-Feedback lifecycle:
+Planned feedback lifecycle:
 - `correction.feedback.updated`
 
 ## Planned State Model

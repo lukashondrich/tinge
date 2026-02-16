@@ -14,7 +14,8 @@ describe('sessionConfigurationBuilder', () => {
     expect(payload.session.tools.map((tool) => tool.name)).toEqual([
       'get_user_profile',
       'update_user_profile',
-      'search_knowledge'
+      'search_knowledge',
+      'log_correction'
     ]);
   });
 
@@ -35,5 +36,13 @@ describe('sessionConfigurationBuilder', () => {
 
     expect(searchTool).toBeTruthy();
     expect(searchTool.parameters.required).toEqual(['query_original', 'query_en']);
+  });
+
+  it('includes correction logging tool schema with required fields', () => {
+    const payload = buildSessionUpdate();
+    const correctionTool = payload.session.tools.find((tool) => tool.name === 'log_correction');
+
+    expect(correctionTool).toBeTruthy();
+    expect(correctionTool.parameters.required).toEqual(['original', 'corrected', 'correction_type']);
   });
 });

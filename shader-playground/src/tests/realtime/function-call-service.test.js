@@ -16,6 +16,8 @@ describe('FunctionCallService', () => {
       onEvent,
       sendJson,
       makeEventId: () => 'evt-fixed',
+      makeCorrectionId: () => 'corr-fixed',
+      nowIso: () => '2026-02-16T12:00:00.000Z',
       error,
       ...overrides
     });
@@ -85,5 +87,62 @@ describe('FunctionCallService', () => {
     expect(error).toHaveBeenCalledWith('Unknown function call: unknown_tool');
     const output = JSON.parse(sendJson.mock.calls[0][0].item.output);
     expect(output).toEqual({ error: 'Unknown function: unknown_tool' });
+  });
+
+  it('emits correction detected event for log_correction and returns success output', async () => {
+    const { service, onEvent, sendJson } = createService();
+    await service.handleFunctionCall({
+      name: 'log_correction',
+      arguments: JSON.stringify({
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        learner_excerpt: 'yo tengo hambre mucho hoy',
+        assistant_excerpt: 'Dirias: tengo mucha hambre.'
+      }),
+      call_id: 'call-5'
+    });
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'tool.log_correction.detected',
+      correction: {
+        id: 'corr-fixed',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        learner_excerpt: 'yo tengo hambre mucho hoy',
+        assistant_excerpt: 'Dirias: tengo mucha hambre.',
+        source: 'tool_call',
+        status: 'detected',
+        detected_at: '2026-02-16T12:00:00.000Z'
+      }
+    });
+
+    const output = JSON.parse(sendJson.mock.calls[0][0].item.output);
+    expect(output).toEqual({
+      success: true,
+      correction_id: 'corr-fixed'
+    });
+  });
+
+  it('returns validation error for invalid log_correction payload', async () => {
+    const { service, sendJson, onEvent } = createService();
+    await service.handleFunctionCall({
+      name: 'log_correction',
+      arguments: JSON.stringify({
+        original: 'hola',
+        corrected: 'hola',
+        correction_type: 'style'
+      }),
+      call_id: 'call-6'
+    });
+
+    expect(onEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tool.log_correction.detected' })
+    );
+    const output = JSON.parse(sendJson.mock.calls[0][0].item.output);
+    expect(output).toEqual({
+      error: 'Invalid correction_type: style'
+    });
   });
 });

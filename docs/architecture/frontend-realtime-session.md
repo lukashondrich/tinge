@@ -91,15 +91,17 @@ Release (`PttOrchestrator.handlePTTRelease`):
 
 It also owns AI recording capture lifecycle (`aiAudioMgr`) and emits `utterance.added` after stop/transcribe.
 
-## Planned Extension: Correction Transparency
+## Correction Transparency Extension
 
-Planned `log_correction` integration points:
+Implemented in Phase B:
 - tool schema addition in `sessionConfigurationBuilder.js`,
 - function dispatch in `functionCallService.js`,
+- emitted event: `tool.log_correction.detected`.
+
+Planned next steps:
 - event mediation in `realtimeEventCoordinator.js`.
 
 Planned frontend events:
-- `tool.log_correction.detected`
 - `correction.verification.started`
 - `correction.verification.succeeded`
 - `correction.verification.failed`

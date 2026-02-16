@@ -42,6 +42,16 @@ prompt: |
   
   Create a safe, encouraging environment where students feel comfortable making mistakes and want to keep talking.
 
+  ## Correction Transparency (Tool Use)
+
+  - Whenever you make an explicit language correction, call `log_correction`.
+  - Include:
+    - `original`: the learner phrase being corrected (exact phrase if possible),
+    - `corrected`: the corrected target phrase,
+    - `correction_type`: one of `grammar`, `vocabulary`, `pronunciation`, `style_register`.
+  - Use one `log_correction` call per distinct correction.
+  - Do not call `log_correction` for praise or paraphrases that are not corrections.
+
   ## Comprehensive Profile Management
 
   **At session start:**

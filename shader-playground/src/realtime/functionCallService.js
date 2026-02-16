@@ -6,6 +6,8 @@ export class FunctionCallService {
     onEvent,
     sendJson,
     makeEventId = () => crypto.randomUUID(),
+    makeCorrectionId = () => `corr_${crypto.randomUUID()}`,
+    nowIso = () => new Date().toISOString(),
     error = () => {}
   }) {
     this.getUserProfile = getUserProfile;
@@ -14,6 +16,8 @@ export class FunctionCallService {
     this.onEvent = onEvent;
     this.sendJson = sendJson;
     this.makeEventId = makeEventId;
+    this.makeCorrectionId = makeCorrectionId;
+    this.nowIso = nowIso;
     this.error = error;
   }
 
@@ -55,6 +59,53 @@ export class FunctionCallService {
     });
   }
 
+  normalizeCorrectionArgs(args = {}) {
+    const original = typeof args.original === 'string' ? args.original.trim() : '';
+    const corrected = typeof args.corrected === 'string' ? args.corrected.trim() : '';
+    const correctionType = typeof args.correction_type === 'string'
+      ? args.correction_type.trim()
+      : '';
+    const allowedCorrectionTypes = new Set([
+      'grammar',
+      'vocabulary',
+      'pronunciation',
+      'style_register'
+    ]);
+
+    if (!original || !corrected || !correctionType) {
+      return { error: 'log_correction requires original, corrected, and correction_type' };
+    }
+    if (!allowedCorrectionTypes.has(correctionType)) {
+      return { error: `Invalid correction_type: ${correctionType}` };
+    }
+
+    const normalized = {
+      id: this.makeCorrectionId(),
+      original,
+      corrected,
+      correction_type: correctionType,
+      source: 'tool_call',
+      status: 'detected',
+      detected_at: this.nowIso()
+    };
+
+    if (typeof args.learner_excerpt === 'string' && args.learner_excerpt.trim()) {
+      normalized.learner_excerpt = args.learner_excerpt.trim();
+    }
+    if (typeof args.assistant_excerpt === 'string' && args.assistant_excerpt.trim()) {
+      normalized.assistant_excerpt = args.assistant_excerpt.trim();
+    }
+
+    return normalized;
+  }
+
+  emitCorrectionDetected(correction) {
+    this.onEvent?.({
+      type: 'tool.log_correction.detected',
+      correction
+    });
+  }
+
   async dispatchFunctionCall(event, args) {
     if (event.name === 'get_user_profile') {
       return this.getUserProfile(args);
@@ -71,6 +122,17 @@ export class FunctionCallService {
         args
       });
       return searchPayload.data;
+    }
+    if (event.name === 'log_correction') {
+      const correction = this.normalizeCorrectionArgs(args);
+      if (correction.error) {
+        return { error: correction.error };
+      }
+      this.emitCorrectionDetected(correction);
+      return {
+        success: true,
+        correction_id: correction.id
+      };
     }
 
     this.error(`Unknown function call: ${event.name}`);
