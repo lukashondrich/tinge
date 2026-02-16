@@ -107,7 +107,8 @@ Implemented in Phase C:
   - `correction.verification.failed`
 
 Planned next steps:
-- event mediation + rendering integration in `realtimeEventCoordinator.js` / dialogue UI.
+- wire explicit feedback event emissions (`correction.feedback.updated`) back into
+  realtime/session event surface (UI currently persists feedback directly).
 
 Planned frontend events:
 - `correction.feedback.updated`

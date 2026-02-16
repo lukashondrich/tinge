@@ -61,7 +61,7 @@ Current status and minimum matrix:
   - implemented in `shader-playground/src/tests/realtime/function-call-service.test.js`
   - covers `log_correction` parse/dispatch and verification lifecycle events.
 - Frontend event/UI path:
-  - pending:
+  - implemented:
     - `shader-playground/src/tests/realtime/realtime-event-coordinator.test.js`
     - `shader-playground/src/tests/audio/dialogue-panel.test.js`.
 - Backend verification route:

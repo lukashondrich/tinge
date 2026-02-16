@@ -6,6 +6,7 @@ export class RealtimeEventCoordinator {
   constructor({
     bubbleManager,
     retrievalCoordinator,
+    panel = null,
     addWord,
     playAudioFor,
     usedWords,
@@ -14,6 +15,7 @@ export class RealtimeEventCoordinator {
   }) {
     this.bubbleManager = bubbleManager;
     this.retrievalCoordinator = retrievalCoordinator;
+    this.panel = panel;
     this.addWord = addWord;
     this.playAudioFor = playAudioFor;
     this.usedWords = usedWords;
@@ -22,10 +24,46 @@ export class RealtimeEventCoordinator {
     this.utteranceEventProcessor = null;
     this.pendingResponseTextBuffer = '';
     this.pendingResponseTextMode = 'idle';
+    this.pendingCorrectionIds = [];
+    this.correctionsById = new Map();
   }
 
   setUtteranceEventProcessor(processor) {
     this.utteranceEventProcessor = processor;
+  }
+
+  enqueuePendingCorrection(correctionId) {
+    if (!correctionId) return;
+    if (!this.pendingCorrectionIds.includes(correctionId)) {
+      this.pendingCorrectionIds.push(correctionId);
+    }
+  }
+
+  flushPendingCorrections() {
+    if (!this.panel || typeof this.panel.upsertCorrection !== 'function') return;
+    if (!this.pendingCorrectionIds.length) return;
+
+    const stillPending = [];
+    this.pendingCorrectionIds.forEach((correctionId) => {
+      const correction = this.correctionsById.get(correctionId);
+      if (!correction) return;
+      const attached = this.panel.upsertCorrection(correction);
+      if (!attached) {
+        stillPending.push(correctionId);
+      }
+    });
+    this.pendingCorrectionIds = stillPending;
+  }
+
+  upsertCorrectionState(correctionId, patch = {}) {
+    const existing = this.correctionsById.get(correctionId) || { id: correctionId };
+    const merged = {
+      ...existing,
+      ...patch,
+      id: correctionId
+    };
+    this.correctionsById.set(correctionId, merged);
+    return merged;
   }
 
   handleEvent(event) {
@@ -54,6 +92,67 @@ export class RealtimeEventCoordinator {
 
     if (event.type === 'output_audio_buffer.started') {
       this.bubbleManager.beginTurn('ai');
+      this.flushPendingCorrections();
+      return;
+    }
+
+    if (event.type === 'tool.log_correction.detected' && event.correction?.id) {
+      const correction = this.upsertCorrectionState(event.correction.id, event.correction);
+      const attached = this.panel?.upsertCorrection?.(correction);
+      if (!attached) {
+        this.enqueuePendingCorrection(correction.id);
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.started' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        status: 'verifying'
+      });
+      const attached = this.panel?.upsertCorrection?.(correction);
+      if (!attached) {
+        this.enqueuePendingCorrection(correction.id);
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.succeeded' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        ...(event.verification || {}),
+        status: 'verified',
+        error: ''
+      });
+      const applied = this.panel?.updateCorrectionVerification?.(event.correctionId, {
+        status: 'verified',
+        verification: event.verification
+      });
+      if (!applied) {
+        const attached = this.panel?.upsertCorrection?.(correction);
+        if (!attached) {
+          this.enqueuePendingCorrection(correction.id);
+        }
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.failed' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        status: 'failed',
+        error: event.error || ''
+      });
+      const applied = this.panel?.updateCorrectionVerification?.(event.correctionId, {
+        status: 'failed',
+        error: event.error || ''
+      });
+      if (!applied) {
+        const attached = this.panel?.upsertCorrection?.(correction);
+        if (!attached) {
+          this.enqueuePendingCorrection(correction.id);
+        }
+      }
       return;
     }
 
@@ -63,6 +162,7 @@ export class RealtimeEventCoordinator {
         displayText: remappedStreamingTranscript
       });
       completedWords.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      this.flushPendingCorrections();
       return;
     }
 
@@ -75,6 +175,7 @@ export class RealtimeEventCoordinator {
         displayText: remappedStreamingTranscript
       });
       completedWords.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      this.flushPendingCorrections();
       return;
     }
 
@@ -106,6 +207,7 @@ export class RealtimeEventCoordinator {
         event.record,
         event.deviceType || 'unknown'
       );
+      this.flushPendingCorrections();
       return;
     }
 

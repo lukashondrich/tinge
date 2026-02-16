@@ -73,6 +73,8 @@ Interruption path:
 
 Note:
 - this file still has direct `console.*` and complex enhancement logic; treat changes here as higher regression risk.
+- correction transparency UI (badge/expandable card/feedback) now also lives in
+  `DialoguePanel`, increasing coupling risk for transcript rendering changes.
 
 ## Key Tests
 

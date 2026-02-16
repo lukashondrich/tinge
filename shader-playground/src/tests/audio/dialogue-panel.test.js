@@ -78,6 +78,7 @@ describe('DialoguePanel Audio Functionality', () => {
   let panel;
   let container;
   let DialoguePanel;
+  let CorrectionStore;
 
   beforeAll(async () => {
     // Mock console methods to avoid noise in tests
@@ -88,6 +89,8 @@ describe('DialoguePanel Audio Functionality', () => {
     // Import DialoguePanel after setting up all mocks
     const module = await import('../../ui/dialoguePanel.js');
     DialoguePanel = module.DialoguePanel;
+    const correctionStoreModule = await import('../../core/correctionStore.js');
+    CorrectionStore = correctionStoreModule.CorrectionStore;
   });
 
   beforeEach(() => {
@@ -101,6 +104,13 @@ describe('DialoguePanel Audio Functionality', () => {
     // Reset DOM
     container = document.getElementById('transcriptContainer');
     container.innerHTML = '';
+    try {
+      if (globalThis.window?.localStorage) {
+        globalThis.window.localStorage.clear();
+      }
+    } catch {
+      // localStorage may be unavailable for opaque-origin JSDOM
+    }
     
     // Create fresh DialoguePanel instance
     panel = new DialoguePanel('#transcriptContainer', { debounceMs: 0 });
@@ -468,6 +478,86 @@ describe('DialoguePanel Audio Functionality', () => {
 
       expect(currentBubble.textContent).toContain('Final user utterance');
       expect(oldBubble.querySelector('.highlighted-text').textContent).toContain('Speaking...');
+    });
+  });
+
+  describe('Correction UI', () => {
+    test('attaches correction indicator to latest AI bubble and expands details', async () => {
+      await panel.add({
+        id: 'ai-1',
+        speaker: 'ai',
+        text: 'Tengo hambre mucho.'
+      });
+
+      const attached = panel.upsertCorrection({
+        id: 'corr-1',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        status: 'detected'
+      });
+
+      expect(attached).toBe(true);
+      const toggle = container.querySelector('.correction-toggle');
+      expect(toggle).toBeTruthy();
+      expect(toggle.textContent).toContain('Correction');
+
+      const details = container.querySelector('.correction-details');
+      expect(details.hidden).toBe(true);
+
+      toggle.click();
+      expect(container.querySelector('.correction-details').hidden).toBe(false);
+      expect(container.textContent).toContain('Your phrase: tengo hambre mucho');
+      expect(container.textContent).toContain('Correction: tengo mucha hambre');
+    });
+
+    test('updates correction verification state and persists feedback', async () => {
+      const storageData = new Map();
+      const storage = {
+        getItem: (key) => (storageData.has(key) ? storageData.get(key) : null),
+        setItem: (key, value) => storageData.set(key, value),
+        clear: () => storageData.clear()
+      };
+      panel = new DialoguePanel('#transcriptContainer', {
+        debounceMs: 0,
+        correctionStore: new CorrectionStore({ storage })
+      });
+
+      await panel.add({
+        id: 'ai-2',
+        speaker: 'ai',
+        text: 'Dirias tengo mucha hambre.'
+      });
+
+      panel.upsertCorrection({
+        id: 'corr-2',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        status: 'detected'
+      });
+      panel.updateCorrectionVerification('corr-2', {
+        status: 'verified',
+        verification: {
+          rule: 'Adjective agreement and position.',
+          confidence: 0.82
+        }
+      });
+
+      container.querySelector('.correction-toggle').click();
+      expect(container.textContent).toContain('Verified');
+      expect(container.textContent).toContain('Adjective agreement and position.');
+      expect(container.textContent).toContain('confidence 82%');
+
+      const agreeBtn = Array.from(container.querySelectorAll('.correction-feedback-btn'))
+        .find((btn) => btn.textContent === 'Agree');
+      agreeBtn.click();
+      const updatedAgreeBtn = Array.from(container.querySelectorAll('.correction-feedback-btn'))
+        .find((btn) => btn.textContent === 'Agree');
+      expect(updatedAgreeBtn.classList.contains('is-active')).toBe(true);
+
+      const stored = JSON.parse(storage.getItem('correction_history_student_001'));
+      expect(stored.corrections.find((item) => item.id === 'corr-2').user_feedback).toBe('agree');
     });
   });
 

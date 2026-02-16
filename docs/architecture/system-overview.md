@@ -38,7 +38,8 @@
 3. Frontend asynchronously calls backend `POST /corrections/verify`.
 4. Backend queries verifier model and returns structured rule/confidence payload.
 5. Frontend verification lifecycle events are emitted to UI coordination path.
-6. Planned next: bubble indicator/rendering + learner feedback persistence.
+6. Dialogue bubbles render correction indicator + expandable details and persist
+   learner agree/disagree feedback in local correction history storage.
 
 ## End-to-End Embedding Path (Word Ingestion)
 

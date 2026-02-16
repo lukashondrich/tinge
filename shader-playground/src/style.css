@@ -225,6 +225,94 @@ body{background:var(--canvas);}      /* or panel */
   background: rgba(0, 0, 0, 0.1);
 }
 
+.correction-widget {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.correction-toggle {
+  align-self: flex-start;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.55);
+  color: #111;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: "DM Mono", "Courier New", monospace;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.correction-details {
+  border: 1px dashed rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.correction-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #111;
+}
+
+.correction-status {
+  font-family: "DM Mono", "Courier New", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+}
+
+.correction-status.status-verified {
+  color: #0b8a3a;
+}
+
+.correction-status.status-failed {
+  color: #b42318;
+}
+
+.correction-status.status-verifying {
+  color: #7a5b00;
+}
+
+.correction-line.original {
+  color: #9b1c1c;
+}
+
+.correction-line.corrected {
+  color: #0a7a35;
+}
+
+.correction-rule {
+  color: #2f2f2f;
+}
+
+.correction-feedback {
+  display: flex;
+  gap: 6px;
+}
+
+.correction-feedback-btn {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: #fff;
+  color: #111;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: "DM Mono", "Courier New", monospace;
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+
+.correction-feedback-btn.is-active {
+  border-color: #0a7a35;
+  background: rgba(10, 122, 53, 0.12);
+}
+
 .onboarding-overlay {
   position: fixed;
   inset: 0;

@@ -207,6 +207,7 @@ createScene().then(async ({ scene, camera, mesh, optimizer, dummy, numPoints: _n
   realtimeEventCoordinator = new RealtimeEventCoordinator({
     bubbleManager,
     retrievalCoordinator,
+    panel,
     addWord,
     playAudioFor,
     usedWords,

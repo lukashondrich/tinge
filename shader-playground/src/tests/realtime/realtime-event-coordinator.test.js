@@ -4,6 +4,7 @@ import { RealtimeEventCoordinator } from '../../realtime/realtimeEventCoordinato
 describe('RealtimeEventCoordinator', () => {
   let bubbleManager;
   let retrievalCoordinator;
+  let panel;
   let addWord;
   let warn;
   let usedWords;
@@ -26,6 +27,10 @@ describe('RealtimeEventCoordinator', () => {
       handleToolSearchStarted: vi.fn(),
       resetStreamingTranscript: vi.fn()
     };
+    panel = {
+      upsertCorrection: vi.fn(() => true),
+      updateCorrectionVerification: vi.fn(() => true)
+    };
     addWord = vi.fn();
     warn = vi.fn();
     usedWords = new Set();
@@ -33,6 +38,7 @@ describe('RealtimeEventCoordinator', () => {
     coordinator = new RealtimeEventCoordinator({
       bubbleManager,
       retrievalCoordinator,
+      panel,
       addWord,
       playAudioFor: vi.fn(),
       usedWords,
@@ -108,6 +114,50 @@ describe('RealtimeEventCoordinator', () => {
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', '', { displayText: 'mapped-stream' });
     coordinator.handleEvent({ type: 'tool.search_knowledge.started', args: { query_original: 'q' } });
     expect(retrievalCoordinator.handleToolSearchStarted).toHaveBeenCalledWith({ query_original: 'q' });
+  });
+
+  it('routes correction detection and verification lifecycle events to panel', () => {
+    coordinator.handleEvent({
+      type: 'tool.log_correction.detected',
+      correction: {
+        id: 'corr-1',
+        original: 'a',
+        corrected: 'b',
+        correction_type: 'grammar',
+        status: 'detected'
+      }
+    });
+    expect(panel.upsertCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'corr-1', status: 'detected' })
+    );
+
+    coordinator.handleEvent({
+      type: 'correction.verification.started',
+      correctionId: 'corr-1'
+    });
+    expect(panel.upsertCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'corr-1', status: 'verifying' })
+    );
+
+    coordinator.handleEvent({
+      type: 'correction.verification.succeeded',
+      correctionId: 'corr-1',
+      verification: { rule: 'rule', confidence: 0.9 }
+    });
+    expect(panel.updateCorrectionVerification).toHaveBeenCalledWith('corr-1', {
+      status: 'verified',
+      verification: { rule: 'rule', confidence: 0.9 }
+    });
+
+    coordinator.handleEvent({
+      type: 'correction.verification.failed',
+      correctionId: 'corr-1',
+      error: 'timeout'
+    });
+    expect(panel.updateCorrectionVerification).toHaveBeenCalledWith('corr-1', {
+      status: 'failed',
+      error: 'timeout'
+    });
   });
 
   it('applies final transcript to AI bubble when done event arrives', () => {

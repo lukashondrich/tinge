@@ -1,6 +1,6 @@
 # Transparent Tutoring Module (Correction Verifiability)
 
-Status: In progress (Phase B and Phase C baseline implemented)
+Status: In progress (Phase B, C, and D baseline implemented)
 Last updated: 2026-02-16
 Branch: `feature/transparent-tutoring-module`
 
@@ -244,9 +244,9 @@ UI expectations:
 
 ### Phase D: Bubble UI
 
-- Add correction badge + expandable card to dialogue bubbles.
-- Add feedback controls and persistence.
-- Add UI behavior tests.
+- Add correction badge + expandable card to dialogue bubbles. (implemented)
+- Add feedback controls and persistence. (implemented with local correction store)
+- Add UI behavior tests. (implemented)
 
 ### Phase E: Stabilization
 

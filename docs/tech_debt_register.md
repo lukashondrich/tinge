@@ -37,6 +37,19 @@ Prioritized from a quick repository review on 2026-02-11.
     - `backend/tests/modules/extracted-modules.test.mjs`
     - `shader-playground/src/tests/realtime/correction-verification-service.test.js`
     - `shader-playground/src/tests/realtime/function-call-service.test.js`.
+- 2026-02-16 transparent tutoring module Phase D started (bubble UI + local persistence):
+  - added local correction history store:
+    - `shader-playground/src/core/correctionStore.js`,
+  - wired correction lifecycle rendering into dialogue bubbles:
+    - `shader-playground/src/ui/dialoguePanel.js`
+    - `shader-playground/src/realtime/realtimeEventCoordinator.js`
+    - `shader-playground/src/main.js`,
+  - added correction badge/expandable details/feedback styling in:
+    - `shader-playground/src/style.css`,
+  - added/updated coverage:
+    - `shader-playground/src/tests/audio/dialogue-panel.test.js`
+    - `shader-playground/src/tests/realtime/realtime-event-coordinator.test.js`
+    - `shader-playground/src/tests/realtime/correction-store.test.js`.
 - Milestone A: largely completed
   - repo hygiene cleanup landed (artifact/backup removal + ignore guards),
   - root/docs script drift guard added (`check:readme-scripts`) and wired into CI,

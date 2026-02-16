@@ -1,4 +1,5 @@
 // src/ui/dialoguePanel.js
+import { CorrectionStore } from '../core/correctionStore.js';
 
 // Single AudioContext for playback
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -24,6 +25,7 @@ async function ensureAudioContext() {
     }
   }
 }
+
 const bufferCache = new Map();
 
 function getAudioConstructor() {
@@ -133,6 +135,17 @@ function stopActiveAudio() {
 }
 
 const DEFAULT_CLICK_DEBOUNCE_MS = 100;
+const CORRECTION_FEEDBACK_VALUES = Object.freeze({
+  AGREE: 'agree',
+  DISAGREE: 'disagree'
+});
+
+function getCorrectionStatusLabel(status) {
+  if (status === 'verified') return 'Verified';
+  if (status === 'failed') return 'Verify failed';
+  if (status === 'verifying') return 'Verifying...';
+  return 'Detected';
+}
 
 export class DialoguePanel {
     constructor(containerSelector, options = {}) {
@@ -144,6 +157,7 @@ export class DialoguePanel {
         ? Math.max(0, options.debounceMs)
         : DEFAULT_CLICK_DEBOUNCE_MS;
       this.lastClickTime = null;
+      this.correctionStore = options.correctionStore || new CorrectionStore();
     }
 
     isDebounced() {
@@ -156,6 +170,225 @@ export class DialoguePanel {
       }
       this.lastClickTime = now;
       return false;
+    }
+
+    getLatestBubbleForSpeaker(speaker) {
+      const bubbles = this.container.querySelectorAll(`.bubble.${speaker}`);
+      if (!bubbles.length) return null;
+      return bubbles[bubbles.length - 1];
+    }
+
+    findBubbleByCorrectionId(correctionId) {
+      const bubbles = this.container.querySelectorAll('.bubble.ai');
+      for (let i = 0; i < bubbles.length; i += 1) {
+        const bubble = bubbles[i];
+        if (!bubble.__corrections || !(bubble.__corrections instanceof Map)) continue;
+        if (bubble.__corrections.has(correctionId)) {
+          return bubble;
+        }
+      }
+      return null;
+    }
+
+    ensureBubbleCorrectionMap(bubble) {
+      if (!bubble.__corrections || !(bubble.__corrections instanceof Map)) {
+        bubble.__corrections = new Map();
+      }
+      return bubble.__corrections;
+    }
+
+    upsertCorrection(correction = {}) {
+      const correctionId = typeof correction.id === 'string' ? correction.id.trim() : '';
+      if (!correctionId) return false;
+
+      this.correctionStore.upsertCorrection(correction);
+
+      let bubble = this.findBubbleByCorrectionId(correctionId);
+      if (!bubble) {
+        bubble = this.getLatestBubbleForSpeaker('ai');
+      }
+      if (!bubble) return false;
+
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const existing = correctionMap.get(correctionId) || {};
+      correctionMap.set(correctionId, {
+        ...existing,
+        ...correction,
+        id: correctionId,
+        status: correction.status || existing.status || 'detected'
+      });
+      this.renderCorrectionWidget(bubble);
+      return true;
+    }
+
+    updateCorrectionVerification(correctionId, {
+      status,
+      verification = null,
+      error = ''
+    } = {}) {
+      if (!correctionId) return false;
+
+      const bubble = this.findBubbleByCorrectionId(correctionId);
+      if (!bubble) return false;
+
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const existing = correctionMap.get(correctionId);
+      if (!existing) return false;
+
+      const patch = {
+        status: status || existing.status,
+        error: error || ''
+      };
+      if (verification && typeof verification === 'object') {
+        patch.rule = verification.rule;
+        patch.confidence = verification.confidence;
+        patch.category = verification.category;
+        patch.is_ambiguous = verification.is_ambiguous;
+        patch.model = verification.model;
+        patch.verified_at = verification.verified_at;
+      }
+
+      correctionMap.set(correctionId, {
+        ...existing,
+        ...patch
+      });
+
+      this.correctionStore.upsertVerification(correctionId, {
+        status: patch.status,
+        verification,
+        error: patch.error
+      });
+      this.renderCorrectionWidget(bubble);
+      return true;
+    }
+
+    handleCorrectionFeedback(bubble, correctionId, feedback) {
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const existing = correctionMap.get(correctionId);
+      if (!existing) return;
+
+      correctionMap.set(correctionId, {
+        ...existing,
+        user_feedback: feedback
+      });
+      this.correctionStore.setFeedback(correctionId, feedback);
+      this.renderCorrectionWidget(bubble);
+    }
+
+    renderCorrectionWidget(bubble) {
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const corrections = Array.from(correctionMap.values());
+      let widget = bubble.querySelector('.correction-widget');
+
+      if (!corrections.length) {
+        if (widget) widget.remove();
+        return;
+      }
+
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.className = 'correction-widget';
+        bubble.appendChild(widget);
+      }
+
+      const isOpen = bubble.dataset.correctionOpen === '1';
+      widget.innerHTML = '';
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'correction-toggle';
+      toggle.textContent = corrections.length > 1
+        ? `Corrections (${corrections.length})`
+        : 'Correction';
+      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      toggle.addEventListener('click', () => {
+        const nextOpen = bubble.dataset.correctionOpen !== '1';
+        bubble.dataset.correctionOpen = nextOpen ? '1' : '0';
+        this.renderCorrectionWidget(bubble);
+      });
+
+      const details = document.createElement('div');
+      details.className = 'correction-details';
+      details.hidden = !isOpen;
+
+      corrections.forEach((correction) => {
+        const item = document.createElement('div');
+        item.className = 'correction-item';
+        item.dataset.correctionId = correction.id;
+
+        const status = document.createElement('div');
+        status.className = `correction-status status-${correction.status || 'detected'}`;
+        status.textContent = getCorrectionStatusLabel(correction.status);
+        item.appendChild(status);
+
+        const original = document.createElement('div');
+        original.className = 'correction-line original';
+        original.textContent = `Your phrase: ${correction.original || ''}`;
+        item.appendChild(original);
+
+        const corrected = document.createElement('div');
+        corrected.className = 'correction-line corrected';
+        corrected.textContent = `Correction: ${correction.corrected || ''}`;
+        item.appendChild(corrected);
+
+        const rule = document.createElement('div');
+        rule.className = 'correction-rule';
+        if (correction.status === 'verified') {
+          const confidence = typeof correction.confidence === 'number'
+            ? ` (confidence ${Math.round(correction.confidence * 100)}%)`
+            : '';
+          rule.textContent = `${correction.rule || 'No rule explanation provided.'}${confidence}`;
+        } else if (correction.status === 'failed') {
+          rule.textContent = correction.error || 'Verification unavailable.';
+        } else if (correction.status === 'verifying') {
+          rule.textContent = 'Checking rule...';
+        } else {
+          rule.textContent = 'Correction detected.';
+        }
+        item.appendChild(rule);
+
+        const feedbackRow = document.createElement('div');
+        feedbackRow.className = 'correction-feedback';
+
+        const agreeBtn = document.createElement('button');
+        agreeBtn.type = 'button';
+        agreeBtn.className = 'correction-feedback-btn';
+        agreeBtn.textContent = 'Agree';
+        if (correction.user_feedback === CORRECTION_FEEDBACK_VALUES.AGREE) {
+          agreeBtn.classList.add('is-active');
+        }
+        agreeBtn.addEventListener('click', () => {
+          this.handleCorrectionFeedback(
+            bubble,
+            correction.id,
+            CORRECTION_FEEDBACK_VALUES.AGREE
+          );
+        });
+
+        const disagreeBtn = document.createElement('button');
+        disagreeBtn.type = 'button';
+        disagreeBtn.className = 'correction-feedback-btn';
+        disagreeBtn.textContent = 'Disagree';
+        if (correction.user_feedback === CORRECTION_FEEDBACK_VALUES.DISAGREE) {
+          disagreeBtn.classList.add('is-active');
+        }
+        disagreeBtn.addEventListener('click', () => {
+          this.handleCorrectionFeedback(
+            bubble,
+            correction.id,
+            CORRECTION_FEEDBACK_VALUES.DISAGREE
+          );
+        });
+
+        feedbackRow.appendChild(agreeBtn);
+        feedbackRow.appendChild(disagreeBtn);
+        item.appendChild(feedbackRow);
+
+        details.appendChild(item);
+      });
+
+      widget.appendChild(toggle);
+      widget.appendChild(details);
     }
   
     /**
@@ -182,12 +415,8 @@ export class DialoguePanel {
             existing = bubble;
             break;
   }
-}
 
-DialoguePanel.resetCache = function resetCache() {
-  bufferCache.clear();
-  stopActiveAudio();
-};
+}
       }
       } else {
         // For AI speech, use the original detection logic
@@ -347,6 +576,11 @@ DialoguePanel.resetCache = function resetCache() {
       bubble.appendChild(p);
       const existingAfterBuild = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
       if (existingAfterBuild) {
+        if (existingAfterBuild.__corrections instanceof Map) {
+          bubble.__corrections = new Map(existingAfterBuild.__corrections);
+          bubble.dataset.correctionOpen = existingAfterBuild.dataset.correctionOpen || '0';
+          this.renderCorrectionWidget(bubble);
+        }
         this.container.replaceChild(bubble, existingAfterBuild);
       } else {
         this.container.appendChild(bubble);
@@ -494,6 +728,16 @@ DialoguePanel.resetCache = function resetCache() {
 
       // Append the highlighted span to the paragraph
       p.appendChild(highlightedSpan);
-      bubble.appendChild(p);
+      const existingCorrectionWidget = bubble.querySelector('.correction-widget');
+      if (existingCorrectionWidget) {
+        bubble.insertBefore(p, existingCorrectionWidget);
+      } else {
+        bubble.appendChild(p);
+      }
     }
   }
+
+DialoguePanel.resetCache = function resetCache() {
+  bufferCache.clear();
+  stopActiveAudio();
+};

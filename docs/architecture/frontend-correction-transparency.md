@@ -11,7 +11,7 @@ Correction verifiability flow for realtime tutoring:
 Status:
 - detection plumbing implemented,
 - verification service implemented,
-- UI rendering still planned.
+- UI rendering + feedback persistence baseline implemented.
 
 ## Module Ownership
 
@@ -33,9 +33,11 @@ New frontend services:
 
 UI layer:
 - `shader-playground/src/ui/dialoguePanel.js`
-  - correction indicator,
-  - expandable correction card,
-  - feedback actions.
+  - correction indicator (implemented),
+  - expandable correction card (implemented),
+  - feedback actions (implemented).
+- `shader-playground/src/core/correctionStore.js`
+  - local correction history persistence (implemented).
 
 ## Event Contract
 
@@ -49,6 +51,7 @@ Planned verification lifecycle:
 
 Planned feedback lifecycle:
 - `correction.feedback.updated`
+  - (event still planned; current feedback persistence is local UI/store only).
 
 ## Planned State Model
 
@@ -73,4 +76,5 @@ Feedback flag:
 - Function call dispatch tests for `log_correction` (implemented).
 - Verification service unit tests (success/timeout/error) (implemented).
 - Dialogue UI tests for correction badge/card state transitions.
+- Dialogue UI tests for correction badge/card state transitions. (implemented)
 - Integration test for detected -> verified -> feedback path.
