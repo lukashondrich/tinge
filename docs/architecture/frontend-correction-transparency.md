@@ -10,7 +10,8 @@ Correction verifiability flow for realtime tutoring:
 
 Status:
 - detection plumbing implemented,
-- verification + UI rendering still planned.
+- verification service implemented,
+- UI rendering still planned.
 
 ## Module Ownership
 
@@ -23,9 +24,10 @@ Realtime/session layer:
   - planned mediation of correction lifecycle events into bubble updates.
 
 New frontend services (planned):
+New frontend services:
 - `shader-playground/src/realtime/correctionVerificationService.js`
-  - backend `POST /corrections/verify` client,
-  - timeout/retry/cache policy.
+  - backend `POST /corrections/verify` client (implemented),
+  - timeout/retry/cache policy (implemented).
 - `shader-playground/src/core/correctionStore.js`
   - local persistence for correction history + feedback.
 
@@ -68,7 +70,7 @@ Feedback flag:
 
 ## Planned Test Targets
 
-- Function call dispatch tests for `log_correction`.
-- Verification service unit tests (success/timeout/error).
+- Function call dispatch tests for `log_correction` (implemented).
+- Verification service unit tests (success/timeout/error) (implemented).
 - Dialogue UI tests for correction badge/card state transitions.
 - Integration test for detected -> verified -> feedback path.

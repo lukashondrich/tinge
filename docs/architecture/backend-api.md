@@ -20,13 +20,11 @@ Routes are intentionally delegated to extracted modules.
 - `GET /token`
 - `POST /transcribe`
 - `POST /knowledge/search`
+- `POST /corrections/verify`
 - `GET /token-usage/:ephemeralKey`
 - `POST /token-usage/:ephemeralKey/estimate`
 - `POST /token-usage/:ephemeralKey/actual`
 - `GET /token-stats`
-
-Planned (feature branch scope):
-- `POST /corrections/verify`
 
 ## Route Modules
 
@@ -36,6 +34,8 @@ Planned (feature branch scope):
 - `backend/src/routes/transcribeRoute.js`
 - Retrieval proxy:
 - `backend/src/routes/knowledgeSearchRoute.js`
+- Correction verification:
+- `backend/src/routes/correctionVerifyRoute.js`
 - Token usage router:
 - `backend/src/routes/tokenUsageRoutes.js`
 
@@ -75,6 +75,8 @@ Important behavior:
 - `RETRIEVAL_SERVICE_URL`
 - `RETRIEVAL_TIMEOUT_MS`
 - `RETRIEVAL_FORCE_EN`
+- `CORRECTION_VERIFY_MODEL`
+- `CORRECTION_VERIFY_TIMEOUT_MS`
 - `TOKEN_LIMIT_ENABLED`
 - `MAX_TOKENS_PER_KEY`
 - `TINGE_BACKEND_DEBUG_LOGS`
@@ -85,12 +87,12 @@ Important behavior:
 - Legacy API suite: `backend/tests/api.test.js`, `backend/tests/server.test.js`
 - Run via: `npm --prefix backend run test:modules`
 
-## Planned Correction Verification Route
+## Correction Verification Route
 
-Expected module:
+Module:
 - `backend/src/routes/correctionVerifyRoute.js`
 
-Expected responsibilities:
+Responsibilities:
 - validate correction verification payload,
 - call verifier model provider with strict response format,
 - normalize ambiguity/confidence fields,

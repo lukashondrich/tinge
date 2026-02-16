@@ -19,6 +19,7 @@ import { TokenLimitService } from './tokenLimitService.js';
 import { UtteranceTranscriptionService } from './utteranceTranscriptionService.js';
 import { ConnectionErrorPresenter } from './connectionErrorPresenter.js';
 import { OutboundMessageService } from './outboundMessageService.js';
+import { CorrectionVerificationService } from './correctionVerificationService.js';
 
 const ENABLE_SEMANTIC_VAD = false;
 const logger = createLogger('realtime-session');
@@ -81,10 +82,15 @@ export class RealtimeSession {
     this.knowledgeSearchService = new KnowledgeSearchService({
       apiUrl: this.apiUrl
     });
+    this.correctionVerificationService = new CorrectionVerificationService({
+      apiUrl: this.apiUrl,
+      warn: (...args) => logger.warn(...args)
+    });
     this.functionCallService = new FunctionCallService({
       getUserProfile: (args) => handleGetUserProfile(args),
       updateUserProfile: (args) => handleUpdateUserProfile(args),
       searchKnowledge: (args) => this.searchKnowledge(args),
+      verifyCorrection: (payload) => this.correctionVerificationService.verifyCorrection(payload),
       onEvent: (payload) => {
         if (this.onEventCallback) this.onEventCallback(payload);
       },

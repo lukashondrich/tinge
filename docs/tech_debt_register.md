@@ -24,6 +24,19 @@ Prioritized from a quick repository review on 2026-02-11.
   - added/updated unit coverage:
     - `shader-playground/src/tests/realtime/session-configuration-builder.test.js`
     - `shader-playground/src/tests/realtime/function-call-service.test.js`.
+- 2026-02-16 transparent tutoring module Phase C started (verification service):
+  - added backend verification route:
+    - `backend/src/routes/correctionVerifyRoute.js`
+    - registered `POST /corrections/verify` in `backend/server.js`,
+  - added frontend verifier client with timeout + cache:
+    - `shader-playground/src/realtime/correctionVerificationService.js`,
+  - wired async verify lifecycle from `log_correction` dispatch in
+    `shader-playground/src/realtime/functionCallService.js` via
+    `correction.verification.started/succeeded/failed` events,
+  - added/updated coverage:
+    - `backend/tests/modules/extracted-modules.test.mjs`
+    - `shader-playground/src/tests/realtime/correction-verification-service.test.js`
+    - `shader-playground/src/tests/realtime/function-call-service.test.js`.
 - Milestone A: largely completed
   - repo hygiene cleanup landed (artifact/backup removal + ignore guards),
   - root/docs script drift guard added (`check:readme-scripts`) and wired into CI,

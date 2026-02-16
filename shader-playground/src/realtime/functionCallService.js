@@ -3,6 +3,7 @@ export class FunctionCallService {
     getUserProfile,
     updateUserProfile,
     searchKnowledge,
+    verifyCorrection = null,
     onEvent,
     sendJson,
     makeEventId = () => crypto.randomUUID(),
@@ -13,6 +14,7 @@ export class FunctionCallService {
     this.getUserProfile = getUserProfile;
     this.updateUserProfile = updateUserProfile;
     this.searchKnowledge = searchKnowledge;
+    this.verifyCorrection = verifyCorrection;
     this.onEvent = onEvent;
     this.sendJson = sendJson;
     this.makeEventId = makeEventId;
@@ -106,6 +108,41 @@ export class FunctionCallService {
     });
   }
 
+  async triggerCorrectionVerification(correction) {
+    if (typeof this.verifyCorrection !== 'function') return;
+
+    this.onEvent?.({
+      type: 'correction.verification.started',
+      correctionId: correction.id,
+      correction
+    });
+
+    try {
+      const verificationResult = await this.verifyCorrection({
+        correction_id: correction.id,
+        original: correction.original,
+        corrected: correction.corrected,
+        correction_type: correction.correction_type
+      });
+      const verification = verificationResult?.data || verificationResult;
+      this.onEvent?.({
+        type: 'correction.verification.succeeded',
+        correctionId: correction.id,
+        correction,
+        verification
+      });
+    } catch (err) {
+      const errorMessage = err?.message || String(err);
+      this.error(`Correction verification error: ${errorMessage}`);
+      this.onEvent?.({
+        type: 'correction.verification.failed',
+        correctionId: correction.id,
+        correction,
+        error: errorMessage
+      });
+    }
+  }
+
   async dispatchFunctionCall(event, args) {
     if (event.name === 'get_user_profile') {
       return this.getUserProfile(args);
@@ -129,6 +166,7 @@ export class FunctionCallService {
         return { error: correction.error };
       }
       this.emitCorrectionDetected(correction);
+      void this.triggerCorrectionVerification(correction);
       return {
         success: true,
         correction_id: correction.id

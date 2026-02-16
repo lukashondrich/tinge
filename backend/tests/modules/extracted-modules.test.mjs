@@ -1,9 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import express from 'express';
-import request from 'supertest';
-
 import { createLogger } from '../../src/utils/logger.js';
 import { createCorsOptions } from '../../src/config/corsOptions.js';
 import { createRequestLogger } from '../../src/middleware/requestLogger.js';
@@ -11,6 +8,7 @@ import { logServerStartup } from '../../src/logging/startupBanner.js';
 import { createTokenHandler } from '../../src/routes/tokenRoute.js';
 import { createTranscribeHandler } from '../../src/routes/transcribeRoute.js';
 import { createKnowledgeSearchHandler } from '../../src/routes/knowledgeSearchRoute.js';
+import { createCorrectionVerifyHandler } from '../../src/routes/correctionVerifyRoute.js';
 import { createTokenUsageRouter } from '../../src/routes/tokenUsageRoutes.js';
 
 function createMockRes() {
@@ -26,6 +24,45 @@ function createMockRes() {
       return this;
     }
   };
+}
+
+async function invokeRouterRoute({
+  router,
+  method,
+  path,
+  params = {},
+  body = {}
+}) {
+  const routeLayer = router.stack.find((layer) => (
+    layer.route
+    && layer.route.path === path
+    && layer.route.methods[method.toLowerCase()]
+  ));
+  if (!routeLayer) {
+    throw new Error(`Route not found for ${method.toUpperCase()} ${path}`);
+  }
+
+  const req = {
+    method: method.toUpperCase(),
+    url: path,
+    params,
+    body,
+    headers: {}
+  };
+  const res = createMockRes();
+
+  let index = 0;
+  const stack = routeLayer.route.stack;
+  const next = (err) => {
+    if (err) throw err;
+    const layer = stack[index];
+    index += 1;
+    if (!layer) return;
+    return layer.handle(req, res, next);
+  };
+
+  await next();
+  return res;
 }
 
 describe('backend extracted modules', () => {
@@ -99,6 +136,7 @@ describe('backend extracted modules', () => {
     assert.ok(lines.some((line) => line.includes('/token')));
     assert.ok(lines.some((line) => line.includes('/transcribe')));
     assert.ok(lines.some((line) => line.includes('/knowledge/search')));
+    assert.ok(lines.some((line) => line.includes('/corrections/verify')));
   });
 
   test('createTokenHandler maps missing API key to 500', async () => {
@@ -202,6 +240,82 @@ describe('backend extracted modules', () => {
     assert.match(timeoutRes.payload.detail, /1234ms/);
   });
 
+  test('createCorrectionVerifyHandler validates payload and maps timeout to 504', async () => {
+    const handler = createCorrectionVerifyHandler({
+      fetchImpl: async () => {
+        const err = new Error('timeout');
+        err.name = 'AbortError';
+        throw err;
+      },
+      apiKeyProvider: () => 'test-key',
+      verifyTimeoutMs: 2222,
+      logger: { error: () => {} }
+    });
+
+    const badRes = createMockRes();
+    await handler({ body: {} }, badRes);
+    assert.equal(badRes.statusCode, 400);
+    assert.match(badRes.payload.detail, /required non-empty strings/);
+
+    const timeoutRes = createMockRes();
+    await handler({
+      body: {
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar'
+      }
+    }, timeoutRes);
+    assert.equal(timeoutRes.statusCode, 504);
+    assert.match(timeoutRes.payload.detail, /2222ms/);
+  });
+
+  test('createCorrectionVerifyHandler returns structured verification payload', async () => {
+    const handler = createCorrectionVerifyHandler({
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  mistake: 'tengo hambre mucho',
+                  correction: 'tengo mucha hambre',
+                  rule: 'In Spanish this adjective agrees and comes before the noun.',
+                  category: 'agreement + word order',
+                  confidence: 0.95,
+                  is_ambiguous: false
+                })
+              }
+            }
+          ]
+        })
+      }),
+      apiKeyProvider: () => 'test-key',
+      model: 'gpt-4o',
+      nowIso: () => '2026-02-16T12:00:00.000Z',
+      logger: { error: () => {} }
+    });
+
+    const res = createMockRes();
+    await handler({
+      body: {
+        correction_id: 'corr-1',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        learner_level: 'beginner',
+        conversation_context: ['user: tengo hambre mucho', 'assistant: mejor seria...']
+      }
+    }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.correction_id, 'corr-1');
+    assert.equal(res.payload.model, 'gpt-4o');
+    assert.equal(res.payload.verified_at, '2026-02-16T12:00:00.000Z');
+    assert.equal(res.payload.confidence, 0.95);
+    assert.equal(res.payload.is_ambiguous, false);
+  });
+
   test('createTokenUsageRouter serves usage and updates estimated usage', async () => {
     const tokenCounter = {
       getUsage: (key) => (key === 'known' ? { currentTokens: 10 } : null),
@@ -212,27 +326,44 @@ describe('backend extracted modules', () => {
       getAllUsageStats: () => ({ totalKeys: 1 })
     };
 
-    const app = express();
-    app.use(createTokenUsageRouter({
+    const router = createTokenUsageRouter({
       tokenCounter,
-      jsonParser: express.json()
-    }));
+      jsonParser: (req, res, next) => next()
+    });
 
-    const usageRes = await request(app).get('/token-usage/known');
-    assert.equal(usageRes.status, 200);
-    assert.equal(usageRes.body.currentTokens, 10);
+    const usageRes = await invokeRouterRoute({
+      router,
+      method: 'get',
+      path: '/token-usage/:ephemeralKey',
+      params: { ephemeralKey: 'known' }
+    });
+    assert.equal(usageRes.statusCode, 200);
+    assert.equal(usageRes.payload.currentTokens, 10);
 
-    const missingRes = await request(app).get('/token-usage/unknown');
-    assert.equal(missingRes.status, 404);
+    const missingRes = await invokeRouterRoute({
+      router,
+      method: 'get',
+      path: '/token-usage/:ephemeralKey',
+      params: { ephemeralKey: 'unknown' }
+    });
+    assert.equal(missingRes.statusCode, 404);
 
-    const estimateRes = await request(app)
-      .post('/token-usage/known/estimate')
-      .send({ text: 'hola', audioDuration: 2 });
-    assert.equal(estimateRes.status, 200);
-    assert.equal(estimateRes.body.delta, 6);
+    const estimateRes = await invokeRouterRoute({
+      router,
+      method: 'post',
+      path: '/token-usage/:ephemeralKey/estimate',
+      params: { ephemeralKey: 'known' },
+      body: { text: 'hola', audioDuration: 2 }
+    });
+    assert.equal(estimateRes.statusCode, 200);
+    assert.equal(estimateRes.payload.delta, 6);
 
-    const statsRes = await request(app).get('/token-stats');
-    assert.equal(statsRes.status, 200);
-    assert.equal(statsRes.body.totalKeys, 1);
+    const statsRes = await invokeRouterRoute({
+      router,
+      method: 'get',
+      path: '/token-stats'
+    });
+    assert.equal(statsRes.statusCode, 200);
+    assert.equal(statsRes.payload.totalKeys, 1);
   });
 });

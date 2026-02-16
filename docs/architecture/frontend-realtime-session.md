@@ -98,13 +98,18 @@ Implemented in Phase B:
 - function dispatch in `functionCallService.js`,
 - emitted event: `tool.log_correction.detected`.
 
+Implemented in Phase C:
+- verification client service: `correctionVerificationService.js`,
+- async verify trigger inside `functionCallService.js`,
+- emitted verification lifecycle events:
+  - `correction.verification.started`
+  - `correction.verification.succeeded`
+  - `correction.verification.failed`
+
 Planned next steps:
-- event mediation in `realtimeEventCoordinator.js`.
+- event mediation + rendering integration in `realtimeEventCoordinator.js` / dialogue UI.
 
 Planned frontend events:
-- `correction.verification.started`
-- `correction.verification.succeeded`
-- `correction.verification.failed`
 - `correction.feedback.updated`
 
 Contract requirement:

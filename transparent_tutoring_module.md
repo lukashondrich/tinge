@@ -1,8 +1,13 @@
 # Transparent Tutoring Module (Correction Verifiability)
 
-Status: Planning (not implemented yet)
+Status: In progress (Phase B and Phase C baseline implemented)
 Last updated: 2026-02-16
 Branch: `feature/transparent-tutoring-module`
+
+Current defaults for v1:
+- verifier provider: OpenAI-only,
+- feedback taxonomy: `agree` / `disagree`,
+- fallback detector: disabled (tool-call-only detection).
 
 ## 1. Objective
 

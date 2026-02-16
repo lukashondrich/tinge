@@ -2,6 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { FunctionCallService } from '../../realtime/functionCallService.js';
 
 describe('FunctionCallService', () => {
+  async function flushAsyncWork() {
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
   function createService(overrides = {}) {
     const onEvent = vi.fn();
     const sendJson = vi.fn();
@@ -144,5 +149,79 @@ describe('FunctionCallService', () => {
     expect(output).toEqual({
       error: 'Invalid correction_type: style'
     });
+  });
+
+  it('emits verification started/succeeded events for log_correction', async () => {
+    const verifyCorrection = vi.fn(async ({ correction_id }) => ({
+      data: {
+        correction_id,
+        rule: 'Agreement rule',
+        confidence: 0.9
+      }
+    }));
+    const { service, onEvent } = createService({ verifyCorrection });
+
+    await service.handleFunctionCall({
+      name: 'log_correction',
+      arguments: JSON.stringify({
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar'
+      }),
+      call_id: 'call-7'
+    });
+
+    await flushAsyncWork();
+
+    expect(verifyCorrection).toHaveBeenCalledWith({
+      correction_id: 'corr-fixed',
+      original: 'tengo hambre mucho',
+      corrected: 'tengo mucha hambre',
+      correction_type: 'grammar'
+    });
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'correction.verification.started',
+        correctionId: 'corr-fixed'
+      })
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'correction.verification.succeeded',
+        correctionId: 'corr-fixed',
+        verification: expect.objectContaining({
+          rule: 'Agreement rule',
+          confidence: 0.9
+        })
+      })
+    );
+  });
+
+  it('emits verification failed event when verifyCorrection throws', async () => {
+    const verifyCorrection = vi.fn(async () => {
+      throw new Error('verify failed');
+    });
+    const { service, onEvent, error } = createService({ verifyCorrection });
+
+    await service.handleFunctionCall({
+      name: 'log_correction',
+      arguments: JSON.stringify({
+        original: 'foo',
+        corrected: 'bar',
+        correction_type: 'vocabulary'
+      }),
+      call_id: 'call-8'
+    });
+
+    await flushAsyncWork();
+
+    expect(error).toHaveBeenCalledWith('Correction verification error: verify failed');
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'correction.verification.failed',
+        correctionId: 'corr-fixed',
+        error: 'verify failed'
+      })
+    );
   });
 });

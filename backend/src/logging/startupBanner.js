@@ -11,4 +11,5 @@ export function logServerStartup({
   logger.log(`Token endpoint: http://localhost:${port}/token`);
   logger.log(`Transcribe endpoint: http://localhost:${port}/transcribe`);
   logger.log(`Knowledge search endpoint: http://localhost:${port}/knowledge/search`);
+  logger.log(`Correction verify endpoint: http://localhost:${port}/corrections/verify`);
 }

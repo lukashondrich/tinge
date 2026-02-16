@@ -14,6 +14,7 @@ import tokenCounter from './src/services/tokenCounter.js';
 import { createKnowledgeSearchHandler } from './src/routes/knowledgeSearchRoute.js';
 import { createTokenHandler } from './src/routes/tokenRoute.js';
 import { createTranscribeHandler } from './src/routes/transcribeRoute.js';
+import { createCorrectionVerifyHandler } from './src/routes/correctionVerifyRoute.js';
 import { createTokenUsageRouter } from './src/routes/tokenUsageRoutes.js';
 import { createLogger } from './src/utils/logger.js';
 
@@ -28,6 +29,8 @@ const retrievalTimeoutMs = Number(process.env.RETRIEVAL_TIMEOUT_MS || 8000);
 const retrievalForceEn = !['0', 'false', 'no'].includes(
   String(process.env.RETRIEVAL_FORCE_EN || 'true').trim().toLowerCase()
 );
+const correctionVerifyTimeoutMs = Number(process.env.CORRECTION_VERIFY_TIMEOUT_MS || 8000);
+const correctionVerifyModel = process.env.CORRECTION_VERIFY_MODEL || 'gpt-4o';
 const logger = createLogger('backend-server');
 
 const corsOptions = createCorsOptions({
@@ -81,6 +84,14 @@ app.post('/knowledge/search', express.json(), createKnowledgeSearchHandler({
   retrievalServiceUrl,
   retrievalTimeoutMs,
   retrievalForceEn,
+  logger
+}));
+
+app.post('/corrections/verify', express.json(), createCorrectionVerifyHandler({
+  fetchImpl: fetch,
+  apiKeyProvider: () => process.env.OPENAI_API_KEY,
+  verifyTimeoutMs: correctionVerifyTimeoutMs,
+  model: correctionVerifyModel,
   logger
 }));
 
