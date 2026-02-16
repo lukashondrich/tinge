@@ -25,6 +25,9 @@ Routes are intentionally delegated to extracted modules.
 - `POST /token-usage/:ephemeralKey/actual`
 - `GET /token-stats`
 
+Planned (feature branch scope):
+- `POST /corrections/verify`
+
 ## Route Modules
 
 - Token endpoint:
@@ -81,3 +84,14 @@ Important behavior:
 - Module contract suite: `backend/tests/modules/extracted-modules.test.mjs`
 - Legacy API suite: `backend/tests/api.test.js`, `backend/tests/server.test.js`
 - Run via: `npm --prefix backend run test:modules`
+
+## Planned Correction Verification Route
+
+Expected module:
+- `backend/src/routes/correctionVerifyRoute.js`
+
+Expected responsibilities:
+- validate correction verification payload,
+- call verifier model provider with strict response format,
+- normalize ambiguity/confidence fields,
+- map timeout/rate-limit/upstream failures to stable HTTP responses.

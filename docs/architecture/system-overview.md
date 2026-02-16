@@ -31,6 +31,15 @@
 6. `RetrievalCitationCoordinator` updates citation mapping + `SourcePanel` registry.
 7. Assistant transcript markers are remapped to global source indexes.
 
+## Planned End-to-End Correction Transparency Path
+
+1. Assistant emits `log_correction` tool call for explicit learner correction.
+2. Frontend function-call dispatch emits correction-detected event.
+3. Frontend asynchronously calls backend `POST /corrections/verify`.
+4. Backend queries verifier model and returns structured rule/confidence payload.
+5. Frontend updates AI bubble with correction indicator and expandable breakdown.
+6. Learner feedback is persisted in local correction history storage.
+
 ## End-to-End Embedding Path (Word Ingestion)
 
 1. Realtime transcript words are queued in `AsyncWordQueue`.

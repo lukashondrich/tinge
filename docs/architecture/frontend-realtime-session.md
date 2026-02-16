@@ -91,6 +91,23 @@ Release (`PttOrchestrator.handlePTTRelease`):
 
 It also owns AI recording capture lifecycle (`aiAudioMgr`) and emits `utterance.added` after stop/transcribe.
 
+## Planned Extension: Correction Transparency
+
+Planned `log_correction` integration points:
+- tool schema addition in `sessionConfigurationBuilder.js`,
+- function dispatch in `functionCallService.js`,
+- event mediation in `realtimeEventCoordinator.js`.
+
+Planned frontend events:
+- `tool.log_correction.detected`
+- `correction.verification.started`
+- `correction.verification.succeeded`
+- `correction.verification.failed`
+- `correction.feedback.updated`
+
+Contract requirement:
+- correction verification must be async and non-blocking relative to PTT turn flow and bubble/audio finalization.
+
 ## Remote Audio Attach Race Mitigation
 
 `RemoteAudioStreamService` handles both:

@@ -52,3 +52,18 @@ Current CI (`.github/workflows/ci.yml`) includes:
 - service lint/test/build steps.
 
 Treat `test:realtime:guards` and retrieval data policy as release-blocking for realtime and corpus changes.
+
+## Planned Transparent-Correction Coverage
+
+When the transparent tutoring feature lands, ensure this minimum matrix:
+
+- Frontend tool dispatch:
+  - extend `shader-playground/src/tests/realtime/function-call-service.test.js`
+  - cover `log_correction` parse, dispatch, and emitted events.
+- Frontend event/UI path:
+  - extend `shader-playground/src/tests/realtime/realtime-event-coordinator.test.js`
+  - add dialogue rendering coverage in `shader-playground/src/tests/audio/dialogue-panel.test.js`.
+- Backend verification route:
+  - add module tests under `backend/tests/modules/` for `/corrections/verify` handler.
+- Integration path:
+  - add one end-to-end correction lifecycle test in `shader-playground/tests/integration/`.

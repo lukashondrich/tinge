@@ -4,6 +4,13 @@ Prioritized from a quick repository review on 2026-02-11.
 
 ## Status Update (2026-02-15)
 
+- 2026-02-16 transparent tutoring module planning kickoff:
+  - created implementation-ready spec with explicit API/event/storage contracts:
+    - `transparent_tutoring_module.md`
+  - added architecture mapping for planned correction transparency flow:
+    - `docs/architecture/frontend-correction-transparency.md`
+    - updated `frontend-realtime-session`, `backend-api`, `system-overview`,
+      and `testing-guardrails` docs to include planned correction pipeline.
 - Milestone A: largely completed
   - repo hygiene cleanup landed (artifact/backup removal + ignore guards),
   - root/docs script drift guard added (`check:readme-scripts`) and wired into CI,

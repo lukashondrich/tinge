@@ -11,6 +11,7 @@ Subsystem docs:
 - Frontend runtime composition: `docs/architecture/frontend-runtime.md`
 - Frontend realtime session and PTT lifecycle: `docs/architecture/frontend-realtime-session.md`
 - Frontend citations/dialogue/source rendering: `docs/architecture/frontend-citations-dialogue.md`
+- Frontend correction transparency (planned): `docs/architecture/frontend-correction-transparency.md`
 - Backend API gateway and token accounting: `docs/architecture/backend-api.md`
 - Retrieval service and corpus/index policy: `docs/architecture/retrieval-service.md`
 - Embedding service (Node + Python worker): `docs/architecture/embedding-service.md`

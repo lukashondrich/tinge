@@ -1,219 +1,277 @@
-Transparent Tutoring Module — Implementation Plan
+# Transparent Tutoring Module (Correction Verifiability)
 
-## Context & Motivation
+Status: Planning (not implemented yet)
+Last updated: 2026-02-16
+Branch: `feature/transparent-tutoring-module`
 
-This plan describes a new feature for an existing real-time voice-to-voice language tutoring application. The app currently uses OpenAI's Realtime Voice API for conversation, Elasticsearch/Haystack for RAG over ~10,000 Wikipedia articles about Latin America and Spain, a Three.js-based 3D point cloud visualization of embedded vocabulary, and a chat-style UI (speech bubbles) overlaying the point cloud. The tutor has agentic memory (stored in browser storage) tracking vocabulary, user interests, and learning style.
+## 1. Objective
 
-The goal of this module is to add **verifiable, transparent corrections** — when the tutor corrects a learner's language use, the correction should be inspectable and challengeable by the learner. This implements the principle of "verifiability as a minimal requirement for human oversight" (Hondrich & Ruschemeier, 2023) in a practical educational product.
+Add a transparent correction layer to the realtime tutor so language corrections are:
+- visible,
+- inspectable,
+- challengeable by the learner,
+- persisted for future adaptation.
 
-### Why This Matters
+The core design principle is independent verification: correction explanation quality should not depend on exposing chain-of-thought from the realtime tutor model.
 
-The OpenAI Realtime API model does not produce reasoning traces, and even models that do produce chain-of-thought are not always faithful in their reasoning (see Anthropic's "Reasoning Models Don't Always Say What They Think," 2025). Therefore, rather than trying to expose the model's internal reasoning, we build an **independent verification layer** — a separate system that analyzes corrections after they're made and provides structured, checkable explanations.
+## 2. v1 Scope and Non-Goals
 
----
+### In Scope (v1)
 
-## Architecture Overview
+- Detect correction events during assistant turns.
+- Asynchronously verify each detected correction with a separate model call.
+- Render correction indicator + expandable breakdown in the existing dialogue UI.
+- Collect simple learner feedback (`agree` / `disagree`).
+- Persist correction records in local browser storage.
 
-The system has three new components:
+### Out of Scope (v1)
 
-1. **Correction Detector** — Analyzes the conversation transcript to identify when the tutor has made a correction
-2. **Verification Service** — Takes a detected correction and produces a structured breakdown (what was wrong, what it should be, and why)
-3. **Frontend Correction UI** — Displays correction indicators on speech bubbles with expandable breakdowns
+- Post-session correction dashboard.
+- Point-cloud correction trails.
+- Multi-model arbitration beyond optional retry on disagreement.
+- Automatic prompt retraining loop.
 
-### Data Flow
+## 3. Existing Integration Points
 
-```
-User speaks → OpenAI Realtime API → Tutor responds (may include correction)
-                                          ↓
-                                   Transcript updated in UI (speech bubble)
-                                          ↓
-                              Correction Detector analyzes the exchange
-                              (runs on each tutor response)
-                                          ↓
-                              If correction detected:
-                                → Verification Service (async API call to GPT-4o or Claude)
-                                → Returns structured correction object
-                                → Frontend renders indicator on speech bubble
-                                → User can tap to expand breakdown
-```
+The current codebase already has the right seams:
 
-### Important Design Decisions
+- Realtime tool schema: `shader-playground/src/realtime/sessionConfigurationBuilder.js`
+- Tool-call dispatch: `shader-playground/src/realtime/functionCallService.js`
+- Event routing to UI: `shader-playground/src/realtime/session.js`, `shader-playground/src/realtime/realtimeEventCoordinator.js`
+- Bubble rendering: `shader-playground/src/ui/bubbleManager.js`, `shader-playground/src/ui/dialoguePanel.js`
+- Learner memory/profile: `shader-playground/src/core/userProfile.js`
+- Backend route composition: `backend/server.js` + `backend/src/routes/*`
 
-- The verification call is **asynchronous and non-blocking**. The voice conversation continues uninterrupted. The correction breakdown appears in the UI when ready (typically <2 seconds after the tutor speaks).
-- The verification model is a **separate, non-realtime model call** (e.g., GPT-4o, Claude Sonnet). This is intentional — it provides an independent check rather than asking the same model to explain itself.
-- Corrections are presented using **progressive disclosure**: minimal indicator during conversation, full breakdown on demand.
+## 4. Planned End-to-End Flow
 
----
+1. Assistant turn includes a correction.
+2. Assistant calls new realtime tool `log_correction`.
+3. Frontend receives function call and emits local event `tool.log_correction.detected`.
+4. Frontend triggers async verify request to backend `POST /corrections/verify`.
+5. Backend calls verification model and returns structured explanation.
+6. Frontend updates correction state from `verifying` -> `verified` (or `failed`).
+7. Dialogue bubble shows indicator and expandable correction breakdown.
+8. Learner feedback is persisted with correction record.
 
-## Component 1: Correction Detector
+Conversation flow must remain uninterrupted even if verification is slow or fails.
 
-### What It Does
+## 5. Contracts
 
-After each tutor response, analyze the pair (user's last utterance, tutor's response) to determine if a correction was made. The tutor already naturally corrects the user as part of the conversation (e.g., "By the way, instead of 'tengo hambre mucho,' you'd say 'tengo mucha hambre'"). The detector needs to recognize these corrections and extract the relevant parts.
+### 5.1 Realtime Tool Contract (`log_correction`)
 
-### Approach
-
-- After each tutor message is finalized in the transcript, send the (user_message, tutor_response) pair to a lightweight classification call
-- The call should return either `null` (no correction) or a list of corrections, each with:
-  - `original`: what the user said (extracted quote)
-  - `corrected`: what the tutor suggested instead
-  - `correction_type`: one of `vocabulary`, `grammar`, `pronunciation`, `style/register`
-- This can be a structured output / function call to a fast model (GPT-4o-mini is fine here — it's just extraction, not generation)
-- Alternatively, this could be done with prompting on the Realtime API itself using a function call / tool definition that the tutor can invoke when it makes a correction. This would be simpler and lower-latency, but couples the detection to the tutoring model. Either approach works — try the function call approach first since it's simpler.
-
-### Preferred Approach: Tutor-Side Function Call
-
-Define a tool/function in the Realtime API session that the tutor can call when it makes a correction:
+Planned tool schema addition in session update payload:
 
 ```json
 {
+  "type": "function",
   "name": "log_correction",
-  "description": "Call this whenever you correct the learner's language use. Log each distinct correction separately.",
+  "description": "Call whenever you explicitly correct learner language. Emit one call per distinct correction.",
   "parameters": {
-    "original": "What the learner said (exact quote)",
-    "corrected": "The correct form",
-    "correction_type": "vocabulary | grammar | pronunciation | style"
+    "type": "object",
+    "properties": {
+      "original": { "type": "string" },
+      "corrected": { "type": "string" },
+      "correction_type": {
+        "type": "string",
+        "enum": ["grammar", "vocabulary", "pronunciation", "style_register"]
+      },
+      "assistant_excerpt": { "type": "string" },
+      "learner_excerpt": { "type": "string" }
+    },
+    "required": ["original", "corrected", "correction_type"]
   }
 }
 ```
 
-This way the correction detection is zero-latency — it happens as part of the tutor's response. The function call triggers the verification service.
+Notes:
+- Use `style_register` (not `style/register`) for strict JSON enum consistency.
+- `assistant_excerpt` and `learner_excerpt` are optional but strongly recommended for matching to the correct bubble.
 
----
+### 5.2 Frontend Event Contract
 
-## Component 2: Verification Service
-
-### What It Does
-
-Takes a detected correction and produces a structured, human-readable explanation that the learner can use to verify whether the correction is accurate.
-
-### Input
+`FunctionCallService` should emit:
 
 ```json
 {
+  "type": "tool.log_correction.detected",
+  "correction": {
+    "id": "corr_<uuid>",
+    "original": "...",
+    "corrected": "...",
+    "correction_type": "grammar",
+    "assistant_excerpt": "...",
+    "learner_excerpt": "...",
+    "source": "tool_call",
+    "status": "detected",
+    "detected_at": "2026-02-16T12:00:00.000Z"
+  }
+}
+```
+
+Verification lifecycle events:
+
+- `correction.verification.started`
+- `correction.verification.succeeded`
+- `correction.verification.failed`
+- `correction.feedback.updated`
+
+### 5.3 Backend Verification API Contract
+
+Planned endpoint: `POST /corrections/verify`
+
+Request:
+
+```json
+{
+  "correction_id": "corr_123",
   "original": "tengo hambre mucho",
   "corrected": "tengo mucha hambre",
   "correction_type": "grammar",
-  "conversation_context": "last 2-3 exchanges for context",
-  "learner_level": "from agentic memory"
+  "learner_level": "beginner",
+  "conversation_context": [
+    "user: ...",
+    "assistant: ..."
+  ]
 }
 ```
 
-### Output
+Response:
 
 ```json
 {
+  "correction_id": "corr_123",
   "mistake": "tengo hambre mucho",
   "correction": "tengo mucha hambre",
-  "rule": "In Spanish, 'mucho/mucha' must agree in gender with the noun it modifies and is placed before the noun. 'Hambre' is feminine despite starting with 'a', so it takes 'mucha'. The adjective precedes the noun: 'mucha hambre', not 'hambre mucho'.",
+  "rule": "In Spanish, mucho/mucha agrees with the noun and precedes it here.",
+  "category": "adjective-noun agreement + word order",
   "confidence": 0.95,
-  "category": "adjective-noun agreement + word order"
+  "is_ambiguous": false,
+  "verified_at": "2026-02-16T12:00:01.200Z",
+  "model": "gpt-4o"
 }
 ```
 
-### Implementation Notes
+Error behavior:
+- `400`: invalid request payload.
+- `429`: verifier rate limited.
+- `504`: verifier timeout.
+- `502`: upstream provider/service unavailable.
 
-- This is a standard async API call to a capable model (GPT-4o or Claude Sonnet)
-- The prompt should instruct the model to:
-  - Explain the rule clearly and concisely, adapted to the learner's proficiency level
-  - Be honest about ambiguous cases (e.g., regional variations where both forms might be acceptable)
-  - Provide a confidence score — lower confidence for cases where the "correction" might actually be a valid alternative
-  - Keep explanations short (2-3 sentences max)
-- The service should be a simple Python endpoint (FastAPI) or could be a serverless function
-- Responses should be cached by (original, corrected) pair to avoid redundant API calls for repeated mistakes
+### 5.4 Local Storage Contract
 
----
+Use a dedicated store key (instead of expanding profile blob directly):
 
-## Component 3: Frontend Correction UI
+- `correction_history_<userId>`
 
-### Design Principles
-
-- **Progressive disclosure**: Correction appears minimally during conversation, expandable on demand
-- **Non-disruptive**: Never interrupts the voice conversation flow
-- **Integrated**: Lives within the existing speech bubble UI, not a separate panel
-
-### Interaction Flow
-
-1. Tutor makes a correction in conversation. The speech bubble appears as normal.
-2. A subtle visual indicator appears on that speech bubble — a small icon or badge (e.g., a small lightbulb, or a text label like "correction" in a muted color) in the corner of the bubble. This signals "this message contains a correction you can explore."
-3. User taps the indicator (or taps a "Show breakdown" button/link).
-4. Below the speech bubble, an expandable card slides open showing:
-   - **Your phrase**: the original (what the user said), displayed in a distinct color (e.g., muted red/orange)
-   - **Correction**: the corrected form, displayed in another color (e.g., green)
-   - **Rule**: the explanation from the verification service
-   - **A "Was this helpful?" or "Do you agree?" interaction** — thumbs up/down, or a simple "This was wrong" button
-5. User can collapse the card and continue the conversation.
-
-### Disagreement Handling
-
-When a user marks a correction as wrong:
-- Store this feedback alongside the correction record
-- Optionally, trigger a follow-up verification call with a different model or additional context to double-check
-- Over time, this feedback data can be used to improve the tutor's correction prompting (e.g., "avoid correcting regional variations")
-- Surface patterns to the user: "You've flagged 3 corrections about vosotros usage — would you like the tutor to accept vosotros forms?"
-
-### Data Storage
-
-Correction records should be stored in the existing agentic memory system (browser storage), structured as:
+Schema:
 
 ```json
 {
+  "schema_version": 1,
   "corrections": [
     {
-      "timestamp": "2026-02-15T14:30:00Z",
-      "session_id": "...",
-      "original": "tengo hambre mucho",
-      "corrected": "tengo mucha hambre",
+      "id": "corr_123",
+      "timestamp": "2026-02-16T12:00:00.000Z",
+      "session_id": "sess_abc",
+      "original": "...",
+      "corrected": "...",
       "correction_type": "grammar",
+      "status": "verified",
       "rule": "...",
       "confidence": 0.95,
-      "category": "adjective-noun agreement + word order",
-      "user_feedback": null
+      "category": "...",
+      "user_feedback": "agree"
     }
   ]
 }
 ```
 
-This data enables future features:
-- Correction history review (post-session)
-- Error pattern analysis ("you most commonly struggle with X")
-- Adaptive tutoring (focus on areas with most corrections)
-- The grammar visualization feature (planned for later — a structured view of grammar concepts the learner is working on)
+## 6. State Model (Frontend)
 
----
+Per correction record:
 
-## Implementation Order
+- `detected`
+- `verifying`
+- `verified`
+- `failed`
+- `feedback_recorded` (orthogonal flag)
 
-### Phase 1: Correction Detection via Function Call
-- Add the `log_correction` tool definition to the Realtime API session configuration
-- Update the tutor's system prompt to instruct it to call `log_correction` whenever it corrects the user
-- Handle the function call on the backend and forward the correction data to the frontend via the existing WebRTC/WebSocket connection
-- Test that corrections are reliably detected without disrupting conversation flow
+UI expectations:
+- `detected`/`verifying`: subtle badge + loading affordance.
+- `verified`: expandable detail card.
+- `failed`: non-blocking fallback badge with retry action.
 
-### Phase 2: Verification Service
-- Create a new endpoint (or service function) that takes a correction and returns a structured explanation
-- Implement the prompt for generating explanations
-- Add caching for repeated (original, corrected) pairs
-- Connect to Phase 1: when a correction is detected, fire the verification call async
+## 7. Failure Modes and Safeguards
 
-### Phase 3: Frontend UI
-- Add the correction indicator to speech bubbles that contain corrections
-- Build the expandable correction card component (your phrase / correction / rule)
-- Add the "Show breakdown" interaction
-- Add the "Do you agree?" feedback interaction
-- Store correction records in browser storage alongside existing agentic memory
+1. Missing tool call despite correction text.
+- Mitigation: add optional fallback detector (small model or heuristics) behind feature flag.
 
-### Phase 4: Polish & Iterate
-- Tune the tutor's system prompt so it calls `log_correction` reliably but not excessively
-- Adjust the verification prompt for explanation quality and appropriate detail level
-- Test with real conversations and refine the UI based on how it feels during actual voice sessions
-- Add correction data to the agentic memory so the tutor can reference past corrections ("Remember last time we talked about mucho vs mucha?")
+2. Tool call emitted but verification times out.
+- Mitigation: keep `failed` state and offer manual retry; do not block conversation.
 
----
+3. Ambiguous/regionally valid correction.
+- Mitigation: verifier must set `is_ambiguous=true` and lower confidence.
 
-## Future Extensions (Out of Scope for v1)
+4. Excessive correction spam.
+- Mitigation: dedupe by normalized `(original, corrected, correction_type)` in a short time window.
 
-- **Grammar visualization**: A structured view (tree/graph) of grammar concepts, powered by accumulated correction data. Swipeable from the vocabulary point cloud.
-- **Correction trails in the point cloud**: For vocabulary-type corrections, show visual links between confused words in the embedding space.
-- **Post-session review**: A summary view of all corrections from a session, reviewable after the conversation ends.
-- **Cross-session error patterns**: "Over the last 5 sessions, your most common mistake category is subjunctive triggers."
+5. Bubble mismatch (wrong correction attached).
+- Mitigation: carry assistant excerpt + timestamp and bind to latest matching AI utterance ID.
+
+## 8. Rollout Plan
+
+### Phase A: Planning and Contracts (this branch, docs-first)
+
+- Freeze schemas/events/endpoint contract.
+- Align architecture docs and test expectations.
+
+### Phase B: Detection Plumbing
+
+- Add `log_correction` tool schema.
+- Add function dispatch path and frontend detected events.
+- Add baseline unit tests for dispatch/events.
+
+### Phase C: Verification Service
+
+- Add backend route module `backend/src/routes/correctionVerifyRoute.js`.
+- Add frontend verification client with timeout + retry + cache.
+- Add tests for success/timeout/error mapping.
+
+### Phase D: Bubble UI
+
+- Add correction badge + expandable card to dialogue bubbles.
+- Add feedback controls and persistence.
+- Add UI behavior tests.
+
+### Phase E: Stabilization
+
+- Add fallback detector flag.
+- Tune prompt and confidence thresholds.
+- Add integration test for full correction lifecycle.
+
+## 9. Acceptance Criteria (v1)
+
+1. A realtime correction can be detected and represented as structured data.
+2. Verification request runs asynchronously without blocking PTT turn flow.
+3. Verified correction appears in bubble UI with original, corrected, and rule fields.
+4. Failure states are visible and recoverable (retry), with no session breakage.
+5. User feedback is persisted and reload-safe.
+6. Automated tests cover:
+- tool dispatch,
+- verify API contract,
+- UI state transitions,
+- at least one integration path.
+
+## 10. Open Product/Policy Decisions
+
+1. Verifier provider policy:
+- OpenAI-only for v1, or provider-pluggable from day one?
+
+2. Retention policy:
+- unlimited local history or rolling window (for example, last 500 corrections)?
+
+3. Feedback taxonomy:
+- binary `agree/disagree` only, or include `not sure` in v1?
+
+4. Fallback detector:
+- enable in v1 or defer to v1.1 after baseline reliability metrics?
