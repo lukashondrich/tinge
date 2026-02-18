@@ -240,6 +240,43 @@ describe('backend extracted modules', () => {
     assert.match(timeoutRes.payload.detail, /1234ms/);
   });
 
+  test('createKnowledgeSearchHandler forwards optional dialogue_context and validates type', async () => {
+    let capturedPayload = null;
+    const handler = createKnowledgeSearchHandler({
+      fetchImpl: async (_url, options) => {
+        capturedPayload = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () => ({ results: [], used_queries: [], index_name: 'idx' })
+        };
+      },
+      retrievalServiceUrl: 'http://retrieval'
+    });
+
+    const badRes = createMockRes();
+    await handler({
+      body: {
+        query_original: 'Barcelona',
+        dialogue_context: 'not-an-array'
+      }
+    }, badRes);
+    assert.equal(badRes.statusCode, 400);
+    assert.match(badRes.payload.detail, /dialogue_context/);
+
+    const goodRes = createMockRes();
+    await handler({
+      body: {
+        query_original: 'Barcelona street tiles',
+        dialogue_context: ['user: tell me about architecture', 'assistant: sure', 'user: and street tiles', 'assistant: ok']
+      }
+    }, goodRes);
+    assert.equal(goodRes.statusCode, 200);
+    assert.deepEqual(
+      capturedPayload.dialogue_context,
+      ['assistant: sure', 'user: and street tiles', 'assistant: ok']
+    );
+  });
+
   test('createCorrectionVerifyHandler validates payload and maps timeout to 504', async () => {
     const handler = createCorrectionVerifyHandler({
       fetchImpl: async () => {

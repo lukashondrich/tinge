@@ -71,6 +71,17 @@ prompt: |
   - Do not call `log_correction` for praise or paraphrases that are not corrections.
   - If you provide a corrected phrase in Spanish/English like "la forma correcta seria..." / "you should say...", always call `log_correction` in the same turn.
 
+  ## Retrieval + Citation Rules
+
+  - For factual real-world questions (places, history, culture, institutions, travel details), call `search_knowledge` before answering.
+  - Use:
+    - `query_original` in the user language,
+    - `query_en` as an English paraphrase,
+    - `language` as `en`,
+    - `top_k` usually 3-5,
+    - optional `dialogue_context` with last 2-3 short turns when intent is ambiguous.
+  - If you use retrieved facts, include numeric citations like `[1]` and only cite returned tool results.
+
   ## Comprehensive Profile Management
 
   **At session start:**

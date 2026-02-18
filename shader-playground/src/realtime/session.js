@@ -90,6 +90,7 @@ export class RealtimeSession {
       getUserProfile: (args) => handleGetUserProfile(args),
       updateUserProfile: (args) => handleUpdateUserProfile(args),
       searchKnowledge: (args) => this.searchKnowledge(args),
+      getDialogueContext: () => this.buildSearchDialogueContext(),
       verifyCorrection: (payload) => this.correctionVerificationService.verifyCorrection(payload),
       onEvent: (payload) => {
         if (this.onEventCallback) this.onEventCallback(payload);
@@ -268,6 +269,20 @@ export class RealtimeSession {
 
   async searchKnowledge(args) {
     return this.knowledgeSearchService.searchKnowledge(args);
+  }
+
+  async buildSearchDialogueContext(limit = 3) {
+    try {
+      const utterances = await StorageService.getUtterances();
+      if (!Array.isArray(utterances) || !utterances.length) return [];
+      return utterances
+        .filter((entry) => typeof entry?.text === 'string' && entry.text.trim())
+        .slice(-Math.max(1, limit))
+        .map((entry) => `${entry.speaker || 'user'}: ${entry.text.trim()}`);
+    } catch (err) {
+      logger.warn('Failed to load dialogue context for search:', err);
+      return [];
+    }
   }
 
   attachCitationIndexes(results = []) {

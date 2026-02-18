@@ -38,6 +38,34 @@ describe('KnowledgeSearchService', () => {
     expect(payload.telemetry.status).toBe('ok');
   });
 
+  it('forwards optional dialogue_context capped to last 3 turns', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: []
+      })
+    }));
+    const service = new KnowledgeSearchService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn,
+      schedule: () => 1,
+      clearScheduled: () => {}
+    });
+
+    await service.searchKnowledge({
+      query_original: 'tiles',
+      dialogue_context: [
+        'u1',
+        'a1',
+        'u2',
+        'a2'
+      ]
+    });
+
+    const requestBody = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(requestBody.dialogue_context).toEqual(['a1', 'u2', 'a2']);
+  });
+
   it('throws with status and detail on non-ok response', async () => {
     const service = new KnowledgeSearchService({
       apiUrl: 'http://localhost:3000',

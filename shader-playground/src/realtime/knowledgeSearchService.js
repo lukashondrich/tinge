@@ -25,10 +25,18 @@ export class KnowledgeSearchService {
   async searchKnowledge(args) {
     const queryOriginal = String(args?.query_original || '').trim();
     const queryEn = String(args?.query_en || queryOriginal).trim();
+    const dialogueContext = Array.isArray(args?.dialogue_context)
+      ? args.dialogue_context
+        .filter((entry) => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => Boolean(entry))
+        .slice(-3)
+      : undefined;
     const payload = {
       query_original: queryOriginal,
       query_en: queryEn,
       language: 'en',
+      ...(dialogueContext ? { dialogue_context: dialogueContext } : {}),
       ...(args?.top_k ? { top_k: args.top_k } : {})
     };
 
@@ -75,6 +83,9 @@ export class KnowledgeSearchService {
         queryOriginal: payload.query_original || '',
         queryEn: payload.query_en || '',
         language: payload.language || '',
+        dialogueContextTurns: Array.isArray(payload.dialogue_context)
+          ? payload.dialogue_context.length
+          : 0,
         topK: payload.top_k || '',
         durationMs,
         resultCount: Array.isArray(data.results) ? data.results.length : 0,

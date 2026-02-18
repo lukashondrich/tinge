@@ -62,10 +62,11 @@ Important behavior:
 
 `createKnowledgeSearchHandler(...)`:
 - validates `query_original`,
-- normalizes `query_en`, `language`, `top_k`,
+- normalizes `query_en`, `language`, `top_k`, `dialogue_context` (last 3 turns),
 - applies timeout with abort controller,
 - maps timeout to HTTP 504,
-- maps upstream failures to appropriate 4xx/5xx/502 responses.
+- maps upstream failures to appropriate 4xx/5xx/502 responses,
+- passes additive retrieval metadata (for example `meta.corrective_rag`) through unchanged.
 
 ## Operational Flags
 

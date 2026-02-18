@@ -10,6 +10,14 @@ include `query_en` as an English translation/paraphrase.
 - `GET /health`
 - `POST /index`
 - `POST /search`
+  - request accepts:
+    - required `query_original`
+    - optional `query_en`
+    - optional `language`
+    - optional `top_k`
+    - optional `dialogue_context` (last 2-3 turns recommended)
+  - response always includes `results`, `used_queries`, `index_name`
+  - response may include additive `meta.corrective_rag` when corrective mode is enabled
 
 ## Retrieval Pipeline (Phase 2B)
 
@@ -25,6 +33,13 @@ Runtime flags:
 - `RETRIEVAL_WRITE_EMBEDDINGS` (default: `true`)
 - `RETRIEVAL_EMBED_MODEL` (default: `sentence-transformers/all-MiniLM-L6-v2`)
 - `RETRIEVAL_DENSE_TOP_K` (default: `8`)
+- `RETRIEVAL_CORRECTIVE_RAG_ENABLED` (default: `false`)
+- `RETRIEVAL_CORRECTIVE_MAX_ATTEMPTS` (default: `2`)
+- `RETRIEVAL_CORRECTIVE_BUDGET_MS` (default: `3000`)
+- `RETRIEVAL_CORRECTIVE_DIALOGUE_TURNS` (default: `3`)
+- `RETRIEVAL_CORRECTIVE_LLM_ENABLED` (default: `true`)
+- `RETRIEVAL_CORRECTIVE_LLM_MODEL` (default: `gpt-4o-mini`)
+- `RETRIEVAL_CORRECTIVE_LLM_TIMEOUT_MS` (default: `900`)
 
 If pipeline graph initialization or execution fails, service falls back to direct
 BM25 retrieval to keep `/search` available.

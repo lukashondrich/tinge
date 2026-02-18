@@ -1,5 +1,27 @@
 const DEFAULT_RETRIEVAL_TIMEOUT_MS = 8000;
 const VALID_LANGUAGES = new Set(['en', 'es']);
+const MAX_DIALOGUE_CONTEXT_TURNS = 3;
+
+function normalizeDialogueContext(rawDialogueContext) {
+  if (typeof rawDialogueContext === 'undefined') {
+    return { value: undefined, error: null };
+  }
+
+  if (!Array.isArray(rawDialogueContext)) {
+    return {
+      value: undefined,
+      error: 'dialogue_context must be an array of non-empty strings'
+    };
+  }
+
+  const normalized = rawDialogueContext
+    .filter((entry) => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => Boolean(entry))
+    .slice(-MAX_DIALOGUE_CONTEXT_TURNS);
+
+  return { value: normalized, error: null };
+}
 
 export function createKnowledgeSearchHandler({
   fetchImpl,
@@ -16,7 +38,13 @@ export function createKnowledgeSearchHandler({
   }
 
   return async function knowledgeSearchHandler(req, res) {
-    const { query_original, query_en, language, top_k } = req.body || {};
+    const {
+      query_original,
+      query_en,
+      language,
+      top_k,
+      dialogue_context
+    } = req.body || {};
 
     if (!query_original || typeof query_original !== 'string' || !query_original.trim()) {
       return res.status(400).json({
@@ -39,10 +67,19 @@ export function createKnowledgeSearchHandler({
       });
     }
 
+    const normalizedDialogueContext = normalizeDialogueContext(dialogue_context);
+    if (normalizedDialogueContext.error) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        detail: normalizedDialogueContext.error
+      });
+    }
+
     const payload = {
       query_original: normalizedOriginal,
       query_en: normalizedQueryEn,
       ...(retrievalForceEn ? { language: 'en' } : (normalizedLanguage ? { language: normalizedLanguage } : {})),
+      ...(normalizedDialogueContext.value ? { dialogue_context: normalizedDialogueContext.value } : {}),
       ...(normalizedTopK ? { top_k: normalizedTopK } : {})
     };
 

@@ -5,6 +5,10 @@ from time import perf_counter
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .config import settings
+from .corrective_rag_graph import (
+    CorrectiveRagWorkflow,
+    build_corrective_llm_client_from_env,
+)
 from .indexing import build_chunk_records, load_corpus_records
 from .logger import get_logger
 
@@ -26,6 +30,7 @@ class RetrievalService:
         self._bootstrap_error: Optional[str] = None
         self._pipeline_warning: Optional[str] = None
         self._dense_warning: Optional[str] = None
+        self._corrective_workflow: Optional[CorrectiveRagWorkflow] = None
         self._init_haystack()
 
     def _init_haystack(self) -> None:
@@ -444,16 +449,14 @@ class RetrievalService:
             )
         return fused_docs
 
-    def search(
+    def _search_once(
         self,
+        *,
         query_original: str,
         query_en: Optional[str] = None,
         language: Optional[str] = None,
         top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
-        if self._retriever is None:
-            raise RuntimeError(self._bootstrap_error or "Retriever not initialized")
-
         k = min(top_k or settings.default_top_k, settings.max_top_k)
         queries = [query_original.strip()]
         if query_en and query_en.strip() and query_en.strip() not in queries:
@@ -500,3 +503,71 @@ class RetrievalService:
             "used_queries": queries,
             "index_name": self._index_name,
         }
+
+    def _get_corrective_workflow(self) -> CorrectiveRagWorkflow:
+        if self._corrective_workflow is not None:
+            return self._corrective_workflow
+
+        llm_client = None
+        if settings.retrieval_corrective_llm_enabled:
+            llm_client = build_corrective_llm_client_from_env(
+                model=settings.retrieval_corrective_llm_model,
+                timeout_ms=settings.retrieval_corrective_llm_timeout_ms,
+                logger=logger,
+            )
+            if llm_client is None:
+                logger.warning(
+                    "[retrieval] corrective-rag LLM enabled but OPENAI_API_KEY not set; "
+                    "using heuristic grader/rewriter fallback"
+                )
+
+        self._corrective_workflow = CorrectiveRagWorkflow(
+            retrieve_fn=self._search_once,
+            llm_client=llm_client,
+            max_attempts=settings.retrieval_corrective_max_attempts,
+            budget_ms=settings.retrieval_corrective_budget_ms,
+            dialogue_turns=settings.retrieval_corrective_dialogue_turns,
+            logger=logger,
+            use_langgraph=True,
+        )
+        return self._corrective_workflow
+
+    def search(
+        self,
+        query_original: str,
+        query_en: Optional[str] = None,
+        language: Optional[str] = None,
+        top_k: Optional[int] = None,
+        dialogue_context: Optional[Sequence[str]] = None,
+    ) -> Dict[str, Any]:
+        if self._retriever is None:
+            raise RuntimeError(self._bootstrap_error or "Retriever not initialized")
+
+        if not settings.retrieval_corrective_rag_enabled:
+            return self._search_once(
+                query_original=query_original,
+                query_en=query_en,
+                language=language,
+                top_k=top_k,
+            )
+
+        workflow = self._get_corrective_workflow()
+        try:
+            return workflow.run(
+                query_original=query_original,
+                query_en=(query_en or query_original),
+                language=language,
+                top_k=top_k,
+                dialogue_context=dialogue_context,
+                index_name=self._index_name,
+            )
+        except Exception as err:
+            logger.warning(
+                f"[retrieval] corrective-rag failed; falling back to standard retrieval ({err})"
+            )
+            return self._search_once(
+                query_original=query_original,
+                query_en=query_en,
+                language=language,
+                top_k=top_k,
+            )

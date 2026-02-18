@@ -7,6 +7,7 @@ Use this file as the starting point for future coding sessions.
 - Primary plan: `docs/tech_debt_register.md`
 - Related architecture hardening context: `docs/realtime_hardening_plan.md`
 - Active feature plan (transparent tutoring): `docs/transparent_tutoring_module_plan.md`
+- Active feature plan (corrective RAG LangGraph): `docs/corrective_rag_langgraph_plan.md`
 
 ## Architecture Docs Map (Progressive Disclosure)
 
@@ -24,6 +25,29 @@ Start here when taking a new task:
 
 ## Current Status (as of 2026-02-11)
 
+- 2026-02-18: corrective RAG LangGraph Phase 1 implementation:
+  - backend `/knowledge/search` normalization now accepts optional
+    `dialogue_context` (validated + capped to last 3 turns) and forwards it to
+    retrieval-service,
+  - retrieval-service `POST /search` now accepts optional `dialogue_context`,
+  - added feature-flagged corrective workflow module:
+    `retrieval-service/app/corrective_rag_graph.py`,
+  - retrieval path now supports bounded corrective retries (`max_attempts`,
+    budget ms) with first-pass fallback and optional additive
+    `meta.corrective_rag`,
+  - frontend `search_knowledge` tool-call path now auto-enriches optional
+    `dialogue_context` from last utterances when not supplied,
+  - added coverage:
+    - `retrieval-service/tests/test_corrective_rag_graph.py`
+    - backend module test updates for dialogue context pass-through
+    - frontend knowledge search service test update for dialogue context payload.
+- 2026-02-18: corrective RAG LangGraph planning kickoff:
+  - added implementation-ready plan:
+    `docs/corrective_rag_langgraph_plan.md`,
+  - added workflow diagram source:
+    `docs/corrective_rag_langgraph_flow.mmd`,
+  - plan targets feature-flagged corrective retrieval loop with contract-safe
+    `/knowledge/search` behavior.
 - 2026-02-18: transparent tutoring module checkpoint (feature branch):
   - correction verification route/schema flow integrated and hardened,
   - dialogue correction UI + manual `Check` trigger iterated for hybrid testing,

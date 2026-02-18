@@ -4,6 +4,7 @@ export class FunctionCallService {
     updateUserProfile,
     searchKnowledge,
     verifyCorrection = null,
+    getDialogueContext = null,
     onEvent,
     sendJson,
     makeEventId = () => crypto.randomUUID(),
@@ -15,6 +16,7 @@ export class FunctionCallService {
     this.updateUserProfile = updateUserProfile;
     this.searchKnowledge = searchKnowledge;
     this.verifyCorrection = verifyCorrection;
+    this.getDialogueContext = getDialogueContext;
     this.onEvent = onEvent;
     this.sendJson = sendJson;
     this.makeEventId = makeEventId;
@@ -151,12 +153,13 @@ export class FunctionCallService {
       return this.updateUserProfile(args);
     }
     if (event.name === 'search_knowledge') {
-      this.emitSearchStarted(args);
-      const searchPayload = await this.searchKnowledge(args);
+      const enrichedArgs = await this.enrichSearchArgs(args);
+      this.emitSearchStarted(enrichedArgs);
+      const searchPayload = await this.searchKnowledge(enrichedArgs);
       this.emitSearchResult({
         data: searchPayload.data,
         telemetry: searchPayload.telemetry,
-        args
+        args: enrichedArgs
       });
       return searchPayload.data;
     }
@@ -175,6 +178,41 @@ export class FunctionCallService {
 
     this.error(`Unknown function call: ${event.name}`);
     return { error: `Unknown function: ${event.name}` };
+  }
+
+  normalizeDialogueContext(rawDialogueContext) {
+    if (!Array.isArray(rawDialogueContext)) return [];
+    return rawDialogueContext
+      .filter((entry) => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter((entry) => Boolean(entry))
+      .slice(-3);
+  }
+
+  async enrichSearchArgs(args = {}) {
+    const normalized = { ...args };
+    const suppliedContext = this.normalizeDialogueContext(args.dialogue_context);
+    if (suppliedContext.length) {
+      normalized.dialogue_context = suppliedContext;
+      return normalized;
+    }
+
+    if (typeof this.getDialogueContext !== 'function') {
+      return normalized;
+    }
+
+    try {
+      const fetchedContext = await this.getDialogueContext();
+      const normalizedFetched = this.normalizeDialogueContext(fetchedContext);
+      if (normalizedFetched.length) {
+        normalized.dialogue_context = normalizedFetched;
+      }
+    } catch (err) {
+      const errorMessage = err?.message || String(err);
+      this.error(`Dialogue context enrichment failed: ${errorMessage}`);
+    }
+
+    return normalized;
   }
 
   sendFunctionOutput(callId, output) {

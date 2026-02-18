@@ -25,8 +25,10 @@ FastAPI retrieval backend in `retrieval-service/app/**`.
 - writes chunks to Elasticsearch-backed Haystack store.
 
 - `POST /search`
-- accepts `query_original`, optional `query_en`, optional `language`, optional `top_k`.
+- accepts `query_original`, optional `query_en`, optional `language`,
+  optional `top_k`, optional `dialogue_context`.
 - returns ranked snippets + `used_queries` + `index_name`.
+- may include additive `meta.corrective_rag` when corrective mode is enabled.
 
 ## Search Pipeline Behavior
 
@@ -40,6 +42,11 @@ Dense mode (optional):
 - sentence-transformer embedders,
 - embedding retriever,
 - BM25 + dense fusion via reciprocal rank fusion.
+
+Corrective mode (optional, feature-flagged):
+- wraps retrieval in a bounded corrective loop,
+- grades relevance, rewrites weak queries, retries search,
+- enforces budget/attempt limits and falls back to first-pass results.
 
 Fallback behavior:
 - if pipeline graph init fails, fall back to direct BM25 run,
@@ -70,6 +77,13 @@ Policy enforcement:
 - `RETRIEVAL_WRITE_EMBEDDINGS`
 - `RETRIEVAL_EMBED_MODEL`
 - `RETRIEVAL_DENSE_TOP_K`
+- `RETRIEVAL_CORRECTIVE_RAG_ENABLED`
+- `RETRIEVAL_CORRECTIVE_MAX_ATTEMPTS`
+- `RETRIEVAL_CORRECTIVE_BUDGET_MS`
+- `RETRIEVAL_CORRECTIVE_DIALOGUE_TURNS`
+- `RETRIEVAL_CORRECTIVE_LLM_ENABLED`
+- `RETRIEVAL_CORRECTIVE_LLM_MODEL`
+- `RETRIEVAL_CORRECTIVE_LLM_TIMEOUT_MS`
 - `TINGE_RETRIEVAL_DEBUG_LOGS`
 
 ## Developer Surface

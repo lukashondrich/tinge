@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,7 @@ class SearchRequest(BaseModel):
     query_en: Optional[str] = None
     language: Optional[str] = Field(default=None, pattern="^(en|es)$")
     top_k: Optional[int] = Field(default=None, ge=1, le=20)
+    dialogue_context: Optional[List[str]] = Field(default=None, max_length=3)
 
 
 class SearchResult(BaseModel):
@@ -45,4 +46,4 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
     used_queries: List[str]
     index_name: str
-
+    meta: Optional[Dict[str, Any]] = None

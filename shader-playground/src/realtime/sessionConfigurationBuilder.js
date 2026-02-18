@@ -173,6 +173,11 @@ const SESSION_TOOLS = [
           minimum: 1,
           maximum: 10,
           description: 'Number of top results to return.'
+        },
+        dialogue_context: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional last 2-3 dialogue turns to disambiguate retrieval intent.'
         }
       },
       required: ['query_original', 'query_en']

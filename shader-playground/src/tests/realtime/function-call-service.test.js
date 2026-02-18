@@ -59,6 +59,29 @@ describe('FunctionCallService', () => {
     );
   });
 
+  it('enriches search_knowledge args with dialogue context when missing', async () => {
+    const searchKnowledge = vi.fn(async (args) => ({
+      data: { results: [], argsEcho: args },
+      telemetry: { status: 'ok', resultCount: 0 }
+    }));
+    const { service } = createService({
+      searchKnowledge,
+      getDialogueContext: vi.fn(async () => ['user: hi', 'assistant: hello', 'user: tiles?'])
+    });
+
+    await service.handleFunctionCall({
+      name: 'search_knowledge',
+      arguments: JSON.stringify({ query_original: 'hola', query_en: 'hello' }),
+      call_id: 'call-ctx'
+    });
+
+    expect(searchKnowledge).toHaveBeenCalledWith({
+      query_original: 'hola',
+      query_en: 'hello',
+      dialogue_context: ['user: hi', 'assistant: hello', 'user: tiles?']
+    });
+  });
+
   it('emits search error telemetry when search throws', async () => {
     const { service, onEvent, error } = createService({
       searchKnowledge: vi.fn(async () => {

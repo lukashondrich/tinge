@@ -35,6 +35,30 @@ class Settings:
             "sentence-transformers/all-MiniLM-L6-v2",
         )
         self.retrieval_dense_top_k = int(os.getenv("RETRIEVAL_DENSE_TOP_K", "8"))
+        self.retrieval_corrective_rag_enabled = (
+            str(os.getenv("RETRIEVAL_CORRECTIVE_RAG_ENABLED", "false")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self.retrieval_corrective_max_attempts = int(
+            os.getenv("RETRIEVAL_CORRECTIVE_MAX_ATTEMPTS", "2")
+        )
+        self.retrieval_corrective_budget_ms = int(
+            os.getenv("RETRIEVAL_CORRECTIVE_BUDGET_MS", "3000")
+        )
+        self.retrieval_corrective_dialogue_turns = int(
+            os.getenv("RETRIEVAL_CORRECTIVE_DIALOGUE_TURNS", "3")
+        )
+        self.retrieval_corrective_llm_enabled = (
+            str(os.getenv("RETRIEVAL_CORRECTIVE_LLM_ENABLED", "true")).strip().lower()
+            not in {"0", "false", "no", "off"}
+        )
+        self.retrieval_corrective_llm_model = os.getenv(
+            "RETRIEVAL_CORRECTIVE_LLM_MODEL",
+            "gpt-4o-mini",
+        )
+        self.retrieval_corrective_llm_timeout_ms = int(
+            os.getenv("RETRIEVAL_CORRECTIVE_LLM_TIMEOUT_MS", "900")
+        )
 
 
 settings = Settings()

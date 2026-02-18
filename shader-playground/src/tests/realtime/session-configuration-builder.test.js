@@ -36,6 +36,7 @@ describe('sessionConfigurationBuilder', () => {
 
     expect(searchTool).toBeTruthy();
     expect(searchTool.parameters.required).toEqual(['query_original', 'query_en']);
+    expect(searchTool.parameters.properties.dialogue_context).toBeTruthy();
   });
 
   it('includes correction logging tool schema with required fields', () => {
