@@ -1,4 +1,11 @@
 const DEFAULT_MOBILE_COOLDOWN = 500;
+const SYNTHETIC_UTTERANCE_ID_PREFIX = 'synthetic';
+
+function makeSyntheticUtteranceId(speaker) {
+  const stamp = Date.now();
+  const rand = Math.floor(Math.random() * 100000);
+  return `${SYNTHETIC_UTTERANCE_ID_PREFIX}-${speaker}-${stamp}-${rand}`;
+}
 
 export class BubbleManager {
   constructor({
@@ -31,11 +38,19 @@ export class BubbleManager {
   beginTurn(speaker) {
     const now = Date.now();
     if (this.activeBubbles[speaker]) {
-      return this.activeBubbles[speaker];
-    }
+      const active = this.activeBubbles[speaker];
+      const activeUtteranceId = active?.dataset?.utteranceId;
+      const hasAssignedUtteranceId = Boolean(
+        activeUtteranceId
+        && activeUtteranceId !== 'undefined'
+        && activeUtteranceId !== 'null'
+      );
 
-    if (this.isMobile && (now - this.lastBubbleCreation[speaker]) < this.mobileCooldown) {
-      return this.activeBubbles[speaker];
+      this.clearFinalizeTimer(speaker);
+      if (!hasAssignedUtteranceId) {
+        return active;
+      }
+      this.activeBubbles[speaker] = null;
     }
 
     const existing = this._findReusableBubble(speaker);
@@ -127,6 +142,15 @@ export class BubbleManager {
     const bubble = this.activeBubbles[speaker];
     if (bubble) {
       bubble.__deltaText = '';
+      const existingId = bubble?.dataset?.utteranceId;
+      const hasAssignedUtteranceId = Boolean(
+        existingId
+        && existingId !== 'undefined'
+        && existingId !== 'null'
+      );
+      if (!hasAssignedUtteranceId) {
+        bubble.dataset.utteranceId = makeSyntheticUtteranceId(speaker);
+      }
     }
     this.activeBubbles[speaker] = null;
 
@@ -145,25 +169,32 @@ export class BubbleManager {
 
   shouldProcessUtterance(record, deviceType = 'unknown') {
     const speaker = record.speaker || 'ai';
-    const id = record.id || record.utterance_id || '';
+    const rawId = record.id || record.utterance_id || '';
+    const id = typeof rawId === 'string' ? rawId.trim() : String(rawId).trim();
+    const hasStableId = Boolean(id && id !== 'undefined' && id !== 'null');
     const text = record.text || '';
 
-    const utteranceKey = `${speaker}-${id}`;
-    const deviceSpecificKey = `${deviceType}-${speaker}-${id}`;
+    const utteranceKey = hasStableId ? `${speaker}-${id}` : '';
+    const deviceSpecificKey = hasStableId ? `${deviceType}-${speaker}-${id}` : '';
     const contentKey = `${speaker}-${text.substring(0, 30)}`;
 
-    if (
-      (id && this.processedUtterances.has(utteranceKey)) ||
-      this.processedUtterances.has(deviceSpecificKey) ||
-      this.deviceUtterances.has(contentKey)
-    ) {
+    if (hasStableId) {
+      if (
+        this.processedUtterances.has(utteranceKey)
+        || this.processedUtterances.has(deviceSpecificKey)
+      ) {
+        return false;
+      }
+
+      this.processedUtterances.add(utteranceKey);
+      this.processedUtterances.add(deviceSpecificKey);
+      return true;
+    }
+
+    if (this.deviceUtterances.has(contentKey)) {
       return false;
     }
 
-    if (id) {
-      this.processedUtterances.add(utteranceKey);
-      this.processedUtterances.add(deviceSpecificKey);
-    }
     this.deviceUtterances.set(contentKey, { deviceType, timestamp: Date.now() });
     return true;
   }

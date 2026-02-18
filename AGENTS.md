@@ -6,6 +6,7 @@ Use this file as the starting point for future coding sessions.
 
 - Primary plan: `docs/tech_debt_register.md`
 - Related architecture hardening context: `docs/realtime_hardening_plan.md`
+- Active feature plan (transparent tutoring): `docs/transparent_tutoring_module_plan.md`
 
 ## Architecture Docs Map (Progressive Disclosure)
 
@@ -23,6 +24,11 @@ Start here when taking a new task:
 
 ## Current Status (as of 2026-02-11)
 
+- 2026-02-18: transparent tutoring module checkpoint (feature branch):
+  - correction verification route/schema flow integrated and hardened,
+  - dialogue correction UI + manual `Check` trigger iterated for hybrid testing,
+  - bubble lifecycle regressions addressed with expanded frontend tests,
+  - planning handoff doc added: `docs/transparent_tutoring_module_plan.md`.
 - Tech debt register created and prioritized (top 15 items).
 - Repository hygiene baseline completed:
   - removed tracked artifact files (`.bak`, test report XML),

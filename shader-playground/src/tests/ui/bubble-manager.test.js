@@ -17,9 +17,9 @@ describe('BubbleManager', () => {
         </body>
       </html>
     `);
-    global.window = dom.window;
-    global.document = dom.window.document;
-    global.navigator = dom.window.navigator;
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.navigator = dom.window.navigator;
     container = document.getElementById('transcriptContainer');
     manager = new BubbleManager({
       containerElement: container,
@@ -31,9 +31,9 @@ describe('BubbleManager', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete global.window;
-    delete global.document;
-    delete global.navigator;
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.navigator;
   });
 
   it('creates placeholder bubble on beginTurn for user', () => {
@@ -69,5 +69,80 @@ describe('BubbleManager', () => {
     const record = { speaker: 'user', id: 'abc', text: 'Hi' };
     expect(manager.shouldProcessUtterance(record, 'desktop')).toBe(true);
     expect(manager.shouldProcessUtterance(record, 'desktop')).toBe(false);
+  });
+
+  it('shouldProcessUtterance keeps distinct id-based turns even when text prefixes match', () => {
+    const first = {
+      speaker: 'ai',
+      id: 'ai-1',
+      text: 'Got it! Let us correct this sentence now.'
+    };
+    const second = {
+      speaker: 'ai',
+      id: 'ai-2',
+      text: 'Got it! Let us correct this sentence with another example.'
+    };
+
+    expect(manager.shouldProcessUtterance(first, 'desktop')).toBe(true);
+    expect(manager.shouldProcessUtterance(second, 'desktop')).toBe(true);
+  });
+
+  it('shouldProcessUtterance dedupes text-only turns without stable ids', () => {
+    const textOnly = {
+      speaker: 'ai',
+      text: 'Same text fallback'
+    };
+
+    expect(manager.shouldProcessUtterance(textOnly, 'desktop')).toBe(true);
+    expect(manager.shouldProcessUtterance(textOnly, 'desktop')).toBe(false);
+  });
+
+  it('beginTurn creates a new bubble when previous active turn already has utterance id', () => {
+    const first = manager.beginTurn('ai');
+    manager.setUtteranceId('ai', 'ai-utterance-1');
+
+    const second = manager.beginTurn('ai');
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
+    expect(container.querySelectorAll('.bubble.ai').length).toBe(2);
+  });
+
+  it('beginTurn clears stale finalize timer before reusing active bubble', () => {
+    manager.beginTurn('ai');
+    manager.scheduleFinalize('ai', 1000);
+    expect(manager.finalizeTimers.ai).toBeTruthy();
+
+    const reused = manager.beginTurn('ai');
+    expect(reused).toBeTruthy();
+    expect(manager.finalizeTimers.ai).toBeNull();
+  });
+
+  it('beginTurn still creates bubble during mobile cooldown when no active/reusable bubble exists', () => {
+    manager = new BubbleManager({
+      containerElement: container,
+      playAudioFor,
+      isMobile: true,
+      mobileCooldown: 10000
+    });
+
+    manager.lastBubbleCreation.ai = Date.now();
+    const bubble = manager.beginTurn('ai');
+
+    expect(bubble).toBeTruthy();
+    expect(container.querySelectorAll('.bubble.ai').length).toBe(1);
+  });
+
+  it('finalize assigns synthetic utterance id so next AI turn does not reuse previous bubble', () => {
+    const first = manager.beginTurn('ai');
+    manager.appendDelta('ai', 'first answer');
+    manager.finalize('ai');
+
+    expect(first.dataset.utteranceId).toBeTruthy();
+    expect(first.dataset.utteranceId).toMatch(/^synthetic-ai-/);
+
+    const second = manager.beginTurn('ai');
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
+    expect(container.querySelectorAll('.bubble.ai').length).toBe(2);
   });
 });

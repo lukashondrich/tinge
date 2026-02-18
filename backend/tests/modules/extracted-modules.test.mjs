@@ -270,26 +270,30 @@ describe('backend extracted modules', () => {
   });
 
   test('createCorrectionVerifyHandler returns structured verification payload', async () => {
+    let capturedRequestBody = null;
     const handler = createCorrectionVerifyHandler({
-      fetchImpl: async () => ({
-        ok: true,
-        json: async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  mistake: 'tengo hambre mucho',
-                  correction: 'tengo mucha hambre',
-                  rule: 'In Spanish this adjective agrees and comes before the noun.',
-                  category: 'agreement + word order',
-                  confidence: 0.95,
-                  is_ambiguous: false
-                })
+      fetchImpl: async (_url, options) => {
+        capturedRequestBody = JSON.parse(options.body);
+        return ({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    mistake: 'tengo hambre mucho',
+                    correction: 'tengo mucha hambre',
+                    rule: 'In Spanish this adjective agrees and comes before the noun.',
+                    category: 'agreement + word order',
+                    confidence: 0.95,
+                    is_ambiguous: false
+                  })
+                }
               }
-            }
-          ]
-        })
-      }),
+            ]
+          })
+        });
+      },
       apiKeyProvider: () => 'test-key',
       model: 'gpt-4o',
       nowIso: () => '2026-02-16T12:00:00.000Z',
@@ -314,6 +318,10 @@ describe('backend extracted modules', () => {
     assert.equal(res.payload.verified_at, '2026-02-16T12:00:00.000Z');
     assert.equal(res.payload.confidence, 0.95);
     assert.equal(res.payload.is_ambiguous, false);
+    assert.deepEqual(
+      capturedRequestBody.response_format.json_schema.schema.required,
+      ['mistake', 'correction', 'rule', 'category', 'confidence', 'is_ambiguous']
+    );
   });
 
   test('createTokenUsageRouter serves usage and updates estimated usage', async () => {

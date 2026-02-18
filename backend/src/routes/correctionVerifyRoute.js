@@ -167,7 +167,7 @@ export function createCorrectionVerifyHandler({
               confidence: { type: 'number' },
               is_ambiguous: { type: 'boolean' }
             },
-            required: ['mistake', 'correction', 'rule', 'confidence', 'is_ambiguous'],
+            required: ['mistake', 'correction', 'rule', 'category', 'confidence', 'is_ambiguous'],
             additionalProperties: false
           }
         }

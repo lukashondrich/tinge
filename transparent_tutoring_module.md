@@ -7,7 +7,7 @@ Branch: `feature/transparent-tutoring-module`
 Current defaults for v1:
 - verifier provider: OpenAI-only,
 - feedback taxonomy: `agree` / `disagree`,
-- fallback detector: disabled (tool-call-only detection).
+- fallback detector: manual hybrid trigger available via per-user-bubble `Check` button (auto detector still disabled).
 
 ## 1. Objective
 
@@ -253,6 +253,7 @@ UI expectations:
 - Add fallback detector flag.
 - Tune prompt and confidence thresholds.
 - Add integration test for full correction lifecycle.
+- Keep manual user-bubble `Check` trigger for testing and operator fallback while auto detector remains disabled.
 
 ## 9. Acceptance Criteria (v1)
 
