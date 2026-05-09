@@ -54,6 +54,7 @@ export class RealtimeSession {
     this.connectionState = initialConnectionSnapshot.state;
     this.isConnected = initialConnectionSnapshot.isConnected;
     this.isConnecting = initialConnectionSnapshot.isConnecting;
+    this.isConfiguring = initialConnectionSnapshot.isConfiguring;
 
     this.isMicActive = false;
     this.currentEphemeralKey = null;
@@ -131,6 +132,7 @@ export class RealtimeSession {
       onEvent: (payload) => {
         if (this.onEventCallback) this.onEventCallback(payload);
       },
+      onSessionConfigured: () => this.connectionLifecycleService.handleSessionConfigured(),
       warn: (...args) => logger.warn(...args),
       error: (...args) => logger.error(...args)
     });
@@ -164,6 +166,10 @@ export class RealtimeSession {
       },
       getIsConnected: () => this.isConnected,
       getIsConnecting: () => this.isConnecting,
+      getIsConfiguring: () => this.isConfiguring,
+      getIsAssistantResponseActive: () => this.dataChannelEventRouter.hasActiveAssistantTurn(),
+      getShouldCancelAssistantResponse: () => this.dataChannelEventRouter.hasOpenAssistantResponse(),
+      getAssistantResponseId: () => this.dataChannelEventRouter.getOpenAssistantResponseId(),
       getAudioTrack: () => this.audioTrack,
       getDataChannel: () => this.dataChannel,
       resetPendingRecording: () => this.resetPendingRecording(),
@@ -186,6 +192,9 @@ export class RealtimeSession {
     this.connectionLifecycleService = new ConnectionLifecycleService({
       deviceType: this.deviceType,
       getIsConnecting: () => this.isConnecting,
+      getIsConfiguring: () => this.isConfiguring,
+      getIsConnected: () => this.isConnected,
+      getConnectionState: () => this.connectionState,
       getPTTButton: () => this.pttButton,
       setPTTStatus: (text, color) => this.setPTTStatus(text, color),
       setPTTReadyStatus: () => this.setPTTReadyStatus(),
@@ -205,7 +214,6 @@ export class RealtimeSession {
       setupPeerTrackHandling: () => this.setupPeerTrackHandling(),
       tryHydrateExistingRemoteAudioTrack: () => this.tryHydrateExistingRemoteAudioTrack(),
       setupDataChannelEvents: () => this.setupDataChannelEvents(),
-      sendSystemPrompt: () => this.sendSystemPrompt(),
       sendSessionConfiguration: () => this.sendSessionConfiguration(),
       handleConnectError: (error) => this.handleConnectError(error),
       getDataChannel: () => this.dataChannel,
@@ -331,6 +339,7 @@ export class RealtimeSession {
     this.connectionState = snapshot.state;
     this.isConnected = snapshot.isConnected;
     this.isConnecting = snapshot.isConnecting;
+    this.isConfiguring = snapshot.isConfiguring;
     return snapshot;
   }
 
@@ -358,21 +367,22 @@ export class RealtimeSession {
     return this.connectionLifecycleService.establishPeerConnection(ephemeralKey);
   }
 
-  async sendSystemPrompt() {
-    return this.systemPromptService.sendSystemPrompt({
-      dataChannel: this.dataChannel
-    });
-  }
-
   async sendSessionConfiguration() {
+    if (!this.dataChannel || typeof this.dataChannel.send !== 'function') {
+      throw new Error('Cannot send session configuration: data channel is unavailable');
+    }
+
+    const instructions = await this.systemPromptService.loadPromptText();
     const sessionUpdate = buildSessionUpdate({
-      enableSemanticVad: ENABLE_SEMANTIC_VAD
+      enableSemanticVad: ENABLE_SEMANTIC_VAD,
+      instructions
     });
 
     try {
       this.dataChannel.send(JSON.stringify(sessionUpdate));
     } catch (err) {
       logger.error('Failed to send session configuration:', err);
+      throw err;
     }
   }
 
@@ -409,6 +419,7 @@ export class RealtimeSession {
   }
 
   cleanup() {
+    this.connectionLifecycleService.reset();
     this.dataChannelEventRouter.unbind();
 
     if (this.dataChannel) {

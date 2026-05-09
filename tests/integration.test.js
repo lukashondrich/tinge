@@ -26,14 +26,19 @@ const createBackendApp = () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
-        client_secret: { value: 'mock-token' }
+        value: 'mock-token',
+        expires_at: 999,
+        session: { model: 'gpt-realtime-1.5' }
       })
     });
     
     try {
-      const response = await fetch('https://api.openai.com/v1/realtime/sessions');
+      const response = await fetch('https://api.openai.com/v1/realtime/client_secrets');
       const data = await response.json();
-      res.json(data);
+      res.json({
+        ...data,
+        client_secret: { value: data.value, expires_at: data.expires_at }
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

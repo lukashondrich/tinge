@@ -5,6 +5,10 @@ export class PttOrchestrator {
     setIsMicActive,
     getIsConnected,
     getIsConnecting,
+    getIsConfiguring = () => false,
+    getIsAssistantResponseActive = () => false,
+    getShouldCancelAssistantResponse = () => false,
+    getAssistantResponseId = () => null,
     getAudioTrack,
     getDataChannel,
     resetPendingRecording,
@@ -26,6 +30,10 @@ export class PttOrchestrator {
     this.setIsMicActive = setIsMicActive;
     this.getIsConnected = getIsConnected;
     this.getIsConnecting = getIsConnecting;
+    this.getIsConfiguring = getIsConfiguring;
+    this.getIsAssistantResponseActive = getIsAssistantResponseActive;
+    this.getShouldCancelAssistantResponse = getShouldCancelAssistantResponse;
+    this.getAssistantResponseId = getAssistantResponseId;
     this.getAudioTrack = getAudioTrack;
     this.getDataChannel = getDataChannel;
     this.resetPendingRecording = resetPendingRecording;
@@ -81,6 +89,9 @@ export class PttOrchestrator {
     if (this.getIsConnecting()) {
       return { allowed: false, reason: 'connecting' };
     }
+    if (this.getIsConfiguring()) {
+      return { allowed: false, reason: 'configuring' };
+    }
 
     this.resetPendingRecording();
     const limitCheck = await this.checkTokenLimit();
@@ -93,6 +104,9 @@ export class PttOrchestrator {
         await this.connect();
         if (this.getIsConnecting()) {
           return { allowed: false, reason: 'connecting' };
+        }
+        if (this.getIsConfiguring()) {
+          return { allowed: false, reason: 'configuring' };
         }
         if (!this.getIsConnected()) {
           return { allowed: false, reason: 'not_connected' };
@@ -111,13 +125,27 @@ export class PttOrchestrator {
 
     const dataChannel = this.getDataChannel();
     if (dataChannel && dataChannel.readyState === 'open') {
-      const interruptedUtteranceId = `interrupted-${this.now()}`;
-      dataChannel.send(JSON.stringify({
-        type: 'response.cancel',
-        event_id: this.makeEventId()
-      }));
-      this.interruptAssistantResponse({ interruptedUtteranceId });
-      this.onEvent?.({ type: 'assistant.interrupted', utteranceId: interruptedUtteranceId });
+      const shouldCancelAssistantResponse = (
+        this.getShouldCancelAssistantResponse()
+        || this.getIsAssistantResponseActive()
+      );
+      if (shouldCancelAssistantResponse) {
+        const responseId = this.getAssistantResponseId();
+        dataChannel.send(JSON.stringify({
+          type: 'response.cancel',
+          event_id: this.makeEventId(),
+          ...(responseId ? { response_id: responseId } : {})
+        }));
+      }
+      if (this.getIsAssistantResponseActive()) {
+        const interruptedUtteranceId = `interrupted-${this.now()}`;
+        dataChannel.send(JSON.stringify({
+          type: 'output_audio_buffer.clear',
+          event_id: this.makeEventId()
+        }));
+        this.interruptAssistantResponse({ interruptedUtteranceId });
+        this.onEvent?.({ type: 'assistant.interrupted', utteranceId: interruptedUtteranceId });
+      }
       dataChannel.send(JSON.stringify({
         type: 'input_audio_buffer.clear',
         event_id: this.makeEventId()

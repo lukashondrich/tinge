@@ -48,6 +48,42 @@ describe('ConnectionBootstrapService', () => {
     expect(onTokenUsage).toHaveBeenCalledWith({ remaining: 99 });
   });
 
+  it('requests token from GA response shape', async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        value: 'ek_ga',
+        expires_at: 123
+      })
+    }));
+
+    const service = new ConnectionBootstrapService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn,
+      createAbortController: () => ({ signal: {}, abort: vi.fn() }),
+      schedule: () => 1,
+      clearScheduled: () => {}
+    });
+
+    const key = await service.requestEphemeralKey();
+    expect(key).toBe('ek_ga');
+  });
+
+  it('throws when token response is missing ephemeral key', async () => {
+    const service = new ConnectionBootstrapService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn: vi.fn(async () => ({
+        ok: true,
+        json: async () => ({})
+      })),
+      createAbortController: () => ({ signal: {}, abort: vi.fn() }),
+      schedule: () => 1,
+      clearScheduled: () => {}
+    });
+
+    await expect(service.requestEphemeralKey()).rejects.toThrow('Token response missing ephemeral key');
+  });
+
   it('falls back to cors-explicit token request after minimal fetch failure', async () => {
     const fetchFn = vi.fn()
       .mockRejectedValueOnce(new Error('network error'))

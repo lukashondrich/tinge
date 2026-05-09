@@ -15,10 +15,14 @@ describe('DataChannelEventRouter', () => {
     };
     const updateTokenUsageEstimate = vi.fn();
     const updateTokenUsageActual = vi.fn();
-    const stopAndTranscribe = vi.fn(async () => ({ id: 'ai-1' }));
+    const stopAndTranscribe = vi.fn(async () => {
+      aiAudioMgr.isRecording = false;
+      return { id: 'ai-1' };
+    });
     const handleUserTranscription = vi.fn(async () => {});
     const handleFunctionCall = vi.fn(async () => {});
     const onEvent = vi.fn();
+    const onSessionConfigured = vi.fn();
     const warn = vi.fn();
     const error = vi.fn();
 
@@ -31,6 +35,7 @@ describe('DataChannelEventRouter', () => {
       handleUserTranscription,
       handleFunctionCall,
       onEvent,
+      onSessionConfigured,
       now: vi.fn()
         .mockReturnValueOnce(1000)
         .mockReturnValueOnce(1025),
@@ -48,6 +53,7 @@ describe('DataChannelEventRouter', () => {
       handleUserTranscription,
       handleFunctionCall,
       onEvent,
+      onSessionConfigured,
       warn,
       error
     };
@@ -56,9 +62,18 @@ describe('DataChannelEventRouter', () => {
   it('captures AI transcript delta and emits utterance on output buffer stop', async () => {
     const ctx = createRouter();
 
+    expect(ctx.router.hasActiveAssistantTurn()).toBe(false);
+    expect(ctx.router.hasOpenAssistantResponse()).toBe(false);
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'hello' })
+      data: JSON.stringify({
+        type: 'response.output_audio_transcript.delta',
+        response_id: 'resp-1',
+        delta: 'hello'
+      })
     });
+    expect(ctx.router.hasActiveAssistantTurn()).toBe(true);
+    expect(ctx.router.hasOpenAssistantResponse()).toBe(true);
+    expect(ctx.router.getOpenAssistantResponseId()).toBe('resp-1');
     await ctx.router.handleMessage({
       data: JSON.stringify({ type: 'output_audio_buffer.stopped' })
     });
@@ -69,6 +84,14 @@ describe('DataChannelEventRouter', () => {
     expect(ctx.onEvent).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'utterance.added', record: { id: 'ai-1' } })
     );
+    expect(ctx.router.hasActiveAssistantTurn()).toBe(false);
+    expect(ctx.router.hasOpenAssistantResponse()).toBe(true);
+
+    await ctx.router.handleMessage({
+      data: JSON.stringify({ type: 'response.done', response: { id: 'resp-1' } })
+    });
+    expect(ctx.router.hasOpenAssistantResponse()).toBe(false);
+    expect(ctx.router.getOpenAssistantResponseId()).toBeNull();
   });
 
   it('starts AI capture on output audio start and finalizes even without transcript deltas', async () => {
@@ -109,15 +132,41 @@ describe('DataChannelEventRouter', () => {
 
     expect(ctx.handleUserTranscription).toHaveBeenCalledTimes(1);
     expect(ctx.handleFunctionCall).toHaveBeenCalledTimes(1);
+    expect(ctx.onSessionConfigured).toHaveBeenCalledWith({ usage: { total: 11 } });
     expect(ctx.updateTokenUsageActual).toHaveBeenNthCalledWith(1, { total: 10 });
     expect(ctx.updateTokenUsageActual).toHaveBeenNthCalledWith(2, { total: 11 });
+  });
+
+  it('logs realtime API error events visibly', async () => {
+    const ctx = createRouter();
+
+    await ctx.router.handleMessage({
+      data: JSON.stringify({
+        type: 'error',
+        error: {
+          code: 'response_already_active',
+          message: 'Response already active'
+        }
+      })
+    });
+
+    expect(ctx.warn).toHaveBeenCalledWith('Realtime API error event:', {
+      code: 'response_already_active',
+      message: 'Response already active'
+    });
+    expect(ctx.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ code: 'response_already_active' })
+      })
+    );
   });
 
   it('aborts active AI capture when interruption occurs', async () => {
     const ctx = createRouter();
 
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'partial answer' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'partial answer' })
     });
     ctx.router.abortAiTurnCapture({ interruptedUtteranceId: 'interrupted-1' });
     await Promise.resolve();
@@ -141,10 +190,10 @@ describe('DataChannelEventRouter', () => {
     });
 
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'one' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'one' })
     });
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'two' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'two' })
     });
 
     expect(ctx.warn).toHaveBeenCalledTimes(1);
@@ -160,17 +209,17 @@ describe('DataChannelEventRouter', () => {
     });
 
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'old answer ' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'old answer ' })
     });
     expect(ctx.updateTokenUsageEstimate).toHaveBeenCalledWith('old answer ');
 
     ctx.router.abortAiTurnCapture();
 
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'stale tail' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'stale tail' })
     });
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.done', transcript: 'stale final' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.done', transcript: 'stale final' })
     });
     await ctx.router.handleMessage({
       data: JSON.stringify({ type: 'output_audio_buffer.stopped' })
@@ -178,13 +227,31 @@ describe('DataChannelEventRouter', () => {
 
     expect(ctx.updateTokenUsageEstimate).toHaveBeenCalledTimes(1);
     expect(
-      ctx.onEvent.mock.calls.some(([payload]) => payload?.type === 'response.audio_transcript.done')
+      ctx.onEvent.mock.calls.some(([payload]) => payload?.type === 'response.output_audio_transcript.done')
     ).toBe(false);
     expect(clearScheduled).toHaveBeenCalledWith(42);
 
     await ctx.router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'new answer' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'new answer' })
     });
     expect(ctx.updateTokenUsageEstimate).toHaveBeenCalledWith('new answer');
+  });
+
+  it('does not enter interrupt suppression when abort is requested without an active assistant turn', async () => {
+    const ctx = createRouter();
+
+    ctx.router.abortAiTurnCapture();
+
+    await ctx.router.handleMessage({
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'next answer' })
+    });
+
+    expect(ctx.updateTokenUsageEstimate).toHaveBeenCalledWith('next answer');
+    expect(ctx.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'response.output_audio_transcript.delta',
+        delta: 'next answer'
+      })
+    );
   });
 });

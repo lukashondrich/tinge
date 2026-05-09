@@ -85,6 +85,8 @@ Expected health field:
 PORT=3000
 NODE_ENV=production
 OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+REALTIME_MODEL=gpt-realtime-1.5
+REALTIME_VOICE=marin
 FRONTEND_URL=https://<YOUR_FRONTEND_RAILWAY_DOMAIN>
 RETRIEVAL_SERVICE_URL=https://retrieval-service-production.up.railway.app
 RETRIEVAL_FORCE_EN=true

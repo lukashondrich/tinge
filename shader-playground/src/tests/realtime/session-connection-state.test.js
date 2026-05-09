@@ -11,21 +11,32 @@ describe('SessionConnectionState', () => {
     expect(machine.getSnapshot()).toEqual({
       state: CONNECTION_STATES.IDLE,
       isConnected: false,
-      isConnecting: false
+      isConnecting: false,
+      isConfiguring: false
     });
 
     machine.transition(CONNECTION_STATES.CONNECTING, { reason: 'start_connect' });
     expect(machine.getSnapshot()).toEqual({
       state: CONNECTION_STATES.CONNECTING,
       isConnected: false,
-      isConnecting: true
+      isConnecting: true,
+      isConfiguring: false
     });
 
-    machine.transition(CONNECTION_STATES.CONNECTED, { reason: 'channel_open' });
+    machine.transition(CONNECTION_STATES.CONFIGURING, { reason: 'data_channel_open' });
+    expect(machine.getSnapshot()).toEqual({
+      state: CONNECTION_STATES.CONFIGURING,
+      isConnected: false,
+      isConnecting: false,
+      isConfiguring: true
+    });
+
+    machine.transition(CONNECTION_STATES.CONNECTED, { reason: 'session_updated' });
     expect(machine.getSnapshot()).toEqual({
       state: CONNECTION_STATES.CONNECTED,
       isConnected: true,
-      isConnecting: false
+      isConnecting: false,
+      isConfiguring: false
     });
   });
 

@@ -1,6 +1,7 @@
 export const CONNECTION_STATES = Object.freeze({
   IDLE: 'idle',
   CONNECTING: 'connecting',
+  CONFIGURING: 'configuring',
   CONNECTED: 'connected',
   RECONNECTING: 'reconnecting',
   FAILED: 'failed'
@@ -11,7 +12,14 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     CONNECTION_STATES.CONNECTING
   ]),
   [CONNECTION_STATES.CONNECTING]: new Set([
+    CONNECTION_STATES.CONFIGURING,
     CONNECTION_STATES.CONNECTED,
+    CONNECTION_STATES.FAILED,
+    CONNECTION_STATES.IDLE
+  ]),
+  [CONNECTION_STATES.CONFIGURING]: new Set([
+    CONNECTION_STATES.CONNECTED,
+    CONNECTION_STATES.RECONNECTING,
     CONNECTION_STATES.FAILED,
     CONNECTION_STATES.IDLE
   ]),
@@ -44,7 +52,8 @@ export class SessionConnectionState {
     return {
       state: this.state,
       isConnected: this.state === CONNECTION_STATES.CONNECTED,
-      isConnecting: this.state === CONNECTION_STATES.CONNECTING
+      isConnecting: this.state === CONNECTION_STATES.CONNECTING,
+      isConfiguring: this.state === CONNECTION_STATES.CONFIGURING
     };
   }
 

@@ -17,7 +17,7 @@ export class VocabularyHydrator {
     makeVector3,
     shouldEnableDemoSeed,
     applyDemoSeedVocabulary,
-    schedule = setTimeout,
+    schedule = (...args) => globalThis.setTimeout(...args),
     log = (...args) => logger.log(...args),
     warn = (...args) => logger.warn(...args)
   }) {

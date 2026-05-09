@@ -7,6 +7,10 @@ describe('PttOrchestrator', () => {
       isMicActive: false,
       isConnected: true,
       isConnecting: false,
+      isConfiguring: false,
+      isAssistantResponseActive: false,
+      shouldCancelAssistantResponse: false,
+      assistantResponseId: null,
       pendingUserRecord: null,
       pendingUserRecordPromise: null
     };
@@ -35,6 +39,10 @@ describe('PttOrchestrator', () => {
       },
       getIsConnected: () => state.isConnected,
       getIsConnecting: () => state.isConnecting,
+      getIsConfiguring: () => state.isConfiguring,
+      getIsAssistantResponseActive: () => state.isAssistantResponseActive,
+      getShouldCancelAssistantResponse: () => state.shouldCancelAssistantResponse,
+      getAssistantResponseId: () => state.assistantResponseId,
       getAudioTrack: () => audioTrack,
       getDataChannel: () => dataChannel,
       resetPendingRecording: () => {
@@ -88,7 +96,39 @@ describe('PttOrchestrator', () => {
     expect(result).toEqual({ allowed: true });
     expect(ctx.userAudioMgr.startRecording).toHaveBeenCalledTimes(1);
     expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'input_audio_buffer.clear', event_id: 'evt-1' })
+    );
+    expect(ctx.dataChannel.send).not.toHaveBeenCalledWith(
       JSON.stringify({ type: 'response.cancel', event_id: 'evt-1' })
+    );
+    expect(ctx.dataChannel.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: 'output_audio_buffer.clear', event_id: 'evt-1' })
+    );
+    expect(ctx.interruptAssistantResponse).not.toHaveBeenCalled();
+    expect(ctx.onEvent).not.toHaveBeenCalledWith({
+      type: 'assistant.interrupted',
+      utteranceId: expect.any(String)
+    });
+    expect(ctx.onEvent).toHaveBeenCalledWith({ type: 'input_audio_buffer.speech_started' });
+    expect(ctx.state.isMicActive).toBe(true);
+    expect(ctx.audioTrack.enabled).toBe(true);
+    expect(ctx.pttButton.innerText).toBe('Talking');
+  });
+
+  it('cancels and clears assistant output only when an assistant response is active', async () => {
+    const ctx = setup();
+    ctx.state.isAssistantResponseActive = true;
+    ctx.state.shouldCancelAssistantResponse = true;
+    ctx.state.assistantResponseId = 'resp-active';
+
+    const result = await ctx.orchestrator.handlePTTPress();
+
+    expect(result).toEqual({ allowed: true });
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'response.cancel', event_id: 'evt-1', response_id: 'resp-active' })
+    );
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'output_audio_buffer.clear', event_id: 'evt-1' })
     );
     expect(ctx.dataChannel.send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'input_audio_buffer.clear', event_id: 'evt-1' })
@@ -100,10 +140,30 @@ describe('PttOrchestrator', () => {
       type: 'assistant.interrupted',
       utteranceId: 'interrupted-12345'
     });
-    expect(ctx.onEvent).toHaveBeenCalledWith({ type: 'input_audio_buffer.speech_started' });
-    expect(ctx.state.isMicActive).toBe(true);
-    expect(ctx.audioTrack.enabled).toBe(true);
-    expect(ctx.pttButton.innerText).toBe('Talking');
+  });
+
+  it('cancels an open assistant response without local interruption when output is inactive', async () => {
+    const ctx = setup();
+    ctx.state.shouldCancelAssistantResponse = true;
+    ctx.state.assistantResponseId = 'resp-old';
+
+    const result = await ctx.orchestrator.handlePTTPress();
+
+    expect(result).toEqual({ allowed: true });
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'response.cancel', event_id: 'evt-1', response_id: 'resp-old' })
+    );
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'input_audio_buffer.clear', event_id: 'evt-1' })
+    );
+    expect(ctx.dataChannel.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: 'output_audio_buffer.clear', event_id: 'evt-1' })
+    );
+    expect(ctx.interruptAssistantResponse).not.toHaveBeenCalled();
+    expect(ctx.onEvent).not.toHaveBeenCalledWith({
+      type: 'assistant.interrupted',
+      utteranceId: expect.any(String)
+    });
   });
 
   it('returns blocked state when currently connecting', async () => {
@@ -114,11 +174,21 @@ describe('PttOrchestrator', () => {
     expect(result).toEqual({ allowed: false, reason: 'connecting' });
   });
 
+  it('returns blocked state when session is configuring', async () => {
+    const ctx = setup({
+      getIsConfiguring: () => true
+    });
+    const result = await ctx.orchestrator.handlePTTPress();
+    expect(result).toEqual({ allowed: false, reason: 'configuring' });
+    expect(ctx.connect).not.toHaveBeenCalled();
+  });
+
   it('returns connecting when connect leaves session in-flight', async () => {
     const stateRef = { current: null };
     const ctx = setup({
       getIsConnected: () => stateRef.current.isConnected,
       getIsConnecting: () => stateRef.current.isConnecting,
+      getIsConfiguring: () => stateRef.current.isConfiguring,
       connect: vi.fn(async () => {
         stateRef.current.isConnecting = true;
       })
@@ -130,6 +200,26 @@ describe('PttOrchestrator', () => {
     const result = await ctx.orchestrator.handlePTTPress();
 
     expect(result).toEqual({ allowed: false, reason: 'connecting' });
+    expect(ctx.userAudioMgr.startRecording).not.toHaveBeenCalled();
+  });
+
+  it('returns configuring when connect leaves session configuring', async () => {
+    const stateRef = { current: null };
+    const ctx = setup({
+      getIsConnected: () => stateRef.current.isConnected,
+      getIsConnecting: () => stateRef.current.isConnecting,
+      getIsConfiguring: () => stateRef.current.isConfiguring,
+      connect: vi.fn(async () => {
+        stateRef.current.isConfiguring = true;
+      })
+    });
+    stateRef.current = ctx.state;
+    ctx.state.isConnected = false;
+    ctx.state.isConfiguring = false;
+
+    const result = await ctx.orchestrator.handlePTTPress();
+
+    expect(result).toEqual({ allowed: false, reason: 'configuring' });
     expect(ctx.userAudioMgr.startRecording).not.toHaveBeenCalled();
   });
 

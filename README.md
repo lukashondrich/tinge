@@ -215,6 +215,8 @@ For session continuity and the active technical debt roadmap, start with
 ```bash
 # Backend
 OPENAI_API_KEY=your_openai_api_key_here
+REALTIME_MODEL=gpt-realtime-1.5
+REALTIME_VOICE=marin
 PORT=3000
 NODE_ENV=development
 
@@ -236,7 +238,7 @@ WEBHOOK_URL=https://your-webhook-url.com
 
 ### Backend (Port 3000)
 - `GET /health` - Health check
-- `POST /token` - OpenAI token endpoint
+- `GET /token` - OpenAI realtime client-secret endpoint
 - `POST /transcribe` - Audio transcription
 
 ### Embedding Service (Port 3001)  

@@ -114,7 +114,10 @@ export class ConnectionBootstrapService {
 
       this.mobileDebug('Token response received, parsing JSON...');
       const data = await tokenResponse.json();
-      const ephemeralKey = data.client_secret.value;
+      const ephemeralKey = data.value || data.client_secret?.value;
+      if (!ephemeralKey) {
+        throw new Error('Token response missing ephemeral key');
+      }
       if (this.onTokenUsage && data.tokenUsage) {
         this.onTokenUsage(data.tokenUsage);
       }

@@ -55,9 +55,15 @@ describe('Reconnect + PTT path (integration)', () => {
     });
 
     const requestEphemeralKey = vi.fn(requestEphemeralKeyImpl);
+    const sendSessionConfiguration = vi.fn(async () => {
+      lifecycleService.handleSessionConfigured();
+    });
     const lifecycleService = new ConnectionLifecycleService({
       deviceType: 'desktop',
       getIsConnecting: () => connectionSnapshot.isConnecting,
+      getIsConfiguring: () => connectionSnapshot.isConfiguring,
+      getIsConnected: () => connectionSnapshot.isConnected,
+      getConnectionState: () => connectionSnapshot.state,
       getPTTButton: () => pttButton,
       setPTTStatus,
       setPTTReadyStatus,
@@ -75,10 +81,10 @@ describe('Reconnect + PTT path (integration)', () => {
       setupPeerTrackHandling: vi.fn(),
       tryHydrateExistingRemoteAudioTrack: vi.fn(async () => {}),
       setupDataChannelEvents: vi.fn(),
-      sendSystemPrompt: vi.fn(async () => {}),
-      sendSessionConfiguration: vi.fn(async () => {}),
+      sendSessionConfiguration,
       handleConnectError: vi.fn(),
       getDataChannel: () => currentDataChannel,
+      dataChannelOpenTimeoutMs: 5000,
       log: vi.fn(),
       error: vi.fn(),
       mobileDebug: vi.fn()
@@ -109,6 +115,9 @@ describe('Reconnect + PTT path (integration)', () => {
       },
       getIsConnected: () => connectionSnapshot.isConnected,
       getIsConnecting: () => connectionSnapshot.isConnecting,
+      getIsConfiguring: () => connectionSnapshot.isConfiguring,
+      getIsAssistantResponseActive: () => false,
+      getShouldCancelAssistantResponse: () => false,
       getAudioTrack: () => currentAudioTrack,
       getDataChannel: () => currentDataChannel,
       resetPendingRecording: () => {
@@ -176,21 +185,22 @@ describe('Reconnect + PTT path (integration)', () => {
     expect(ctx.getCurrentDataChannel()).not.toBe(firstChannel);
     expect(ctx.getCurrentPeerConnection()).toEqual({ id: 'pc-2' });
 
-    expect(ctx.getCurrentDataChannel().send).toHaveBeenCalledWith(
+    expect(ctx.getCurrentDataChannel().send).not.toHaveBeenCalledWith(
       JSON.stringify({ type: 'response.cancel', event_id: 'evt-1' })
+    );
+    expect(ctx.getCurrentDataChannel().send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: 'output_audio_buffer.clear', event_id: 'evt-1' })
     );
     expect(ctx.getCurrentDataChannel().send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'input_audio_buffer.clear', event_id: 'evt-1' })
     );
-    expect(ctx.interruptAssistantResponse).toHaveBeenCalledWith({
-      interruptedUtteranceId: 'interrupted-1700000000000'
-    });
+    expect(ctx.interruptAssistantResponse).not.toHaveBeenCalled();
     expect(ctx.userAudioMgr.startRecording).toHaveBeenCalledTimes(1);
     expect(ctx.getCurrentAudioTrack().enabled).toBe(true);
 
-    expect(ctx.onEvent).toHaveBeenCalledWith({
+    expect(ctx.onEvent).not.toHaveBeenCalledWith({
       type: 'assistant.interrupted',
-      utteranceId: 'interrupted-1700000000000'
+      utteranceId: expect.any(String)
     });
     expect(ctx.onEvent).toHaveBeenCalledWith({ type: 'input_audio_buffer.speech_started' });
     expect(ctx.getPendingUserRecord()).toBeNull();
@@ -213,7 +223,11 @@ describe('Reconnect + PTT path (integration)', () => {
       await vi.advanceTimersByTimeAsync(5000);
       const pressResult = await pressPromise;
 
-      expect(pressResult).toEqual({ allowed: false, reason: 'data_channel_not_open' });
+      expect(pressResult).toEqual({
+        allowed: false,
+        reason: 'connection_failed',
+        error: expect.any(Error)
+      });
       expect(ctx.establishTransport).toHaveBeenCalledTimes(2);
       expect(ctx.dataChannels).toHaveLength(2);
       expect(ctx.getCurrentDataChannel().readyState).toBe('connecting');
@@ -257,6 +271,10 @@ describe('Reconnect + PTT path (integration)', () => {
     expect(ctx.getConnectionSnapshot().state).toBe(CONNECTION_STATES.RECONNECTING);
 
     const firstPressPromise = ctx.pttOrchestrator.handlePTTPress();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.getConnectionSnapshot().state).toBe(CONNECTION_STATES.CONNECTING);
     const secondPressResult = await ctx.pttOrchestrator.handlePTTPress();
     expect(secondPressResult).toEqual({ allowed: false, reason: 'connecting' });
 

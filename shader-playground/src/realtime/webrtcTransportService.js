@@ -1,5 +1,4 @@
-const OPENAI_REALTIME_BASE_URL = 'https://api.openai.com/v1/realtime';
-const OPENAI_REALTIME_MODEL = 'gpt-4o-mini-realtime-preview-2024-12-17';
+const OPENAI_REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 
 export class WebRtcTransportService {
   constructor({
@@ -8,7 +7,10 @@ export class WebRtcTransportService {
     onIceFailed = () => {},
     fetchFn = (...args) => globalThis.fetch(...args),
     getUserMedia = (...args) => globalThis.navigator.mediaDevices.getUserMedia(...args),
-    createPeerConnection = (config) => new globalThis.RTCPeerConnection(config)
+    createPeerConnection = (config) => new globalThis.RTCPeerConnection(config),
+    schedule = (...args) => globalThis.setTimeout(...args),
+    clearScheduled = (...args) => globalThis.clearTimeout(...args),
+    iceGatheringTimeoutMs = 5000
   }) {
     this.mobileDebug = mobileDebug;
     this.onIceDisconnected = onIceDisconnected;
@@ -16,6 +18,9 @@ export class WebRtcTransportService {
     this.fetchFn = fetchFn;
     this.getUserMedia = getUserMedia;
     this.createPeerConnection = createPeerConnection;
+    this.schedule = schedule;
+    this.clearScheduled = clearScheduled;
+    this.iceGatheringTimeoutMs = iceGatheringTimeoutMs;
   }
 
   async establishPeerConnection(ephemeralKey) {
@@ -45,9 +50,10 @@ export class WebRtcTransportService {
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
+    await this.waitForIceGatheringComplete(peerConnection);
 
     const sdpResponse = await this.fetchFn(
-      `${OPENAI_REALTIME_BASE_URL}?model=${OPENAI_REALTIME_MODEL}`,
+      OPENAI_REALTIME_CALLS_URL,
       {
         method: 'POST',
         body: peerConnection.localDescription.sdp,
@@ -70,5 +76,39 @@ export class WebRtcTransportService {
     this.mobileDebug('Remote SDP description set successfully');
 
     return { peerConnection, dataChannel, audioTrack };
+  }
+
+  async waitForIceGatheringComplete(peerConnection) {
+    if (peerConnection.iceGatheringState === 'complete') return;
+    if (
+      typeof peerConnection.addEventListener !== 'function'
+      || typeof peerConnection.removeEventListener !== 'function'
+    ) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) {
+          this.clearScheduled(timer);
+        }
+        peerConnection.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      };
+      const check = () => {
+        if (peerConnection.iceGatheringState === 'complete') {
+          finish();
+        }
+      };
+      peerConnection.addEventListener('icegatheringstatechange', check);
+      check();
+      if (!settled) {
+        timer = this.schedule(finish, this.iceGatheringTimeoutMs);
+      }
+    });
   }
 }

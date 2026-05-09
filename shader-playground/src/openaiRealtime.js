@@ -68,8 +68,8 @@ async function attemptPTTStart() {
   if (!result.allowed) {
     if (result.reason === 'token_limit_exceeded') {
       showTokenLimitMessage();
-    } else if (result.reason === 'connecting' && pttButton) {
-      pttButton.innerText = 'Connecting...';
+    } else if ((result.reason === 'connecting' || result.reason === 'configuring') && pttButton) {
+      pttButton.innerText = result.reason === 'configuring' ? 'Configuring...' : 'Connecting...';
       pttButton.style.backgroundColor = '#666';
       setTimeout(() => {
         if (!isPTTPressed && pttButton) {

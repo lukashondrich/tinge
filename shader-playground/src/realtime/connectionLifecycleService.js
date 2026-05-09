@@ -4,6 +4,9 @@ export class ConnectionLifecycleService {
   constructor({
     deviceType,
     getIsConnecting,
+    getIsConfiguring = () => false,
+    getIsConnected = () => false,
+    getConnectionState = () => CONNECTION_STATES.IDLE,
     getPTTButton,
     setPTTStatus,
     setPTTReadyStatus,
@@ -17,10 +20,11 @@ export class ConnectionLifecycleService {
     setupPeerTrackHandling,
     tryHydrateExistingRemoteAudioTrack,
     setupDataChannelEvents,
-    sendSystemPrompt,
     sendSessionConfiguration,
     handleConnectError,
     getDataChannel,
+    dataChannelOpenTimeoutMs = 10000,
+    sessionConfigTimeoutMs = 10000,
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
     mobileDebug = () => {},
@@ -29,6 +33,9 @@ export class ConnectionLifecycleService {
   }) {
     this.deviceType = deviceType;
     this.getIsConnecting = getIsConnecting;
+    this.getIsConfiguring = getIsConfiguring;
+    this.getIsConnected = getIsConnected;
+    this.getConnectionState = getConnectionState;
     this.getPTTButton = getPTTButton;
     this.setPTTStatus = setPTTStatus;
     this.setPTTReadyStatus = setPTTReadyStatus;
@@ -42,20 +49,38 @@ export class ConnectionLifecycleService {
     this.setupPeerTrackHandling = setupPeerTrackHandling;
     this.tryHydrateExistingRemoteAudioTrack = tryHydrateExistingRemoteAudioTrack;
     this.setupDataChannelEvents = setupDataChannelEvents;
-    this.sendSystemPrompt = sendSystemPrompt;
     this.sendSessionConfiguration = sendSessionConfiguration;
     this.handleConnectError = handleConnectError;
     this.getDataChannel = getDataChannel;
+    this.dataChannelOpenTimeoutMs = dataChannelOpenTimeoutMs;
+    this.sessionConfigTimeoutMs = sessionConfigTimeoutMs;
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
     this.mobileDebug = mobileDebug;
     this.log = log;
     this.error = error;
+    this.pendingConnectPromise = null;
+    this.sessionConfigTimeout = null;
+    this.resolveSessionConfigured = null;
+    this.rejectSessionConfigured = null;
   }
 
   async connect() {
-    if (this.getIsConnecting()) return;
+    if (this.getIsConnected()) return;
+    if (this.pendingConnectPromise) {
+      return this.pendingConnectPromise;
+    }
+    if (this.getIsConnecting() || this.getIsConfiguring()) return;
 
+    this.pendingConnectPromise = this.runConnect();
+    try {
+      return await this.pendingConnectPromise;
+    } finally {
+      this.pendingConnectPromise = null;
+    }
+  }
+
+  async runConnect() {
     this.transitionConnectionState(CONNECTION_STATES.CONNECTING, 'connect_requested');
     try {
       if (this.getPTTButton()) {
@@ -71,14 +96,26 @@ export class ConnectionLifecycleService {
       this.setCurrentEphemeralKey(ephemeralKey);
       await this.establishPeerConnection(ephemeralKey);
 
+      const channelReady = await this.waitForDataChannelOpen(this.dataChannelOpenTimeoutMs);
+      if (!channelReady) {
+        throw new Error('Data channel did not open in time');
+      }
+
+      this.transitionConnectionState(CONNECTION_STATES.CONFIGURING, 'data_channel_open');
+      this.setPTTStatus('Configuring...', '#666');
+      const sessionConfigured = this.createSessionConfiguredPromise();
+      await this.sendSessionConfiguration();
+      await sessionConfigured;
+
       this.log('OpenAI Realtime connection established');
       this.mobileDebug('🎉 OpenAI Realtime connection fully established!');
-      this.transitionConnectionState(CONNECTION_STATES.CONNECTED, 'peer_established');
-      this.setPTTReadyStatus();
     } catch (err) {
       this.error(`OpenAI connection error: ${err.message}`);
       this.error('Error details:', err);
-      this.transitionConnectionState(CONNECTION_STATES.FAILED, 'connect_error');
+      this.clearSessionConfiguredWait();
+      if (this.getConnectionState() !== CONNECTION_STATES.RECONNECTING) {
+        this.transitionConnectionState(CONNECTION_STATES.FAILED, 'connect_error');
+      }
       this.handleConnectError(err);
       throw err;
     }
@@ -90,20 +127,78 @@ export class ConnectionLifecycleService {
     this.setTransport({ peerConnection, dataChannel, audioTrack });
 
     dataChannel.onclose = () => {
+      this.rejectPendingSessionConfigured(new Error('Data channel closed during session configuration'));
       this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'data_channel_close');
       this.setPTTStatus('Reconnect', '#888');
     };
 
-    dataChannel.onopen = async () => {
-      this.transitionConnectionState(CONNECTION_STATES.CONNECTED, 'data_channel_open');
-      this.setPTTReadyStatus();
-      await this.sendSystemPrompt();
-      await this.sendSessionConfiguration();
+    dataChannel.onopen = () => {
+      this.mobileDebug('Realtime data channel open');
     };
 
     this.setupPeerTrackHandling();
     await this.tryHydrateExistingRemoteAudioTrack();
     this.setupDataChannelEvents();
+  }
+
+  createSessionConfiguredPromise() {
+    this.clearSessionConfigTimeout();
+
+    return new Promise((resolve, reject) => {
+      this.resolveSessionConfigured = resolve;
+      this.rejectSessionConfigured = reject;
+      this.sessionConfigTimeout = this.schedule(() => {
+        const err = new Error('Session configuration timed out');
+        this.rejectPendingSessionConfigured(err);
+        this.transitionConnectionState(CONNECTION_STATES.FAILED, 'session_config_timeout');
+      }, this.sessionConfigTimeoutMs);
+    });
+  }
+
+  handleSessionConfigured() {
+    if (this.getConnectionState() === CONNECTION_STATES.CONNECTED) {
+      return false;
+    }
+    if (this.getConnectionState() !== CONNECTION_STATES.CONFIGURING) {
+      return false;
+    }
+
+    this.clearSessionConfigTimeout();
+    this.transitionConnectionState(CONNECTION_STATES.CONNECTED, 'session_updated');
+    this.setPTTReadyStatus();
+    if (this.resolveSessionConfigured) {
+      this.resolveSessionConfigured();
+    }
+    this.resolveSessionConfigured = null;
+    this.rejectSessionConfigured = null;
+    return true;
+  }
+
+  rejectPendingSessionConfigured(error) {
+    this.clearSessionConfigTimeout();
+    if (this.rejectSessionConfigured) {
+      this.rejectSessionConfigured(error);
+    }
+    this.resolveSessionConfigured = null;
+    this.rejectSessionConfigured = null;
+  }
+
+  clearSessionConfigTimeout() {
+    if (this.sessionConfigTimeout) {
+      this.clearScheduled(this.sessionConfigTimeout);
+      this.sessionConfigTimeout = null;
+    }
+  }
+
+  clearSessionConfiguredWait() {
+    this.clearSessionConfigTimeout();
+    this.resolveSessionConfigured = null;
+    this.rejectSessionConfigured = null;
+  }
+
+  reset() {
+    this.rejectPendingSessionConfigured(new Error('Connection lifecycle reset'));
+    this.pendingConnectPromise = null;
   }
 
   async waitForDataChannelOpen(timeoutMs = 5000) {

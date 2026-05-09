@@ -90,7 +90,7 @@ describe('PTT interrupt path (integration)', () => {
 
   it('drops stale post-interrupt deltas and starts a fresh AI bubble for the next response', async () => {
     await router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'First answer.' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'First answer.' })
     });
 
     expect(container.querySelectorAll('.bubble.ai')).toHaveLength(1);
@@ -102,7 +102,7 @@ describe('PTT interrupt path (integration)', () => {
     vi.advanceTimersByTime(0);
 
     await router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: ' stale tail' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: ' stale tail' })
     });
     expect(container.querySelectorAll('.bubble.ai')).toHaveLength(1);
     expect(firstBubble.textContent).not.toContain('stale tail');
@@ -111,7 +111,7 @@ describe('PTT interrupt path (integration)', () => {
       data: JSON.stringify({ type: 'output_audio_buffer.stopped' })
     });
     await router.handleMessage({
-      data: JSON.stringify({ type: 'response.audio_transcript.delta', delta: 'Second answer.' })
+      data: JSON.stringify({ type: 'response.output_audio_transcript.delta', delta: 'Second answer.' })
     });
 
     const aiBubbles = container.querySelectorAll('.bubble.ai .highlighted-text');

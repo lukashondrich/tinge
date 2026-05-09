@@ -156,7 +156,7 @@ export class RealtimeEventCoordinator {
       return;
     }
 
-    if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
+    if (event.type === 'response.output_audio_transcript.delta' && typeof event.delta === 'string') {
       const remappedStreamingTranscript = this.retrievalCoordinator.appendStreamingDelta(event.delta);
       const completedWords = this.bubbleManager.appendDelta('ai', event.delta, {
         displayText: remappedStreamingTranscript
@@ -166,7 +166,7 @@ export class RealtimeEventCoordinator {
       return;
     }
 
-    if (event.type === 'response.text.delta' && typeof event.delta === 'string') {
+    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
       const acceptedDelta = this.consumeResponseTextDelta(event.delta);
       if (!acceptedDelta) return;
 
@@ -218,11 +218,24 @@ export class RealtimeEventCoordinator {
       return;
     }
 
+    if (event.type === 'response.done') {
+      const status = event.response?.status;
+      if (status && status !== 'completed') {
+        this.warn('Realtime response finished with non-completed status:', status, event.response?.status_details || '');
+      }
+      if (this.bubbleManager.hasActiveDelta('ai')) {
+        this.bubbleManager.scheduleFinalize('ai', 300, (words) => {
+          words.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+        });
+      }
+      return;
+    }
+
     if (
-      (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string')
-      || (event.type === 'response.text.done' && typeof event.text === 'string')
+      (event.type === 'response.output_audio_transcript.done' && typeof event.transcript === 'string')
+      || (event.type === 'response.output_text.done' && typeof event.text === 'string')
     ) {
-      const rawTranscript = event.type === 'response.text.done'
+      const rawTranscript = event.type === 'response.output_text.done'
         ? this.consumeResponseTextDone(event.text)
         : event.transcript;
       if (!rawTranscript) {

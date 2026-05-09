@@ -1,6 +1,6 @@
-const DEFAULT_REALTIME_SESSION_URL = 'https://api.openai.com/v1/realtime/sessions';
-const DEFAULT_MODEL = 'gpt-4o-realtime-preview-2024-12-17';
-const DEFAULT_VOICE = 'verse';
+const DEFAULT_REALTIME_CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
+const DEFAULT_MODEL = 'gpt-realtime-1.5';
+const DEFAULT_VOICE = 'marin';
 
 function mapOpenAiTokenError(status) {
   if (status === 401) {
@@ -23,7 +23,7 @@ export function createTokenHandler({
   apiKey,
   tokenCounter,
   logger = console,
-  realtimeSessionUrl = DEFAULT_REALTIME_SESSION_URL,
+  realtimeClientSecretsUrl = DEFAULT_REALTIME_CLIENT_SECRETS_URL,
   model = DEFAULT_MODEL,
   voice = DEFAULT_VOICE
 } = {}) {
@@ -45,15 +45,22 @@ export function createTokenHandler({
       }
 
       logger.log('Requesting token from OpenAI...');
-      const response = await fetchImpl(realtimeSessionUrl, {
+      const response = await fetchImpl(realtimeClientSecretsUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model,
-          voice
+          session: {
+            type: 'realtime',
+            model,
+            audio: {
+              output: {
+                voice
+              }
+            }
+          }
         })
       });
 
@@ -69,18 +76,22 @@ export function createTokenHandler({
       const data = await response.json();
       logger.log('Token received successfully');
 
-      if (!data.client_secret || !data.client_secret.value) {
+      const ephemeralKey = data.value || data.client_secret?.value;
+      if (!ephemeralKey) {
         logger.error('Invalid response format from OpenAI:', data);
         return res.status(500).json({
           error: 'Invalid response format from OpenAI',
-          detail: "The response didn't contain the expected client_secret fields"
+          detail: 'The response did not contain an ephemeral client secret value'
         });
       }
 
-      const ephemeralKey = data.client_secret.value;
       const usage = tokenCounter.initializeKey(ephemeralKey);
       return res.json({
         ...data,
+        client_secret: {
+          value: ephemeralKey,
+          expires_at: data.expires_at || data.client_secret?.expires_at
+        },
         tokenUsage: usage
       });
     } catch (error) {

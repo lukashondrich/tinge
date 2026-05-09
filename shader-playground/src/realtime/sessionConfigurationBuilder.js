@@ -228,12 +228,18 @@ function cloneTools() {
   return JSON.parse(JSON.stringify(SESSION_TOOLS));
 }
 
-export function buildSessionUpdate({ enableSemanticVad = false } = {}) {
+export function buildSessionUpdate({ enableSemanticVad = false, instructions = '' } = {}) {
   return {
     type: 'session.update',
     session: {
-      input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
-      turn_detection: enableSemanticVad ? { ...SESSION_SEMANTIC_VAD_CONFIG } : null,
+      type: 'realtime',
+      ...(instructions ? { instructions } : {}),
+      audio: {
+        input: {
+          transcription: { model: 'gpt-4o-mini-transcribe' },
+          turn_detection: enableSemanticVad ? { ...SESSION_SEMANTIC_VAD_CONFIG } : null
+        }
+      },
       tools: cloneTools()
     }
   };

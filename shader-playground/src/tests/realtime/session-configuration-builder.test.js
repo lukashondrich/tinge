@@ -3,13 +3,15 @@ import { buildSessionUpdate } from '../../realtime/sessionConfigurationBuilder.j
 
 describe('sessionConfigurationBuilder', () => {
   it('builds default session update with VAD disabled', () => {
-    const payload = buildSessionUpdate();
+    const payload = buildSessionUpdate({ instructions: 'Tutor prompt' });
 
     expect(payload.type).toBe('session.update');
-    expect(payload.session.input_audio_transcription).toEqual({
+    expect(payload.session.type).toBe('realtime');
+    expect(payload.session.instructions).toBe('Tutor prompt');
+    expect(payload.session.audio.input.transcription).toEqual({
       model: 'gpt-4o-mini-transcribe'
     });
-    expect(payload.session.turn_detection).toBeNull();
+    expect(payload.session.audio.input.turn_detection).toBeNull();
     expect(Array.isArray(payload.session.tools)).toBe(true);
     expect(payload.session.tools.map((tool) => tool.name)).toEqual([
       'get_user_profile',
@@ -22,7 +24,7 @@ describe('sessionConfigurationBuilder', () => {
   it('includes semantic_vad settings when enabled', () => {
     const payload = buildSessionUpdate({ enableSemanticVad: true });
 
-    expect(payload.session.turn_detection).toEqual({
+    expect(payload.session.audio.input.turn_detection).toEqual({
       type: 'semantic_vad',
       eagerness: 'low',
       create_response: true,

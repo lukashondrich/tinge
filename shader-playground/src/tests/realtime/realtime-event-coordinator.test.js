@@ -47,7 +47,7 @@ describe('RealtimeEventCoordinator', () => {
   });
 
   it('handles streaming delta and emits completed words', () => {
-    coordinator.handleEvent({ type: 'response.audio_transcript.delta', delta: 'hello' });
+    coordinator.handleEvent({ type: 'response.output_audio_transcript.delta', delta: 'hello' });
     expect(retrievalCoordinator.appendStreamingDelta).toHaveBeenCalledWith('hello');
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', 'hello', { displayText: 'mapped' });
     expect(addWord).toHaveBeenCalledWith('done', 'ai', { skipBubble: true });
@@ -65,15 +65,15 @@ describe('RealtimeEventCoordinator', () => {
     expect(bubbleManager.scheduleFinalize).toHaveBeenCalledWith('ai', 0, expect.any(Function));
   });
 
-  it('handles response.text.delta like transcript delta for progressive AI bubble updates', () => {
-    coordinator.handleEvent({ type: 'response.text.delta', delta: 'hola' });
+  it('handles response.output_text.delta like transcript delta for progressive AI bubble updates', () => {
+    coordinator.handleEvent({ type: 'response.output_text.delta', delta: 'hola' });
     expect(retrievalCoordinator.appendStreamingDelta).toHaveBeenCalledWith('hola');
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', 'hola', { displayText: 'mapped' });
   });
 
-  it('suppresses tool-call JSON from response.text.delta', () => {
-    coordinator.handleEvent({ type: 'response.text.delta', delta: '{"tool_uses":[' });
-    coordinator.handleEvent({ type: 'response.text.delta', delta: '{"recipient_name":"get_user_profile"}]}' });
+  it('suppresses tool-call JSON from response.output_text.delta', () => {
+    coordinator.handleEvent({ type: 'response.output_text.delta', delta: '{"tool_uses":[' });
+    coordinator.handleEvent({ type: 'response.output_text.delta', delta: '{"recipient_name":"get_user_profile"}]}' });
     expect(retrievalCoordinator.appendStreamingDelta).not.toHaveBeenCalled();
     expect(bubbleManager.appendDelta).not.toHaveBeenCalled();
   });
@@ -162,22 +162,48 @@ describe('RealtimeEventCoordinator', () => {
 
   it('applies final transcript to AI bubble when done event arrives', () => {
     retrievalCoordinator.handleFinalTranscript.mockReturnValue('final-mapped');
-    coordinator.handleEvent({ type: 'response.audio_transcript.done', transcript: 'final raw' });
+    coordinator.handleEvent({ type: 'response.output_audio_transcript.done', transcript: 'final raw' });
     expect(retrievalCoordinator.handleFinalTranscript).toHaveBeenCalledWith('final raw');
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', '', { displayText: 'final-mapped' });
     expect(bubbleManager.scheduleFinalize).toHaveBeenCalled();
   });
 
-  it('applies response.text.done to AI bubble when transcript stream is unavailable', () => {
+  it('finalizes partial AI bubble on response.done when transcript done is missing', () => {
+    bubbleManager.hasActiveDelta.mockReturnValue(true);
+
+    coordinator.handleEvent({ type: 'response.done', response: { status: 'completed' } });
+
+    expect(bubbleManager.scheduleFinalize).toHaveBeenCalledWith('ai', 300, expect.any(Function));
+  });
+
+  it('warns when response.done reports a cancelled or failed response', () => {
+    bubbleManager.hasActiveDelta.mockReturnValue(true);
+
+    coordinator.handleEvent({
+      type: 'response.done',
+      response: {
+        status: 'cancelled',
+        status_details: { reason: 'client_cancelled' }
+      }
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      'Realtime response finished with non-completed status:',
+      'cancelled',
+      { reason: 'client_cancelled' }
+    );
+  });
+
+  it('applies response.output_text.done to AI bubble when transcript stream is unavailable', () => {
     retrievalCoordinator.handleFinalTranscript.mockReturnValue('text-done-mapped');
-    coordinator.handleEvent({ type: 'response.text.done', text: 'text done raw' });
+    coordinator.handleEvent({ type: 'response.output_text.done', text: 'text done raw' });
     expect(retrievalCoordinator.handleFinalTranscript).toHaveBeenCalledWith('text done raw');
     expect(bubbleManager.appendDelta).toHaveBeenCalledWith('ai', '', { displayText: 'text-done-mapped' });
   });
 
-  it('suppresses tool-call JSON from response.text.done', () => {
+  it('suppresses tool-call JSON from response.output_text.done', () => {
     coordinator.handleEvent({
-      type: 'response.text.done',
+      type: 'response.output_text.done',
       text: '{"tool_uses":[{"recipient_name":"get_user_profile","parameters":{"user_id":"student_001"}}]}'
     });
     expect(retrievalCoordinator.handleFinalTranscript).not.toHaveBeenCalled();

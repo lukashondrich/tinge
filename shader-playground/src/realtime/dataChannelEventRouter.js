@@ -8,6 +8,7 @@ export class DataChannelEventRouter {
     handleUserTranscription,
     handleFunctionCall,
     onEvent,
+    onSessionConfigured = () => {},
     parseEvent = JSON.parse,
     now = () => performance.now(),
     timestamp = () => new Date().toLocaleTimeString(),
@@ -25,6 +26,7 @@ export class DataChannelEventRouter {
     this.handleUserTranscription = handleUserTranscription;
     this.handleFunctionCall = handleFunctionCall;
     this.onEvent = onEvent;
+    this.onSessionConfigured = onSessionConfigured;
     this.parseEvent = parseEvent;
     this.now = now;
     this.timestamp = timestamp;
@@ -42,6 +44,8 @@ export class DataChannelEventRouter {
     this.aiTranscript = '';
     this.aiAudioReadyWarningShown = false;
     this.assistantTurnState = 'idle';
+    this.assistantResponseInFlight = false;
+    this.assistantResponseId = null;
     this.interruptDrainTimeout = null;
   }
 
@@ -69,6 +73,8 @@ export class DataChannelEventRouter {
     this.resetAiCaptureState();
     this.aiAudioReadyWarningShown = false;
     this.assistantTurnState = 'idle';
+    this.assistantResponseInFlight = false;
+    this.assistantResponseId = null;
   }
 
   resetAiAudioWarning() {
@@ -76,13 +82,18 @@ export class DataChannelEventRouter {
   }
 
   abortAiTurnCapture({ interruptedUtteranceId = null } = {}) {
+    const hadActiveTurn = this.hasActiveAssistantTurn();
     const interruptedTranscript = this.aiTranscript.trim();
     if (this.aiAudioMgr.isRecording) {
       this.finalizeInterruptedAiCapture(interruptedTranscript, interruptedUtteranceId);
     }
     this.resetAiCaptureState();
     this.resetAiAudioWarning();
-    this.enterInterruptedState();
+    if (hadActiveTurn) {
+      this.enterInterruptedState();
+    } else {
+      this.clearInterruptedState();
+    }
   }
 
   async finalizeInterruptedAiCapture(transcript, interruptedUtteranceId) {
@@ -117,6 +128,51 @@ export class DataChannelEventRouter {
     this.clearInterruptDrainTimeout();
   }
 
+  markAssistantTurnActive() {
+    this.assistantResponseInFlight = true;
+    if (this.assistantTurnState !== 'interrupted') {
+      this.assistantTurnState = 'active';
+    }
+  }
+
+  markAssistantTurnIdle() {
+    if (this.assistantTurnState !== 'interrupted') {
+      this.assistantTurnState = 'idle';
+    }
+  }
+
+  hasActiveAssistantTurn() {
+    return (
+      this.assistantTurnState === 'active'
+      || this.aiAudioMgr.isRecording
+      || this.aiTranscript.trim().length > 0
+    );
+  }
+
+  hasOpenAssistantResponse() {
+    return this.assistantResponseInFlight || this.hasActiveAssistantTurn();
+  }
+
+  getOpenAssistantResponseId() {
+    return this.assistantResponseId;
+  }
+
+  trackAssistantResponse(event) {
+    const responseId = event?.response_id || event?.response?.id;
+    if (responseId) {
+      this.assistantResponseId = responseId;
+      this.assistantResponseInFlight = true;
+    }
+  }
+
+  clearAssistantResponse(event) {
+    const responseId = event?.response_id || event?.response?.id;
+    if (!responseId || !this.assistantResponseId || responseId === this.assistantResponseId) {
+      this.assistantResponseInFlight = false;
+      this.assistantResponseId = null;
+    }
+  }
+
   clearInterruptDrainTimeout() {
     if (this.interruptDrainTimeout) {
       this.clearScheduled(this.interruptDrainTimeout);
@@ -126,10 +182,10 @@ export class DataChannelEventRouter {
 
   isAssistantTranscriptEvent(eventType) {
     return (
-      eventType === 'response.audio_transcript.delta'
-      || eventType === 'response.audio_transcript.done'
-      || eventType === 'response.text.delta'
-      || eventType === 'response.text.done'
+      eventType === 'response.output_audio_transcript.delta'
+      || eventType === 'response.output_audio_transcript.done'
+      || eventType === 'response.output_text.delta'
+      || eventType === 'response.output_text.done'
     );
   }
 
@@ -170,17 +226,40 @@ export class DataChannelEventRouter {
     }
 
     if (!event.timestamp) event.timestamp = this.timestamp();
-    if (event.type === 'response.audio_transcript.done' && typeof event.transcript === 'string') {
+    if (event.type === 'error') {
+      this.warn('Realtime API error event:', event.error || event);
+    }
+
+    if (
+      event.type === 'response.created'
+      || event.type === 'response.output_audio_transcript.delta'
+      || event.type === 'response.output_audio_transcript.done'
+      || event.type === 'response.output_text.delta'
+      || event.type === 'response.output_text.done'
+      || event.type === 'output_audio_buffer.started'
+      || event.type === 'output_audio_buffer.stopped'
+    ) {
+      this.trackAssistantResponse(event);
+    }
+
+    if (event.type === 'response.output_audio_transcript.done' && typeof event.transcript === 'string') {
       event.transcript = event.transcript.trim();
       event.speaker = 'ai';
     }
 
     const suppressAssistantEvent = this.shouldSuppressAssistantEvent(event);
     if (!suppressAssistantEvent) {
+      if (
+        event.type === 'output_audio_buffer.started'
+        || event.type === 'response.output_audio_transcript.delta'
+        || event.type === 'response.output_text.delta'
+      ) {
+        this.markAssistantTurnActive();
+      }
       this.onEvent?.(event);
     }
 
-    if (event.type === 'response.audio_transcript.delta' && typeof event.delta === 'string') {
+    if (event.type === 'response.output_audio_transcript.delta' && typeof event.delta === 'string') {
       if (suppressAssistantEvent) return;
       this.handleAiTranscriptDelta(event.delta);
       return;
@@ -208,13 +287,20 @@ export class DataChannelEventRouter {
       return;
     }
 
-    if (event.type === 'response.done' && event.response && event.response.usage) {
-      this.updateTokenUsageActual(event.response.usage);
+    if (event.type === 'response.done') {
+      this.clearAssistantResponse(event);
+      this.markAssistantTurnIdle();
+      if (event.response && event.response.usage) {
+        this.updateTokenUsageActual(event.response.usage);
+      }
       return;
     }
 
-    if (event.type === 'session.updated' && event.session && event.session.usage) {
-      this.updateTokenUsageActual(event.session.usage);
+    if (event.type === 'session.updated') {
+      this.onSessionConfigured(event.session || {});
+      if (event.session && event.session.usage) {
+        this.updateTokenUsageActual(event.session.usage);
+      }
     }
   }
 
@@ -240,6 +326,7 @@ export class DataChannelEventRouter {
       return false;
     }
 
+    this.markAssistantTurnActive();
     this.aiRecordingStartTime = this.now();
     this.aiWordOffsets = [];
     this.aiTranscript = '';
@@ -250,6 +337,7 @@ export class DataChannelEventRouter {
   async finalizeAiTurnRecording() {
     if (!this.aiAudioMgr.isRecording) {
       this.resetAiCaptureState();
+      this.markAssistantTurnIdle();
       return;
     }
 
@@ -264,6 +352,7 @@ export class DataChannelEventRouter {
       this.error(`AI transcription error: ${err}`);
     } finally {
       this.resetAiCaptureState();
+      this.markAssistantTurnIdle();
     }
   }
 }

@@ -24,6 +24,8 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.OPENAI_API_KEY;
+const realtimeModel = process.env.REALTIME_MODEL || 'gpt-realtime-1.5';
+const realtimeVoice = process.env.REALTIME_VOICE || 'marin';
 const retrievalServiceUrl = process.env.RETRIEVAL_SERVICE_URL || 'http://localhost:3004';
 const retrievalTimeoutMs = Number(process.env.RETRIEVAL_TIMEOUT_MS || 8000);
 const retrievalForceEn = !['0', 'false', 'no'].includes(
@@ -61,7 +63,9 @@ app.get("/token", createTokenHandler({
   fetchImpl: fetch,
   apiKey,
   tokenCounter,
-  logger
+  logger,
+  model: realtimeModel,
+  voice: realtimeVoice
 }));
 
 app.use(createTokenUsageRouter({

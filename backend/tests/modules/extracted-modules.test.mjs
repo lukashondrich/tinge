@@ -172,19 +172,66 @@ describe('backend extracted modules', () => {
 
   test('createTokenHandler returns token payload with usage', async () => {
     const tokenUsage = { currentTokens: 0 };
+    let capturedUrl = '';
+    let capturedBody = null;
     const handler = createTokenHandler({
-      fetchImpl: async () => ({
-        ok: true,
-        json: async () => ({ client_secret: { value: 'ephemeral-123' } })
-      }),
+      fetchImpl: async (url, options) => {
+        capturedUrl = url;
+        capturedBody = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () => ({
+            value: 'ephemeral-123',
+            expires_at: 999,
+            session: {
+              model: 'gpt-realtime-1.5'
+            }
+          })
+        };
+      },
       apiKey: 'key',
       tokenCounter: { initializeKey: () => tokenUsage },
+      model: 'gpt-realtime-1.5',
+      voice: 'marin',
       logger: { log: () => {}, error: () => {} }
     });
     const res = createMockRes();
     await handler({}, res);
     assert.equal(res.statusCode, 200);
+    assert.equal(capturedUrl, 'https://api.openai.com/v1/realtime/client_secrets');
+    assert.deepEqual(capturedBody, {
+      session: {
+        type: 'realtime',
+        model: 'gpt-realtime-1.5',
+        audio: {
+          output: {
+            voice: 'marin'
+          }
+        }
+      }
+    });
+    assert.equal(res.payload.value, 'ephemeral-123');
+    assert.equal(res.payload.client_secret.value, 'ephemeral-123');
+    assert.equal(res.payload.client_secret.expires_at, 999);
+    assert.deepEqual(res.payload.session, { model: 'gpt-realtime-1.5' });
     assert.deepEqual(res.payload.tokenUsage, tokenUsage);
+  });
+
+  test('createTokenHandler supports legacy nested client_secret response', async () => {
+    const handler = createTokenHandler({
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({ client_secret: { value: 'legacy-ephemeral', expires_at: 111 } })
+      }),
+      apiKey: 'key',
+      tokenCounter: { initializeKey: () => ({}) },
+      logger: { log: () => {}, error: () => {} }
+    });
+    const res = createMockRes();
+    await handler({}, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.client_secret.value, 'legacy-ephemeral');
+    assert.equal(res.payload.client_secret.expires_at, 111);
   });
 
   test('createTranscribeHandler builds multipart request and responds with words/fullText', async () => {

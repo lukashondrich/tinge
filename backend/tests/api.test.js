@@ -54,7 +54,20 @@ const createTestApp = () => {
     }
 
     try {
-      const response = await mockFetch();
+      const response = await mockFetch('https://api.openai.com/v1/realtime/client_secrets', {
+        method: 'POST',
+        body: JSON.stringify({
+          session: {
+            type: 'realtime',
+            model: 'gpt-realtime-1.5',
+            audio: {
+              output: {
+                voice: 'marin'
+              }
+            }
+          }
+        })
+      });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -65,15 +78,22 @@ const createTestApp = () => {
       }
 
       const data = await response.json();
-      
-      if (!data.client_secret || !data.client_secret.value) {
-        return res.status(500).json({ 
+
+      const ephemeralKey = data.value || (data.client_secret && data.client_secret.value);
+      if (!ephemeralKey) {
+        return res.status(500).json({
           error: "Invalid response format from OpenAI",
-          detail: "The response didn't contain the expected client_secret fields" 
+          detail: "The response didn't contain an ephemeral client secret value"
         });
       }
-      
-      res.json(data);
+
+      res.json({
+        ...data,
+        client_secret: {
+          value: ephemeralKey,
+          expires_at: data.expires_at || (data.client_secret && data.client_secret.expires_at)
+        }
+      });
     } catch (error) {
       res.status(500).json({ 
         error: "Internal server error",
@@ -206,10 +226,9 @@ describe('Backend API Tests', () => {
 
     test('should return token on successful OpenAI response', async () => {
       const mockTokenData = {
-        client_secret: {
-          value: 'mock-token-value',
-          expires_at: Date.now() + 3600000
-        }
+        value: 'mock-token-value',
+        expires_at: Date.now() + 3600000,
+        session: { model: 'gpt-realtime-1.5' }
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -221,8 +240,26 @@ describe('Backend API Tests', () => {
         .get('/token')
         .expect(200);
 
-      expect(response.body).toEqual(mockTokenData);
+      expect(response.body).toEqual({
+        ...mockTokenData,
+        client_secret: {
+          value: 'mock-token-value',
+          expires_at: mockTokenData.expires_at
+        }
+      });
       expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toBe('https://api.openai.com/v1/realtime/client_secrets');
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+        session: {
+          type: 'realtime',
+          model: 'gpt-realtime-1.5',
+          audio: {
+            output: {
+              voice: 'marin'
+            }
+          }
+        }
+      });
     });
 
     test('should handle OpenAI API errors', async () => {

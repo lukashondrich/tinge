@@ -4,7 +4,10 @@ import { CONNECTION_STATES } from '../../realtime/sessionConnectionState.js';
 
 describe('ConnectionLifecycleService', () => {
   function createService(overrides = {}) {
-    const transitionConnectionState = vi.fn();
+    let currentState = CONNECTION_STATES.IDLE;
+    const transitionConnectionState = vi.fn((nextState) => {
+      currentState = nextState;
+    });
     const setPTTStatus = vi.fn();
     const setPTTReadyStatus = vi.fn();
     const initializeMobileMicrophone = vi.fn(async () => {});
@@ -15,7 +18,6 @@ describe('ConnectionLifecycleService', () => {
     const setupPeerTrackHandling = vi.fn();
     const tryHydrateExistingRemoteAudioTrack = vi.fn(async () => {});
     const setupDataChannelEvents = vi.fn();
-    const sendSystemPrompt = vi.fn(async () => {});
     const sendSessionConfiguration = vi.fn(async () => {});
     const handleConnectError = vi.fn();
     const log = vi.fn();
@@ -23,7 +25,7 @@ describe('ConnectionLifecycleService', () => {
     const mobileDebug = vi.fn();
 
     const dataChannel = {
-      readyState: 'connecting',
+      readyState: 'open',
       onopen: null,
       onclose: null,
       addEventListener: vi.fn(),
@@ -38,7 +40,10 @@ describe('ConnectionLifecycleService', () => {
 
     const service = new ConnectionLifecycleService({
       deviceType: 'desktop',
-      getIsConnecting: () => false,
+      getIsConnecting: () => currentState === CONNECTION_STATES.CONNECTING,
+      getIsConfiguring: () => currentState === CONNECTION_STATES.CONFIGURING,
+      getIsConnected: () => currentState === CONNECTION_STATES.CONNECTED,
+      getConnectionState: () => currentState,
       getPTTButton: () => ({ id: 'ptt' }),
       setPTTStatus,
       setPTTReadyStatus,
@@ -52,10 +57,11 @@ describe('ConnectionLifecycleService', () => {
       setupPeerTrackHandling,
       tryHydrateExistingRemoteAudioTrack,
       setupDataChannelEvents,
-      sendSystemPrompt,
       sendSessionConfiguration,
       handleConnectError,
       getDataChannel: () => dataChannel,
+      schedule: vi.fn(() => 99),
+      clearScheduled: vi.fn(),
       log,
       error,
       mobileDebug,
@@ -77,7 +83,6 @@ describe('ConnectionLifecycleService', () => {
       setupPeerTrackHandling,
       tryHydrateExistingRemoteAudioTrack,
       setupDataChannelEvents,
-      sendSystemPrompt,
       sendSessionConfiguration,
       handleConnectError,
       log,
@@ -86,10 +91,15 @@ describe('ConnectionLifecycleService', () => {
     };
   }
 
-  it('connects successfully and delegates peer bootstrap', async () => {
+  async function flushConnectSetup() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('connects after session.updated and delegates peer bootstrap', async () => {
     const ctx = createService();
 
-    await ctx.service.connect();
+    const connectPromise = ctx.service.connect();
+    await flushConnectSetup();
 
     expect(ctx.transitionConnectionState).toHaveBeenNthCalledWith(
       1,
@@ -108,10 +118,20 @@ describe('ConnectionLifecycleService', () => {
     expect(ctx.setupPeerTrackHandling).toHaveBeenCalledTimes(1);
     expect(ctx.tryHydrateExistingRemoteAudioTrack).toHaveBeenCalledTimes(1);
     expect(ctx.setupDataChannelEvents).toHaveBeenCalledTimes(1);
+    expect(ctx.sendSessionConfiguration).toHaveBeenCalledTimes(1);
+    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
+      CONNECTION_STATES.CONFIGURING,
+      'data_channel_open'
+    );
+    expect(ctx.setPTTReadyStatus).not.toHaveBeenCalled();
+
+    ctx.service.handleSessionConfigured();
+    await connectPromise;
+
     expect(ctx.setPTTReadyStatus).toHaveBeenCalledTimes(1);
     expect(ctx.transitionConnectionState).toHaveBeenLastCalledWith(
       CONNECTION_STATES.CONNECTED,
-      'peer_established'
+      'session_updated'
     );
   });
 
@@ -120,7 +140,10 @@ describe('ConnectionLifecycleService', () => {
       deviceType: 'mobile'
     });
 
-    await ctx.service.connect();
+    const connectPromise = ctx.service.connect();
+    await flushConnectSetup();
+    ctx.service.handleSessionConfigured();
+    await connectPromise;
 
     expect(ctx.initializeMobileMicrophone).toHaveBeenCalledTimes(1);
     expect(ctx.verifyBackendReachable).toHaveBeenCalledTimes(1);
@@ -146,12 +169,7 @@ describe('ConnectionLifecycleService', () => {
     await ctx.service.establishPeerConnection('ek_2');
 
     await ctx.dataChannel.onopen();
-    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
-      CONNECTION_STATES.CONNECTED,
-      'data_channel_open'
-    );
-    expect(ctx.sendSystemPrompt).toHaveBeenCalledTimes(1);
-    expect(ctx.sendSessionConfiguration).toHaveBeenCalledTimes(1);
+    expect(ctx.mobileDebug).toHaveBeenCalledWith('Realtime data channel open');
 
     ctx.dataChannel.onclose();
     expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
@@ -159,6 +177,44 @@ describe('ConnectionLifecycleService', () => {
       'data_channel_close'
     );
     expect(ctx.setPTTStatus).toHaveBeenCalledWith('Reconnect', '#888');
+  });
+
+  it('fails connect when session.updated does not arrive before timeout', async () => {
+    let timeoutHandler;
+    const ctx = createService({
+      schedule: vi.fn((handler) => {
+        timeoutHandler = handler;
+        return 7;
+      })
+    });
+
+    const connectPromise = ctx.service.connect();
+    await flushConnectSetup();
+    timeoutHandler();
+
+    await expect(connectPromise).rejects.toThrow('Session configuration timed out');
+    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
+      CONNECTION_STATES.FAILED,
+      'session_config_timeout'
+    );
+  });
+
+  it('transitions reconnecting when data channel closes during configuration', async () => {
+    const ctx = createService();
+
+    const connectPromise = ctx.service.connect();
+    await flushConnectSetup();
+    ctx.dataChannel.onclose();
+
+    await expect(connectPromise).rejects.toThrow('Data channel closed during session configuration');
+    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
+      CONNECTION_STATES.RECONNECTING,
+      'data_channel_close'
+    );
+    expect(ctx.transitionConnectionState).not.toHaveBeenCalledWith(
+      CONNECTION_STATES.FAILED,
+      'connect_error'
+    );
   });
 
   it('waitForDataChannelOpen resolves true when channel opens before timeout', async () => {

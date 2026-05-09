@@ -71,6 +71,8 @@ Important behavior:
 ## Operational Flags
 
 - `OPENAI_API_KEY`
+- `REALTIME_MODEL`
+- `REALTIME_VOICE`
 - `PORT`
 - `FRONTEND_URL`
 - `RETRIEVAL_SERVICE_URL`

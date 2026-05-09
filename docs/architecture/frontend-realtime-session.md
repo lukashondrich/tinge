@@ -24,7 +24,7 @@ This doc covers PTT/WebRTC/data-channel/session logic under:
 - Data channel event routing: `dataChannelEventRouter.js`
 - Remote audio track handling: `remoteAudioStreamService.js`
 - Session update payload/tools schema: `sessionConfigurationBuilder.js`
-- System prompt fetch/send: `systemPromptService.js`
+- System prompt fetch for `session.instructions`: `systemPromptService.js`
 - Function call dispatch: `functionCallService.js`
 - Retrieval proxy client: `knowledgeSearchService.js`
 - Token usage batching/posting: `tokenUsageTracker.js`
@@ -40,16 +40,21 @@ This doc covers PTT/WebRTC/data-channel/session logic under:
 State machine (`SessionConnectionState`):
 - `idle`
 - `connecting`
+- `configuring`
 - `connected`
 - `reconnecting`
 - `failed`
 
 Key transitions:
 - connect request -> `connecting`
-- successful peer establishment -> `connected`
+- data-channel open + `session.update` send -> `configuring`
+- `session.updated` acknowledgement -> `connected`
 - data-channel close or ICE disconnected -> `reconnecting`
 - connect/ICE failure -> `failed`
 - cleanup -> `idle`
+
+`connected` means the session is configured and ready for PTT. Peer setup alone
+is not considered connected.
 
 ## PTT Press/Release Contract
 
@@ -58,7 +63,8 @@ Press (`PttOrchestrator.handlePTTPress`):
 2. token-limit precheck,
 3. connect if needed,
 4. wait for data channel open,
-5. send `response.cancel` and `input_audio_buffer.clear`,
+5. send `response.cancel`, `output_audio_buffer.clear`, and
+   `input_audio_buffer.clear`,
 6. emit `assistant.interrupted`,
 7. start user recording and mic enable.
 

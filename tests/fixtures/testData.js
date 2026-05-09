@@ -3,12 +3,21 @@
 const mockOpenAIResponses = {
   token: {
     success: {
+      value: 'sk-test-token-123456789',
+      expires_at: Date.now() + 3600000,
       client_secret: {
         value: 'sk-test-token-123456789',
         expires_at: Date.now() + 3600000
       },
-      model: 'gpt-4o-realtime-preview-2024-12-17',
-      voice: 'verse'
+      session: {
+        model: 'gpt-realtime-1.5',
+        type: 'realtime',
+        audio: {
+          output: {
+            voice: 'marin'
+          }
+        }
+      }
     },
     error401: {
       error: {
