@@ -13,6 +13,7 @@ import { DataChannelEventRouter } from './dataChannelEventRouter.js';
 import { SessionConnectionState, CONNECTION_STATES } from './sessionConnectionState.js';
 import { ConnectionLifecycleService } from './connectionLifecycleService.js';
 import { buildSessionUpdate } from './sessionConfigurationBuilder.js';
+import { buildRecentConversationContext } from './sessionContextBuilder.js';
 import { SystemPromptService } from './systemPromptService.js';
 import { RemoteAudioStreamService } from './remoteAudioStreamService.js';
 import { TokenLimitService } from './tokenLimitService.js';
@@ -22,6 +23,7 @@ import { OutboundMessageService } from './outboundMessageService.js';
 import { CorrectionVerificationService } from './correctionVerificationService.js';
 
 const ENABLE_SEMANTIC_VAD = false;
+const RECONNECT_CONTEXT_CLOCK_SKEW_MS = 5000;
 const logger = createLogger('realtime-session');
 
 /**
@@ -61,6 +63,8 @@ export class RealtimeSession {
     this.pendingUserRecordPromise = null;
     this.pendingUserRecord = null;
     this.aiAudioReady = false;
+    this.clientSessionStartedAt = Date.now();
+    this.hasConfiguredRealtimeSession = false;
     this.tokenUsageTracker = new TokenUsageTracker({
       apiUrl: this.apiUrl,
       getEphemeralKey: () => this.currentEphemeralKey,
@@ -132,7 +136,13 @@ export class RealtimeSession {
       onEvent: (payload) => {
         if (this.onEventCallback) this.onEventCallback(payload);
       },
-      onSessionConfigured: () => this.connectionLifecycleService.handleSessionConfigured(),
+      onSessionConfigured: () => {
+        const configured = this.connectionLifecycleService.handleSessionConfigured();
+        if (configured) {
+          this.hasConfiguredRealtimeSession = true;
+        }
+        return configured;
+      },
       warn: (...args) => logger.warn(...args),
       error: (...args) => logger.error(...args)
     });
@@ -149,6 +159,7 @@ export class RealtimeSession {
     this.webrtcTransportService = new WebRtcTransportService({
       mobileDebug: (...args) => this.mobileDebug(...args),
       onIceDisconnected: () => {
+        logger.warn('ICE connection stayed disconnected; reconnect required');
         this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'ice_disconnected');
         this.setPTTStatus('Reconnect', '#888');
       },
@@ -219,6 +230,7 @@ export class RealtimeSession {
       getDataChannel: () => this.dataChannel,
       mobileDebug: (...args) => this.mobileDebug(...args),
       log: (...args) => logger.log(...args),
+      warn: (...args) => logger.warn(...args),
       error: (...args) => logger.error(...args)
     });
     this.systemPromptService = new SystemPromptService({
@@ -290,6 +302,26 @@ export class RealtimeSession {
     } catch (err) {
       logger.warn('Failed to load dialogue context for search:', err);
       return [];
+    }
+  }
+
+  async buildSessionInstructions() {
+    const promptText = await this.systemPromptService.loadPromptText();
+    const recentContext = await this.buildRecentConversationContext();
+    return [promptText, recentContext].filter(Boolean).join('\n\n');
+  }
+
+  async buildRecentConversationContext() {
+    if (!this.hasConfiguredRealtimeSession) return '';
+
+    try {
+      const utterances = await StorageService.getUtterances();
+      return buildRecentConversationContext(utterances, {
+        minTimestamp: this.clientSessionStartedAt - RECONNECT_CONTEXT_CLOCK_SKEW_MS
+      });
+    } catch (err) {
+      logger.warn('Failed to load recent conversation context for reconnect:', err);
+      return '';
     }
   }
 
@@ -372,7 +404,7 @@ export class RealtimeSession {
       throw new Error('Cannot send session configuration: data channel is unavailable');
     }
 
-    const instructions = await this.systemPromptService.loadPromptText();
+    const instructions = await this.buildSessionInstructions();
     const sessionUpdate = buildSessionUpdate({
       enableSemanticVad: ENABLE_SEMANTIC_VAD,
       instructions
@@ -454,6 +486,8 @@ export class RealtimeSession {
 
     this.isMicActive = false;
     this.currentEphemeralKey = null;
+    this.hasConfiguredRealtimeSession = false;
+    this.clientSessionStartedAt = Date.now();
     this.resetPendingRecording();
     this.remoteAudioStreamService.reset();
     this.dataChannelEventRouter.reset();

@@ -29,6 +29,7 @@ export class ConnectionLifecycleService {
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
     mobileDebug = () => {},
     log = () => {},
+    warn = () => {},
     error = () => {}
   }) {
     this.deviceType = deviceType;
@@ -58,6 +59,7 @@ export class ConnectionLifecycleService {
     this.clearScheduled = clearScheduled;
     this.mobileDebug = mobileDebug;
     this.log = log;
+    this.warn = warn;
     this.error = error;
     this.pendingConnectPromise = null;
     this.sessionConfigTimeout = null;
@@ -126,10 +128,20 @@ export class ConnectionLifecycleService {
       await this.establishTransport(ephemeralKey);
     this.setTransport({ peerConnection, dataChannel, audioTrack });
 
-    dataChannel.onclose = () => {
+    dataChannel.onclose = (event = {}) => {
+      this.warn('Realtime data channel closed; reconnect required', {
+        readyState: dataChannel.readyState,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean
+      });
       this.rejectPendingSessionConfigured(new Error('Data channel closed during session configuration'));
       this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'data_channel_close');
       this.setPTTStatus('Reconnect', '#888');
+    };
+
+    dataChannel.onerror = (event) => {
+      this.warn('Realtime data channel error', event?.error || event);
     };
 
     dataChannel.onopen = () => {
