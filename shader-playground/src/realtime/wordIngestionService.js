@@ -83,6 +83,8 @@ export class WordIngestionService {
 
     this.embeddingFailureStreak = 0;
     this.embeddingCircuitOpenUntilMs = 0;
+    this.embeddingDisabled = false;
+    this.embeddingDisabledReason = '';
     this.embeddingStats = {
       retries: 0,
       timeouts: 0,
@@ -91,6 +93,7 @@ export class WordIngestionService {
       oversizedWords: 0,
       circuitOpened: 0,
       circuitShortCircuits: 0,
+      disabledRequests: 0,
       nonRetryableFailures: 0,
       malformedPayloads: 0,
       recoveries: 0,
@@ -152,13 +155,20 @@ export class WordIngestionService {
       this.log('Got embedding for word:', word, newPoint);
     } else {
       this.embeddingStats.fallbacks += 1;
-      this.warn('Embedding service unavailable, using random fallback position for word:', word);
+      if (!this.embeddingDisabled) {
+        this.warn('Embedding service unavailable, using random fallback position for word:', word);
+      }
     }
 
     return newPoint;
   }
 
   async _fetchEmbeddingPointWithRetry(word) {
+    if (this.embeddingDisabled) {
+      this.embeddingStats.disabledRequests += 1;
+      return null;
+    }
+
     if (this._isEmbeddingCircuitOpen()) {
       this.embeddingStats.circuitShortCircuits += 1;
       const remainingMs = Math.max(0, this.embeddingCircuitOpenUntilMs - this.now());
@@ -197,12 +207,19 @@ export class WordIngestionService {
         } else {
           lastError = new Error(`Embedding service responded with status ${response.status}`);
           retryableFailure = this._isRetryableResponseStatus(response.status);
+          if (response.status === 404) {
+            this._disableEmbeddingRequests(
+              `Embedding endpoint returned 404 at ${url}; using random fallback positions for this browser session.`
+            );
+          }
           if (!retryableFailure) {
             failureCountsTowardCircuit = false;
             this.embeddingStats.nonRetryableFailures += 1;
-            this.warn(
-              `Embedding request for "${word}" failed with non-retryable status ${response.status}`
-            );
+            if (!this.embeddingDisabled) {
+              this.warn(
+                `Embedding request for "${word}" failed with non-retryable status ${response.status}`
+              );
+            }
           }
         }
       } catch (error) {
@@ -226,7 +243,7 @@ export class WordIngestionService {
       }
     }
 
-    if (lastError) {
+    if (lastError && !this.embeddingDisabled) {
       this.warn(
         `Embedding unavailable after ${attemptsMade} attempts for "${word}"`,
         lastError?.message || lastError
@@ -338,6 +355,13 @@ export class WordIngestionService {
     );
   }
 
+  _disableEmbeddingRequests(reason) {
+    if (this.embeddingDisabled) return;
+    this.embeddingDisabled = true;
+    this.embeddingDisabledReason = reason;
+    this.warn(reason);
+  }
+
   _markEmbeddingSuccess() {
     if (this.embeddingFailureStreak >= this.embeddingFailureThreshold || this.embeddingCircuitOpenUntilMs > 0) {
       this.embeddingStats.recoveries += 1;
@@ -350,7 +374,9 @@ export class WordIngestionService {
     return {
       ...this.embeddingStats,
       failureStreak: this.embeddingFailureStreak,
-      circuitOpenUntilMs: this.embeddingCircuitOpenUntilMs
+      circuitOpenUntilMs: this.embeddingCircuitOpenUntilMs,
+      disabled: this.embeddingDisabled,
+      disabledReason: this.embeddingDisabledReason
     };
   }
 
