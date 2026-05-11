@@ -234,10 +234,11 @@ JWT_SECRET=your_jwt_secret_here
 WEBHOOK_URL=https://your-webhook-url.com
 
 # WebRTC TURN relay for restrictive networks
-TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+TURN_URLS=turn:turn.provider.net:3478?transport=udp,turns:turn.provider.net:5349?transport=tcp
 TURN_SHARED_SECRET=your_turn_rest_shared_secret
 TURN_TTL_SECONDS=3600
 TURN_USERNAME_PREFIX=tinge
+RTC_ICE_TRANSPORT_POLICY=all
 ```
 
 ## API Endpoints

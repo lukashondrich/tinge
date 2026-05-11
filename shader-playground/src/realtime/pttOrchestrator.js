@@ -125,19 +125,17 @@ export class PttOrchestrator {
 
     const dataChannel = this.getDataChannel();
     if (dataChannel && dataChannel.readyState === 'open') {
-      const shouldCancelAssistantResponse = (
-        this.getShouldCancelAssistantResponse()
-        || this.getIsAssistantResponseActive()
-      );
-      if (shouldCancelAssistantResponse) {
-        const responseId = this.getAssistantResponseId();
+      const shouldCancelAssistantResponse = this.getShouldCancelAssistantResponse();
+      const isAssistantResponseActive = this.getIsAssistantResponseActive();
+      const responseId = this.getAssistantResponseId();
+      if (shouldCancelAssistantResponse && responseId) {
         dataChannel.send(JSON.stringify({
           type: 'response.cancel',
           event_id: this.makeEventId(),
-          ...(responseId ? { response_id: responseId } : {})
+          response_id: responseId
         }));
       }
-      if (this.getIsAssistantResponseActive()) {
+      if (isAssistantResponseActive) {
         const interruptedUtteranceId = `interrupted-${this.now()}`;
         dataChannel.send(JSON.stringify({
           type: 'output_audio_buffer.clear',

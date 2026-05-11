@@ -142,6 +142,25 @@ describe('PttOrchestrator', () => {
     });
   });
 
+  it('does not send response.cancel without a known active response id', async () => {
+    const ctx = setup();
+    ctx.state.isAssistantResponseActive = true;
+    ctx.state.shouldCancelAssistantResponse = true;
+
+    const result = await ctx.orchestrator.handlePTTPress();
+
+    expect(result).toEqual({ allowed: true });
+    expect(ctx.dataChannel.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: 'response.cancel', event_id: 'evt-1' })
+    );
+    expect(ctx.dataChannel.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'output_audio_buffer.clear', event_id: 'evt-1' })
+    );
+    expect(ctx.interruptAssistantResponse).toHaveBeenCalledWith({
+      interruptedUtteranceId: 'interrupted-12345'
+    });
+  });
+
   it('cancels an open assistant response without local interruption when output is inactive', async () => {
     const ctx = setup();
     ctx.state.shouldCancelAssistantResponse = true;

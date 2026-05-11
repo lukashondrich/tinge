@@ -22,6 +22,9 @@ describe('WebRtcTransportService', () => {
       }),
       removeEventListener: vi.fn(),
       oniceconnectionstatechange: null,
+      onicecandidateerror: null,
+      onconnectionstatechange: null,
+      connectionState: 'new',
       localDescription: { sdp: 'offer-sdp' },
       emitIceGatheringStateChange() {
         listeners.get('icegatheringstatechange')?.();
@@ -46,10 +49,13 @@ describe('WebRtcTransportService', () => {
       fetchFn,
       getUserMedia,
       createPeerConnection,
-      getIceServers: async () => [
-        { urls: 'stun:stun.example.com:19302' },
-        { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
-      ]
+      getRtcConfig: async () => ({
+        iceServers: [
+          { urls: 'stun:stun.example.com:19302' },
+          { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
+        ],
+        iceTransportPolicy: 'relay'
+      })
     });
 
     const result = await service.establishPeerConnection('ek');
@@ -64,7 +70,8 @@ describe('WebRtcTransportService', () => {
       iceServers: [
         { urls: 'stun:stun.example.com:19302' },
         { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
-      ]
+      ],
+      iceTransportPolicy: 'relay'
     });
     expect(peerConnection.addTrack).toHaveBeenCalledWith(audioTrack);
     expect(audioTrack.enabled).toBe(false);
@@ -104,6 +111,37 @@ describe('WebRtcTransportService', () => {
     await expect(service.resolveIceServers()).resolves.toEqual([
       { urls: 'turn:turn.example.com:3478', username: 'u', credential: 'p' }
     ]);
+  });
+
+  it('normalizes RTC config and invalid transport policy values', async () => {
+    const service = new WebRtcTransportService({
+      getRtcConfig: vi.fn(async () => ({
+        iceServers: [
+          { urls: 'stun:stun.example.com:19302' }
+        ],
+        iceTransportPolicy: 'invalid'
+      }))
+    });
+
+    await expect(service.resolveRtcConfig()).resolves.toEqual({
+      iceServers: [{ urls: 'stun:stun.example.com:19302' }],
+      iceTransportPolicy: 'all'
+    });
+  });
+
+  it('logs ICE candidate errors for TURN diagnostics', () => {
+    const mobileDebug = vi.fn();
+    const service = new WebRtcTransportService({ mobileDebug });
+
+    service.handleIceCandidateError({
+      url: 'turn:turn.example.com:3478',
+      errorCode: 701,
+      errorText: 'TURN host lookup failed'
+    });
+
+    expect(mobileDebug).toHaveBeenCalledWith(
+      'ICE candidate error: url=turn:turn.example.com:3478 code=701 text=TURN host lookup failed'
+    );
   });
 
   it('throws sdp exchange error for non-ok response', async () => {
