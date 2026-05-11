@@ -91,6 +91,11 @@ FRONTEND_URL=https://<YOUR_FRONTEND_RAILWAY_DOMAIN>
 RETRIEVAL_SERVICE_URL=https://retrieval-service-production.up.railway.app
 RETRIEVAL_FORCE_EN=true
 RETRIEVAL_TIMEOUT_MS=8000
+# Optional, but required for networks where WebRTC ICE fails with STUN only.
+TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+TURN_SHARED_SECRET=<YOUR_TURN_REST_SHARED_SECRET>
+TURN_TTL_SECONDS=3600
+TURN_USERNAME_PREFIX=tinge
 ```
 
 Backend checks:
@@ -98,6 +103,7 @@ Backend checks:
 ```bash
 curl -i https://tingebackend-production.up.railway.app/health
 curl -i https://tingebackend-production.up.railway.app/token
+curl -i https://tingebackend-production.up.railway.app/rtc-config
 curl -sS -X POST https://tingebackend-production.up.railway.app/knowledge/search \
   -H "Content-Type: application/json" \
   -d '{"query_original":"Tell me about Barcelona architecture","top_k":5}'

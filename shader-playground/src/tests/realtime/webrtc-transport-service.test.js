@@ -45,7 +45,11 @@ describe('WebRtcTransportService', () => {
     const service = new WebRtcTransportService({
       fetchFn,
       getUserMedia,
-      createPeerConnection
+      createPeerConnection,
+      getIceServers: async () => [
+        { urls: 'stun:stun.example.com:19302' },
+        { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
+      ]
     });
 
     const result = await service.establishPeerConnection('ek');
@@ -56,6 +60,12 @@ describe('WebRtcTransportService', () => {
       audioTrack
     });
     expect(peerConnection.addTransceiver).toHaveBeenCalledWith('audio', { direction: 'sendrecv' });
+    expect(createPeerConnection).toHaveBeenCalledWith({
+      iceServers: [
+        { urls: 'stun:stun.example.com:19302' },
+        { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
+      ]
+    });
     expect(peerConnection.addTrack).toHaveBeenCalledWith(audioTrack);
     expect(audioTrack.enabled).toBe(false);
     expect(fetchFn).toHaveBeenCalledWith(
@@ -67,6 +77,33 @@ describe('WebRtcTransportService', () => {
       type: 'answer',
       sdp: 'answer-sdp'
     });
+  });
+
+  it('falls back to default STUN ICE config when remote config is unavailable', async () => {
+    const mobileDebug = vi.fn();
+    const service = new WebRtcTransportService({
+      getIceServers: vi.fn(async () => null),
+      mobileDebug
+    });
+
+    const iceServers = await service.resolveIceServers();
+
+    expect(iceServers).toEqual([{ urls: 'stun:stun.l.google.com:19302' }]);
+    expect(mobileDebug).toHaveBeenCalledWith('Using default STUN-only ICE config');
+  });
+
+  it('filters invalid ICE server entries from remote config', async () => {
+    const service = new WebRtcTransportService({
+      getIceServers: vi.fn(async () => [
+        null,
+        { urls: '' },
+        { urls: 'turn:turn.example.com:3478', username: 'u', credential: 'p' }
+      ])
+    });
+
+    await expect(service.resolveIceServers()).resolves.toEqual([
+      { urls: 'turn:turn.example.com:3478', username: 'u', credential: 'p' }
+    ]);
   });
 
   it('throws sdp exchange error for non-ok response', async () => {

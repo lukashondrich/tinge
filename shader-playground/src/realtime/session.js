@@ -158,6 +158,7 @@ export class RealtimeSession {
     });
     this.webrtcTransportService = new WebRtcTransportService({
       mobileDebug: (...args) => this.mobileDebug(...args),
+      getIceServers: () => this.connectionBootstrapService.requestRtcIceServers(),
       onIceDisconnected: () => {
         logger.warn('ICE connection stayed disconnected; reconnect required');
         this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'ice_disconnected');

@@ -1,4 +1,11 @@
 const OPENAI_REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
+const DEFAULT_ICE_SERVERS = Object.freeze([
+  { urls: 'stun:stun.l.google.com:19302' }
+]);
+
+function isValidIceServer(server) {
+  return Boolean(server && server.urls);
+}
 
 export class WebRtcTransportService {
   constructor({
@@ -8,6 +15,7 @@ export class WebRtcTransportService {
     fetchFn = (...args) => globalThis.fetch(...args),
     getUserMedia = (...args) => globalThis.navigator.mediaDevices.getUserMedia(...args),
     createPeerConnection = (config) => new globalThis.RTCPeerConnection(config),
+    getIceServers = async () => DEFAULT_ICE_SERVERS,
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
     iceGatheringTimeoutMs = 5000,
@@ -19,6 +27,7 @@ export class WebRtcTransportService {
     this.fetchFn = fetchFn;
     this.getUserMedia = getUserMedia;
     this.createPeerConnection = createPeerConnection;
+    this.getIceServers = getIceServers;
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
     this.iceGatheringTimeoutMs = iceGatheringTimeoutMs;
@@ -29,11 +38,12 @@ export class WebRtcTransportService {
   async establishPeerConnection(ephemeralKey) {
     this.clearIceDisconnectTimer();
     this.mobileDebug('Creating WebRTC PeerConnection...');
+    const iceServers = await this.resolveIceServers();
     const peerConnection = this.createPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers
     });
     peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    this.mobileDebug('PeerConnection created and audio transceiver added');
+    this.mobileDebug(`PeerConnection created with ${iceServers.length} ICE server entries and audio transceiver added`);
 
     peerConnection.oniceconnectionstatechange = () => {
       this.handleIceConnectionStateChange(peerConnection);
@@ -73,6 +83,19 @@ export class WebRtcTransportService {
     this.mobileDebug('Remote SDP description set successfully');
 
     return { peerConnection, dataChannel, audioTrack };
+  }
+
+  async resolveIceServers() {
+    try {
+      const iceServers = await this.getIceServers();
+      if (Array.isArray(iceServers) && iceServers.some(isValidIceServer)) {
+        return iceServers.filter(isValidIceServer);
+      }
+    } catch (err) {
+      this.mobileDebug(`RTC ICE config load failed: ${err.message}`);
+    }
+    this.mobileDebug('Using default STUN-only ICE config');
+    return DEFAULT_ICE_SERVERS.map((server) => ({ ...server }));
   }
 
   handleIceConnectionStateChange(peerConnection) {

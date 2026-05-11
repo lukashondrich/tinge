@@ -10,6 +10,7 @@ import { createTranscribeHandler } from '../../src/routes/transcribeRoute.js';
 import { createKnowledgeSearchHandler } from '../../src/routes/knowledgeSearchRoute.js';
 import { createCorrectionVerifyHandler } from '../../src/routes/correctionVerifyRoute.js';
 import { createTokenUsageRouter } from '../../src/routes/tokenUsageRoutes.js';
+import { buildRtcIceConfig, createRtcConfigHandler } from '../../src/routes/rtcConfigRoute.js';
 
 function createMockRes() {
   return {
@@ -457,5 +458,47 @@ describe('backend extracted modules', () => {
     });
     assert.equal(statsRes.statusCode, 200);
     assert.equal(statsRes.payload.totalKeys, 1);
+  });
+
+  test('buildRtcIceConfig returns default STUN and generated TURN credentials', () => {
+    const config = buildRtcIceConfig({
+      env: {
+        TURN_URLS: 'turn:turn.example.com:3478?transport=udp, turns:turn.example.com:5349?transport=tcp',
+        TURN_SHARED_SECRET: 'shared-secret',
+        TURN_TTL_SECONDS: '600',
+        TURN_USERNAME_PREFIX: 'user-123'
+      },
+      nowSeconds: 1700000000,
+      logger: { warn: () => {} }
+    });
+
+    assert.equal(config.expiresAt, 1700000600);
+    assert.equal(config.ttlSeconds, 600);
+    assert.equal(config.iceServers.length, 2);
+    assert.deepEqual(config.iceServers[0], { urls: ['stun:stun.l.google.com:19302'] });
+    assert.deepEqual(config.iceServers[1].urls, [
+      'turn:turn.example.com:3478?transport=udp',
+      'turns:turn.example.com:5349?transport=tcp'
+    ]);
+    assert.equal(config.iceServers[1].username, '1700000600:user-123');
+    assert.equal(config.iceServers[1].credential, 'IHUY7hdp6eLL7QcYwp42XOVK5Kg=');
+  });
+
+  test('createRtcConfigHandler returns ICE config response', () => {
+    const handler = createRtcConfigHandler({
+      env: {
+        RTC_STUN_URLS: 'stun:stun.example.com:19302'
+      },
+      nowSeconds: () => 1700000000,
+      logger: { warn: () => {} }
+    });
+    const res = createMockRes();
+
+    handler({}, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.payload.iceServers, [
+      { urls: ['stun:stun.example.com:19302'] }
+    ]);
   });
 });
