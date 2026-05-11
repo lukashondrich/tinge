@@ -138,4 +138,32 @@ export class ConnectionBootstrapService {
       }
     }
   }
+
+  async requestRtcIceServers() {
+    try {
+      const response = await this.fetchFn(`${this.apiUrl}/rtc-config`, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+      if (!response.ok) {
+        this.mobileDebug(`RTC config request failed: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data?.iceServers) || data.iceServers.length === 0) {
+        this.mobileDebug('RTC config response did not include ICE servers');
+        return null;
+      }
+      this.mobileDebug(`RTC config loaded with ${data.iceServers.length} ICE server entries`);
+      return data.iceServers;
+    } catch (error) {
+      this.mobileDebug(`RTC config request failed: ${error.message}`);
+      return null;
+    }
+  }
 }

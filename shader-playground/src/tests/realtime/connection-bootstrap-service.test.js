@@ -112,4 +112,42 @@ describe('ConnectionBootstrapService', () => {
       })
     );
   });
+
+  it('requests RTC ICE server config', async () => {
+    const iceServers = [
+      { urls: ['stun:stun.example.com:19302'] },
+      { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
+    ];
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ iceServers })
+    }));
+    const mobileDebug = vi.fn();
+
+    const service = new ConnectionBootstrapService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn,
+      mobileDebug
+    });
+
+    await expect(service.requestRtcIceServers()).resolves.toEqual(iceServers);
+    expect(fetchFn).toHaveBeenCalledWith(
+      'http://localhost:3000/rtc-config',
+      expect.objectContaining({
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit'
+      })
+    );
+    expect(mobileDebug).toHaveBeenCalledWith('RTC config loaded with 2 ICE server entries');
+  });
+
+  it('returns null when RTC ICE config request fails', async () => {
+    const service = new ConnectionBootstrapService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn: vi.fn(async () => ({ ok: false, status: 503 }))
+    });
+
+    await expect(service.requestRtcIceServers()).resolves.toBeNull();
+  });
 });

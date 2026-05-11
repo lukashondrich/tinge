@@ -232,6 +232,12 @@ JWT_SECRET=your_jwt_secret_here
 
 # External Services
 WEBHOOK_URL=https://your-webhook-url.com
+
+# WebRTC TURN relay for restrictive networks
+TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+TURN_SHARED_SECRET=your_turn_rest_shared_secret
+TURN_TTL_SECONDS=3600
+TURN_USERNAME_PREFIX=tinge
 ```
 
 ## API Endpoints
@@ -239,6 +245,7 @@ WEBHOOK_URL=https://your-webhook-url.com
 ### Backend (Port 3000)
 - `GET /health` - Health check
 - `GET /token` - OpenAI realtime client-secret endpoint
+- `GET /rtc-config` - WebRTC ICE server config for frontend calls
 - `POST /transcribe` - Audio transcription
 
 ### Embedding Service (Port 3001)  

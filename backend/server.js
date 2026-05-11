@@ -16,6 +16,7 @@ import { createTokenHandler } from './src/routes/tokenRoute.js';
 import { createTranscribeHandler } from './src/routes/transcribeRoute.js';
 import { createCorrectionVerifyHandler } from './src/routes/correctionVerifyRoute.js';
 import { createTokenUsageRouter } from './src/routes/tokenUsageRoutes.js';
+import { createRtcConfigHandler } from './src/routes/rtcConfigRoute.js';
 import { createLogger } from './src/utils/logger.js';
 
 const upload = multer();
@@ -73,6 +74,9 @@ app.use(createTokenUsageRouter({
   jsonParser: express.json()
 }));
 
+app.get('/rtc-config', createRtcConfigHandler({
+  logger
+}));
 
 // Transcribe endpoint: accepts a recorded blob and returns Whisper word timestamps
 app.post('/transcribe', upload.single('file'), createTranscribeHandler({
