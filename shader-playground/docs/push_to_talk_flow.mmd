@@ -6,6 +6,7 @@ participant Press as handlePTTPress()
 participant Limit as checkTokenLimit()
 participant Connect as connect()
 participant Backend as Backend (__API_URL__)
+participant OpenAI as OpenAI Realtime
 participant RTC as RTCPeerConnection
 participant Data as DataChannel oai-events
 participant AudioMgr as userAudioMgr
@@ -27,16 +28,18 @@ alt No ephemeral key yet or connection lost
   Connect->>RTC: addTrack(disabled mic stream)
   Connect->>Data: createDataChannel(oai-events)
   Connect->>RTC: createOffer & setLocalDescription
-  Connect->>Backend: POST /v1/realtime?model=... (Bearer ephemeral key)
-  Backend-->>Connect: SDP answer from OpenAI
+  Connect->>OpenAI: POST /v1/realtime/calls (Bearer ephemeral key)
+  OpenAI-->>Connect: SDP answer
   Connect->>RTC: setRemoteDescription(answer)
-  Note over Connect,Data: dataChannel.onopen sends system prompt & session.update
+  Note over Connect,Data: dataChannel open sends session.update with instructions
+  Data-->>Connect: session.updated
   Connect-->>Press: resolve (isConnected = true)
 else Connection already established
   Limit-->>Press: { allowed: true }
 end
 
 opt Manual push-to-talk mode (ENABLE_SEMANTIC_VAD = false)
+  Press->>Data: response.cancel and output_audio_buffer.clear
   Press->>Data: input_audio_buffer.clear
 end
 

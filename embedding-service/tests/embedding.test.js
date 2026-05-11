@@ -1,8 +1,7 @@
-const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals');
+const { describe, test, expect, beforeEach } = require('@jest/globals');
 const request = require('supertest');
 const express = require('express');
 const fs = require('fs');
-const path = require('path');
 
 // Mock dependencies
 const mockSpawn = jest.fn();

@@ -48,10 +48,10 @@ def search(request: SearchRequest) -> SearchResponse:
             query_en=request.query_en,
             language=request.language,
             top_k=request.top_k,
+            dialogue_context=request.dialogue_context,
         )
         return SearchResponse(**result)
     except RuntimeError as err:
         raise HTTPException(status_code=503, detail=str(err)) from err
     except Exception as err:  # pragma: no cover - defensive
         raise HTTPException(status_code=500, detail=f"Search failed: {err}") from err
-

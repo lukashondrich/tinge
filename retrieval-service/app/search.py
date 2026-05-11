@@ -5,7 +5,14 @@ from time import perf_counter
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .config import settings
+from .corrective_rag_graph import (
+    CorrectiveRagWorkflow,
+    build_corrective_llm_client_from_env,
+)
 from .indexing import build_chunk_records, load_corpus_records
+from .logger import get_logger
+
+logger = get_logger("retrieval-service")
 
 
 class RetrievalService:
@@ -23,6 +30,7 @@ class RetrievalService:
         self._bootstrap_error: Optional[str] = None
         self._pipeline_warning: Optional[str] = None
         self._dense_warning: Optional[str] = None
+        self._corrective_workflow: Optional[CorrectiveRagWorkflow] = None
         self._init_haystack()
 
     def _init_haystack(self) -> None:
@@ -57,8 +65,7 @@ class RetrievalService:
                 "Haystack pipeline components unavailable; using direct BM25 fallback. "
                 f"Detail: {err}"
             )
-            if settings.retrieval_log_timing:
-                print(f"[retrieval] {self._pipeline_warning}")
+            logger.warning(self._pipeline_warning)
             self._bootstrap_error = None
             return
 
@@ -95,8 +102,7 @@ class RetrievalService:
                 "Haystack pipeline graph unavailable; using direct BM25 fallback. "
                 f"Detail: {err}"
             )
-            if settings.retrieval_log_timing:
-                print(f"[retrieval] {self._pipeline_warning}")
+            logger.warning(self._pipeline_warning)
 
         self._dense_retriever = None
         self._pipeline_dense_single = None
@@ -171,8 +177,7 @@ class RetrievalService:
                     "Dense retrieval unavailable; using BM25 only. "
                     f"Detail: {err}"
                 )
-                if settings.retrieval_log_timing:
-                    print(f"[retrieval] {self._dense_warning}")
+                logger.warning(self._dense_warning)
 
         self._bootstrap_error = None
 
@@ -275,14 +280,16 @@ class RetrievalService:
             embedded_docs = output.get("documents", docs)
             if settings.retrieval_log_timing:
                 elapsed = (perf_counter() - started) * 1000.0
-                print(
+                logger.info(
                     f"[retrieval] mode=dense_index_embeddings docs={len(embedded_docs)} "
                     f"model={settings.retrieval_embed_model} elapsed_ms={elapsed:.1f}"
                 )
             return embedded_docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] dense document embedding failed; indexing BM25-only docs ({err})")
+                logger.warning(
+                    f"[retrieval] dense document embedding failed; indexing BM25-only docs ({err})"
+                )
             return docs
 
     def _resolve_branch_top_k(self, final_top_k: int) -> int:
@@ -323,7 +330,7 @@ class RetrievalService:
                 docs = output.get("bm25", {}).get("documents", [])
                 if settings.retrieval_log_timing:
                     elapsed = (perf_counter() - started) * 1000.0
-                    print(
+                    logger.info(
                         f"[retrieval] mode=bm25_pipeline_single "
                         f"query_len={len(queries[0])} docs={len(docs)} elapsed_ms={elapsed:.1f}"
                     )
@@ -346,7 +353,7 @@ class RetrievalService:
                 elapsed = (perf_counter() - started) * 1000.0
                 count_original = len(output.get("bm25_original", {}).get("documents", []))
                 count_en = len(output.get("bm25_en", {}).get("documents", []))
-                print(
+                logger.info(
                     f"[retrieval] mode=bm25_pipeline_dual join={settings.retrieval_query_join_mode} "
                     f"branch_top_k={branch_top_k} original_docs={count_original} "
                     f"query_en_docs={count_en} merged_docs={len(docs)} elapsed_ms={elapsed:.1f}"
@@ -354,7 +361,7 @@ class RetrievalService:
             return docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] pipeline run failed; falling back to legacy bm25 ({err})")
+                logger.warning(f"[retrieval] pipeline run failed; falling back to legacy bm25 ({err})")
             return self._run_legacy_bm25(queries, top_k)
 
     def _run_pipeline_dense(self, queries: Sequence[str], top_k: int) -> List[Any]:
@@ -375,7 +382,7 @@ class RetrievalService:
                 docs = output.get("dense", {}).get("documents", [])
                 if settings.retrieval_log_timing:
                     elapsed = (perf_counter() - started) * 1000.0
-                    print(
+                    logger.info(
                         f"[retrieval] mode=dense_pipeline_single model={settings.retrieval_embed_model} "
                         f"query_len={len(queries[0])} docs={len(docs)} elapsed_ms={elapsed:.1f}"
                     )
@@ -399,7 +406,7 @@ class RetrievalService:
                 elapsed = (perf_counter() - started) * 1000.0
                 count_original = len(output.get("dense_original", {}).get("documents", []))
                 count_en = len(output.get("dense_en", {}).get("documents", []))
-                print(
+                logger.info(
                     f"[retrieval] mode=dense_pipeline_dual model={settings.retrieval_embed_model} "
                     f"join={settings.retrieval_query_join_mode} original_docs={count_original} "
                     f"query_en_docs={count_en} merged_docs={len(docs)} elapsed_ms={elapsed:.1f}"
@@ -407,7 +414,7 @@ class RetrievalService:
             return docs
         except Exception as err:
             if settings.retrieval_log_timing:
-                print(f"[retrieval] dense pipeline failed; using BM25-only ({err})")
+                logger.warning(f"[retrieval] dense pipeline failed; using BM25-only ({err})")
             return []
 
     def _rrf_merge_documents(self, ranked_lists: Sequence[Tuple[str, List[Any]]]) -> List[Any]:
@@ -436,22 +443,20 @@ class RetrievalService:
 
         if settings.retrieval_log_timing:
             counts = ", ".join(f"{name}:{len(docs)}" for name, docs in ranked_lists)
-            print(
+            logger.info(
                 f"[retrieval] mode=rrf_merge lists=[{counts}] fused_docs={len(fused_docs)} "
                 f"k={k:.0f}"
             )
         return fused_docs
 
-    def search(
+    def _search_once(
         self,
+        *,
         query_original: str,
         query_en: Optional[str] = None,
         language: Optional[str] = None,
         top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
-        if self._retriever is None:
-            raise RuntimeError(self._bootstrap_error or "Retriever not initialized")
-
         k = min(top_k or settings.default_top_k, settings.max_top_k)
         queries = [query_original.strip()]
         if query_en and query_en.strip() and query_en.strip() not in queries:
@@ -498,3 +503,71 @@ class RetrievalService:
             "used_queries": queries,
             "index_name": self._index_name,
         }
+
+    def _get_corrective_workflow(self) -> CorrectiveRagWorkflow:
+        if self._corrective_workflow is not None:
+            return self._corrective_workflow
+
+        llm_client = None
+        if settings.retrieval_corrective_llm_enabled:
+            llm_client = build_corrective_llm_client_from_env(
+                model=settings.retrieval_corrective_llm_model,
+                timeout_ms=settings.retrieval_corrective_llm_timeout_ms,
+                logger=logger,
+            )
+            if llm_client is None:
+                logger.warning(
+                    "[retrieval] corrective-rag LLM enabled but OPENAI_API_KEY not set; "
+                    "using heuristic grader/rewriter fallback"
+                )
+
+        self._corrective_workflow = CorrectiveRagWorkflow(
+            retrieve_fn=self._search_once,
+            llm_client=llm_client,
+            max_attempts=settings.retrieval_corrective_max_attempts,
+            budget_ms=settings.retrieval_corrective_budget_ms,
+            dialogue_turns=settings.retrieval_corrective_dialogue_turns,
+            logger=logger,
+            use_langgraph=True,
+        )
+        return self._corrective_workflow
+
+    def search(
+        self,
+        query_original: str,
+        query_en: Optional[str] = None,
+        language: Optional[str] = None,
+        top_k: Optional[int] = None,
+        dialogue_context: Optional[Sequence[str]] = None,
+    ) -> Dict[str, Any]:
+        if self._retriever is None:
+            raise RuntimeError(self._bootstrap_error or "Retriever not initialized")
+
+        if not settings.retrieval_corrective_rag_enabled:
+            return self._search_once(
+                query_original=query_original,
+                query_en=query_en,
+                language=language,
+                top_k=top_k,
+            )
+
+        workflow = self._get_corrective_workflow()
+        try:
+            return workflow.run(
+                query_original=query_original,
+                query_en=(query_en or query_original),
+                language=language,
+                top_k=top_k,
+                dialogue_context=dialogue_context,
+                index_name=self._index_name,
+            )
+        except Exception as err:
+            logger.warning(
+                f"[retrieval] corrective-rag failed; falling back to standard retrieval ({err})"
+            )
+            return self._search_once(
+                query_original=query_original,
+                query_en=query_en,
+                language=language,
+                top_k=top_k,
+            )

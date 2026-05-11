@@ -1,4 +1,6 @@
 // src/ui/dialoguePanel.js
+import { CorrectionStore } from '../core/correctionStore.js';
+import { CorrectionVerificationService } from '../realtime/correctionVerificationService.js';
 
 // Single AudioContext for playback
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -16,7 +18,6 @@ async function ensureAudioContext() {
       // eslint-disable-next-line no-console
       console.log('🔈 Resuming AudioContext for playback');
       await audioCtx.resume();
-      audioCtx.state = 'running';
       // eslint-disable-next-line no-console
       console.log('✅ AudioContext state:', audioCtx.state);
     } catch (err) {
@@ -25,6 +26,7 @@ async function ensureAudioContext() {
     }
   }
 }
+
 const bufferCache = new Map();
 
 function getAudioConstructor() {
@@ -134,6 +136,29 @@ function stopActiveAudio() {
 }
 
 const DEFAULT_CLICK_DEBOUNCE_MS = 100;
+const CORRECTION_FEEDBACK_VALUES = Object.freeze({
+  AGREE: 'agree',
+  DISAGREE: 'disagree'
+});
+const DEFAULT_MANUAL_CORRECTION_TYPE = 'grammar';
+
+function makeManualCorrectionId() {
+  const uuid = globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  return `corr_manual_${uuid}`;
+}
+
+function normalizeSpaces(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function getCorrectionStatusLabel(status) {
+  if (status === 'verified') return 'Verified';
+  if (status === 'failed') return 'Verify failed';
+  if (status === 'verifying') return 'Verifying...';
+  return 'Detected';
+}
 
 export class DialoguePanel {
     constructor(containerSelector, options = {}) {
@@ -145,6 +170,17 @@ export class DialoguePanel {
         ? Math.max(0, options.debounceMs)
         : DEFAULT_CLICK_DEBOUNCE_MS;
       this.lastClickTime = null;
+      this.correctionStore = options.correctionStore || new CorrectionStore();
+      this.makeCorrectionId = options.makeCorrectionId || makeManualCorrectionId;
+      this.manualCorrectionType = options.manualCorrectionType || DEFAULT_MANUAL_CORRECTION_TYPE;
+      this.manualCorrectionVerifier = options.manualCorrectionVerifier || null;
+      const defaultApiUrl = typeof __API_URL__ === 'string' ? __API_URL__ : '';
+      const manualCorrectionApiUrl = options.manualCorrectionApiUrl || defaultApiUrl;
+      this.manualVerificationService = options.manualVerificationService
+        || (manualCorrectionApiUrl
+          ? new CorrectionVerificationService({ apiUrl: manualCorrectionApiUrl })
+          : null);
+      this.pendingCorrections = new Map();
     }
 
     isDebounced() {
@@ -158,6 +194,550 @@ export class DialoguePanel {
       this.lastClickTime = now;
       return false;
     }
+
+    getLatestBubbleForSpeaker(speaker) {
+      const bubbles = this.container.querySelectorAll(`.bubble.${speaker}`);
+      if (!bubbles.length) return null;
+      return bubbles[bubbles.length - 1];
+    }
+
+    findBubbleByCorrectionId(correctionId) {
+      const bubbles = this.container.querySelectorAll('.bubble');
+      for (let i = 0; i < bubbles.length; i += 1) {
+        const bubble = bubbles[i];
+        if (!bubble.__corrections || !(bubble.__corrections instanceof Map)) continue;
+        if (bubble.__corrections.has(correctionId)) {
+          return bubble;
+        }
+      }
+      return null;
+    }
+
+    ensureBubbleCorrectionMap(bubble) {
+      if (!bubble.__corrections || !(bubble.__corrections instanceof Map)) {
+        bubble.__corrections = new Map();
+      }
+      return bubble.__corrections;
+    }
+
+    upsertCorrectionForBubble(bubble, correction = {}) {
+      const correctionId = typeof correction.id === 'string' ? correction.id.trim() : '';
+      if (!bubble || !correctionId) return false;
+
+      this.correctionStore.upsertCorrection(correction);
+
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const isNewCorrection = !correctionMap.has(correctionId);
+      const existing = correctionMap.get(correctionId) || {};
+      correctionMap.set(correctionId, {
+        ...existing,
+        ...correction,
+        id: correctionId,
+        status: correction.status || existing.status || 'detected'
+      });
+      if (isNewCorrection) {
+        bubble.dataset.correctionOpen = '0';
+      }
+      this.pendingCorrections.delete(correctionId);
+      this.renderCorrectionWidget(bubble);
+      return true;
+    }
+
+    toggleCorrectionPanel(bubble) {
+      if (!bubble) return false;
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      if (!correctionMap.size) return false;
+      const isOpen = bubble.dataset.correctionOpen === '1';
+      bubble.dataset.correctionOpen = isOpen ? '0' : '1';
+      this.renderCorrectionWidget(bubble);
+      return true;
+    }
+
+    getBubbleTranscriptText(bubble) {
+      if (!bubble) return '';
+      const highlight = bubble.querySelector('.highlighted-text');
+      return normalizeSpaces(highlight?.textContent || '');
+    }
+
+    findPreviousSpeakerBubbleText(bubble, speaker) {
+      if (!bubble || !speaker) return '';
+      let cursor = bubble.previousElementSibling;
+      while (cursor) {
+        if (cursor.classList?.contains('bubble') && cursor.classList.contains(speaker)) {
+          return this.getBubbleTranscriptText(cursor);
+        }
+        cursor = cursor.previousElementSibling;
+      }
+      return '';
+    }
+
+    findNextSpeakerBubbleText(bubble, speaker) {
+      if (!bubble || !speaker) return '';
+      let cursor = bubble.nextElementSibling;
+      while (cursor) {
+        if (cursor.classList?.contains('bubble') && cursor.classList.contains(speaker)) {
+          return this.getBubbleTranscriptText(cursor);
+        }
+        cursor = cursor.nextElementSibling;
+      }
+      return '';
+    }
+
+    findRelatedAssistantTextForUserBubble(userBubble) {
+      const relatedAiBubble = this.findRelatedAssistantBubbleForUserBubble(userBubble);
+      return this.getBubbleTranscriptText(relatedAiBubble);
+    }
+
+    findRelatedAssistantBubbleForUserBubble(userBubble) {
+      if (!userBubble) return null;
+
+      let cursor = userBubble.nextElementSibling;
+      while (cursor) {
+        if (cursor.classList?.contains('bubble') && cursor.classList.contains('ai')) {
+          return cursor;
+        }
+        cursor = cursor.nextElementSibling;
+      }
+
+      cursor = userBubble.previousElementSibling;
+      while (cursor) {
+        if (cursor.classList?.contains('bubble') && cursor.classList.contains('ai')) {
+          return cursor;
+        }
+        cursor = cursor.previousElementSibling;
+      }
+      return null;
+    }
+
+    deriveManualCorrectionCandidate({ assistantText, learnerText }) {
+      const aiText = normalizeSpaces(assistantText)
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, '\'');
+      const userText = normalizeSpaces(learnerText);
+      if (!aiText) return null;
+
+      const insteadMatch = aiText.match(
+        /instead of\s*"([^"]+)"\s*,?\s*(?:you should|you can|say|use|try)\s*"([^"]+)"/i
+      );
+      if (insteadMatch) {
+        return {
+          original: normalizeSpaces(insteadMatch[1]),
+          corrected: normalizeSpaces(insteadMatch[2]),
+          correction_type: this.manualCorrectionType
+        };
+      }
+
+      const enLugarMatch = aiText.match(
+        /en lugar de\s*"([^"]+)"\s*,?\s*(?:deber[ií]as|puedes|di|usa|prueba)\s*"([^"]+)"/i
+      );
+      if (enLugarMatch) {
+        return {
+          original: normalizeSpaces(enLugarMatch[1]),
+          corrected: normalizeSpaces(enLugarMatch[2]),
+          correction_type: this.manualCorrectionType
+        };
+      }
+
+      const quotedPhrases = Array.from(aiText.matchAll(/"([^"]{2,})"/g))
+        .map((match) => normalizeSpaces(match[1]))
+        .filter(Boolean);
+
+      if (
+        quotedPhrases.length >= 2
+        && /(instead of|en lugar de|forma correcta|correct (?:way|form)|deber[ií]as decir|you should say)/i.test(aiText)
+      ) {
+        return {
+          original: userText || quotedPhrases[0],
+          corrected: quotedPhrases[quotedPhrases.length - 1],
+          correction_type: this.manualCorrectionType
+        };
+      }
+
+      const correctedOnlyMatch = aiText.match(
+        /(?:you should say|the correct (?:way|form)[^"]* is|la forma correcta(?:\s+(?:ser[ií]a|es))?|la manera correcta(?:\s+(?:ser[ií]a|es))?|deber[ií]as decir|se dice)\s*:?\s*"([^"]+)"/i
+      );
+      if (correctedOnlyMatch && userText) {
+        return {
+          original: userText,
+          corrected: normalizeSpaces(correctedOnlyMatch[1]),
+          correction_type: this.manualCorrectionType
+        };
+      }
+
+      return null;
+    }
+
+    async verifyManualCorrection(payload) {
+      if (typeof this.manualCorrectionVerifier === 'function') {
+        return this.manualCorrectionVerifier(payload);
+      }
+      if (this.manualVerificationService) {
+        return this.manualVerificationService.verifyCorrection(payload, { forceRefresh: true });
+      }
+      throw new Error('Manual correction verifier is not configured');
+    }
+
+    async triggerManualCorrectionForBubble(bubble) {
+      if (!bubble || this.isDebounced()) return;
+      const isUserBubble = bubble.classList.contains('user');
+      const relatedAiBubble = isUserBubble
+        ? this.findRelatedAssistantBubbleForUserBubble(bubble)
+        : null;
+      const targetBubble = relatedAiBubble || bubble;
+
+      if (bubble.dataset.manualCorrectionRequested === '1') {
+        this.toggleCorrectionPanel(targetBubble);
+        return;
+      }
+
+      const trigger = bubble.querySelector('.manual-correction-trigger');
+      if (trigger) trigger.disabled = true;
+      bubble.dataset.manualCorrectionRequested = '1';
+
+      try {
+        const learnerText = this.getBubbleTranscriptText(bubble);
+        const assistantText = isUserBubble
+          ? this.findRelatedAssistantTextForUserBubble(bubble)
+          : this.getBubbleTranscriptText(targetBubble);
+        const candidate = this.deriveManualCorrectionCandidate({
+          assistantText,
+          learnerText
+        });
+        const correctionId = targetBubble.dataset.manualCorrectionId || this.makeCorrectionId();
+        bubble.dataset.manualCorrectionId = correctionId;
+        targetBubble.dataset.manualCorrectionId = correctionId;
+
+        if (!candidate) {
+          this.upsertCorrectionForBubble(targetBubble, {
+            id: correctionId,
+            original: learnerText || 'Could not detect learner phrase',
+            corrected: 'Could not infer corrected phrase',
+            correction_type: this.manualCorrectionType,
+            status: 'failed',
+            error: 'Could not infer correction from nearby correction phrasing. Try where the tutor says "you should say..." or "la forma correcta sería...".',
+            source: 'manual_trigger',
+            detected_at: new Date().toISOString()
+          });
+          return;
+        }
+
+        const resolvedOriginal = normalizeSpaces(learnerText || candidate.original);
+        const resolvedCorrected = normalizeSpaces(candidate.corrected);
+        if (!resolvedOriginal || !resolvedCorrected) {
+          throw new Error('Could not resolve original/corrected phrase pair from this turn');
+        }
+
+        this.upsertCorrectionForBubble(targetBubble, {
+          id: correctionId,
+          original: resolvedOriginal,
+          corrected: resolvedCorrected,
+          correction_type: candidate.correction_type || this.manualCorrectionType,
+          learner_excerpt: learnerText,
+          assistant_excerpt: assistantText,
+          status: 'verifying',
+          source: 'manual_trigger',
+          detected_at: new Date().toISOString()
+        });
+
+        const verificationResult = await this.verifyManualCorrection({
+          correction_id: correctionId,
+          original: resolvedOriginal,
+          corrected: resolvedCorrected,
+          correction_type: candidate.correction_type || this.manualCorrectionType,
+          conversation_context: [
+            learnerText ? `user: ${learnerText}` : '',
+            assistantText ? `assistant: ${assistantText}` : ''
+          ].filter(Boolean)
+        });
+        const verification = verificationResult?.data || verificationResult;
+        this.updateCorrectionVerification(correctionId, {
+          status: 'verified',
+          verification
+        });
+      } catch (error) {
+        const correctionId = targetBubble.dataset.manualCorrectionId || this.makeCorrectionId();
+        targetBubble.dataset.manualCorrectionId = correctionId;
+        this.updateCorrectionVerification(correctionId, {
+          status: 'failed',
+          error: error?.message || String(error)
+        });
+      } finally {
+        if (trigger) trigger.disabled = false;
+      }
+    }
+
+    ensureManualCorrectionTrigger(bubble, record) {
+      if (!bubble || record?.speaker !== 'user' || record?.text === '...') return;
+
+      let trigger = bubble.querySelector('.manual-correction-trigger');
+      if (!trigger) {
+        trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'manual-correction-trigger';
+        trigger.textContent = 'Check';
+        trigger.title = 'Check this user utterance for correction';
+        trigger.addEventListener('click', () => {
+          void this.triggerManualCorrectionForBubble(bubble);
+        });
+
+        const transcriptNode = bubble.querySelector('.transcript');
+        if (transcriptNode) {
+          bubble.insertBefore(trigger, transcriptNode);
+        } else {
+          bubble.appendChild(trigger);
+        }
+      }
+    }
+
+    attachPendingCorrectionsToBubble(bubble) {
+      if (!bubble || !bubble.classList.contains('ai') || this.pendingCorrections.size === 0) {
+        return false;
+      }
+
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      let attached = false;
+
+      for (const [correctionId, pendingCorrection] of this.pendingCorrections.entries()) {
+        const existing = correctionMap.get(correctionId) || {};
+        correctionMap.set(correctionId, {
+          ...existing,
+          ...pendingCorrection,
+          id: correctionId,
+          status: pendingCorrection.status || existing.status || 'detected'
+        });
+        this.pendingCorrections.delete(correctionId);
+        attached = true;
+      }
+
+      if (attached) {
+        this.renderCorrectionWidget(bubble);
+      }
+      return attached;
+    }
+
+    upsertCorrection(correction = {}) {
+      const correctionId = typeof correction.id === 'string' ? correction.id.trim() : '';
+      if (!correctionId) return false;
+
+      this.correctionStore.upsertCorrection(correction);
+
+      let bubble = this.findBubbleByCorrectionId(correctionId);
+      if (!bubble) {
+        bubble = this.getLatestBubbleForSpeaker('ai');
+      }
+      if (!bubble) {
+        const pendingExisting = this.pendingCorrections.get(correctionId) || {};
+        this.pendingCorrections.set(correctionId, {
+          ...pendingExisting,
+          ...correction,
+          id: correctionId,
+          status: correction.status || pendingExisting.status || 'detected'
+        });
+        return true;
+      }
+
+      return this.upsertCorrectionForBubble(bubble, correction);
+    }
+
+    updateCorrectionVerification(correctionId, {
+      status,
+      verification = null,
+      error = ''
+    } = {}) {
+      if (!correctionId) return false;
+
+      const bubble = this.findBubbleByCorrectionId(correctionId);
+      if (!bubble) {
+        const pending = this.pendingCorrections.get(correctionId);
+        if (!pending) return false;
+
+        const patch = {
+          status: status || pending.status,
+          error: error || ''
+        };
+        if (verification && typeof verification === 'object') {
+          patch.rule = verification.rule;
+          patch.confidence = verification.confidence;
+          patch.category = verification.category;
+          patch.is_ambiguous = verification.is_ambiguous;
+          patch.model = verification.model;
+          patch.verified_at = verification.verified_at;
+        }
+
+        this.pendingCorrections.set(correctionId, {
+          ...pending,
+          ...patch
+        });
+        this.correctionStore.upsertVerification(correctionId, {
+          status: patch.status,
+          verification,
+          error: patch.error
+        });
+        return true;
+      }
+
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const existing = correctionMap.get(correctionId);
+      if (!existing) return false;
+
+      const patch = {
+        status: status || existing.status,
+        error: error || ''
+      };
+      if (verification && typeof verification === 'object') {
+        patch.rule = verification.rule;
+        patch.confidence = verification.confidence;
+        patch.category = verification.category;
+        patch.is_ambiguous = verification.is_ambiguous;
+        patch.model = verification.model;
+        patch.verified_at = verification.verified_at;
+      }
+
+      correctionMap.set(correctionId, {
+        ...existing,
+        ...patch
+      });
+
+      this.correctionStore.upsertVerification(correctionId, {
+        status: patch.status,
+        verification,
+        error: patch.error
+      });
+      this.renderCorrectionWidget(bubble);
+      return true;
+    }
+
+    handleCorrectionFeedback(bubble, correctionId, feedback) {
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const existing = correctionMap.get(correctionId);
+      if (!existing) return;
+
+      correctionMap.set(correctionId, {
+        ...existing,
+        user_feedback: feedback
+      });
+      this.correctionStore.setFeedback(correctionId, feedback);
+      this.renderCorrectionWidget(bubble);
+    }
+
+    renderCorrectionWidget(bubble) {
+      const correctionMap = this.ensureBubbleCorrectionMap(bubble);
+      const corrections = Array.from(correctionMap.values());
+      let widget = bubble.querySelector('.correction-widget');
+
+      if (!corrections.length) {
+        if (widget) widget.remove();
+        return;
+      }
+
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.className = 'correction-widget';
+        bubble.appendChild(widget);
+      }
+
+      if (!bubble.dataset.correctionOpen) {
+        bubble.dataset.correctionOpen = '0';
+      }
+      const isOpen = bubble.dataset.correctionOpen === '1';
+      widget.innerHTML = '';
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'correction-toggle';
+      toggle.textContent = isOpen
+        ? (corrections.length > 1 ? `Hide Corrections (${corrections.length})` : 'Hide Correction')
+        : (corrections.length > 1 ? `Corrections (${corrections.length})` : 'Correction');
+      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      toggle.addEventListener('click', () => {
+        const nextOpen = bubble.dataset.correctionOpen !== '1';
+        bubble.dataset.correctionOpen = nextOpen ? '1' : '0';
+        this.renderCorrectionWidget(bubble);
+      });
+
+      const details = document.createElement('div');
+      details.className = 'correction-details';
+      details.hidden = !isOpen;
+
+      corrections.forEach((correction) => {
+        const item = document.createElement('div');
+        item.className = 'correction-item';
+        item.dataset.correctionId = correction.id;
+
+        const status = document.createElement('div');
+        status.className = `correction-status status-${correction.status || 'detected'}`;
+        status.textContent = getCorrectionStatusLabel(correction.status);
+        item.appendChild(status);
+
+        const original = document.createElement('div');
+        original.className = 'correction-line original';
+        original.textContent = `Your phrase: ${correction.original || ''}`;
+        item.appendChild(original);
+
+        const corrected = document.createElement('div');
+        corrected.className = 'correction-line corrected';
+        corrected.textContent = `Correction: ${correction.corrected || ''}`;
+        item.appendChild(corrected);
+
+        const rule = document.createElement('div');
+        rule.className = 'correction-rule';
+        if (correction.status === 'verified') {
+          const confidence = typeof correction.confidence === 'number'
+            ? ` (confidence ${Math.round(correction.confidence * 100)}%)`
+            : '';
+          rule.textContent = `${correction.rule || 'No rule explanation provided.'}${confidence}`;
+        } else if (correction.status === 'failed') {
+          rule.textContent = correction.error || 'Verification unavailable.';
+        } else if (correction.status === 'verifying') {
+          rule.textContent = 'Checking rule...';
+        } else {
+          rule.textContent = 'Correction detected.';
+        }
+        item.appendChild(rule);
+
+        const feedbackRow = document.createElement('div');
+        feedbackRow.className = 'correction-feedback';
+
+        const agreeBtn = document.createElement('button');
+        agreeBtn.type = 'button';
+        agreeBtn.className = 'correction-feedback-btn';
+        agreeBtn.textContent = 'Agree';
+        if (correction.user_feedback === CORRECTION_FEEDBACK_VALUES.AGREE) {
+          agreeBtn.classList.add('is-active');
+        }
+        agreeBtn.addEventListener('click', () => {
+          this.handleCorrectionFeedback(
+            bubble,
+            correction.id,
+            CORRECTION_FEEDBACK_VALUES.AGREE
+          );
+        });
+
+        const disagreeBtn = document.createElement('button');
+        disagreeBtn.type = 'button';
+        disagreeBtn.className = 'correction-feedback-btn';
+        disagreeBtn.textContent = 'Disagree';
+        if (correction.user_feedback === CORRECTION_FEEDBACK_VALUES.DISAGREE) {
+          disagreeBtn.classList.add('is-active');
+        }
+        disagreeBtn.addEventListener('click', () => {
+          this.handleCorrectionFeedback(
+            bubble,
+            correction.id,
+            CORRECTION_FEEDBACK_VALUES.DISAGREE
+          );
+        });
+
+        feedbackRow.appendChild(agreeBtn);
+        feedbackRow.appendChild(disagreeBtn);
+        item.appendChild(feedbackRow);
+
+        details.appendChild(item);
+      });
+
+      widget.appendChild(toggle);
+      widget.appendChild(details);
+    }
   
     /**
      * Add a new utterance to the panel, rendering per-word playback.
@@ -170,6 +750,8 @@ export class DialoguePanel {
       // This ensures the "Speaking..." placeholder gets replaced with final transcription
       let existing = null;
       if (record.speaker === 'user' && record.text !== '...') {
+        existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
+        if (!existing) {
         const userBubbles = this.container.querySelectorAll(`.bubble.user`);
         for (let i = userBubbles.length - 1; i >= 0; i--) {
           const bubble = userBubbles[i];
@@ -181,12 +763,9 @@ export class DialoguePanel {
             existing = bubble;
             break;
   }
-}
 
-DialoguePanel.resetCache = function resetCache() {
-  bufferCache.clear();
-  stopActiveAudio();
-};
+}
+      }
       } else {
         // For AI speech, use the original detection logic
         existing = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
@@ -195,7 +774,10 @@ DialoguePanel.resetCache = function resetCache() {
           const speakerBubbles = this.container.querySelectorAll(`.bubble.${record.speaker}`);
           for (let i = speakerBubbles.length - 1; i >= 0; i--) {
             const bubble = speakerBubbles[i];
-            if (!bubble.dataset.utteranceId || bubble.dataset.utteranceId === 'undefined') {
+            const bubbleUtteranceId = bubble.dataset.utteranceId || '';
+            const isUnfinalized = !bubbleUtteranceId || bubbleUtteranceId === 'undefined';
+            const isSyntheticAi = record.speaker === 'ai' && /^synthetic-ai-/.test(bubbleUtteranceId);
+            if (isUnfinalized || isSyntheticAi) {
               existing = bubble;
               break;
             }
@@ -208,6 +790,9 @@ DialoguePanel.resetCache = function resetCache() {
         existing.dataset.utteranceId = record.id;
         // If we have an existing bubble and this is a final record (not placeholder), enhance it
         await this.enhanceExistingBubble(existing, record);
+        if (record.speaker === 'ai') {
+          this.attachPendingCorrectionsToBubble(existing);
+        }
         return;
       }
       
@@ -342,12 +927,27 @@ DialoguePanel.resetCache = function resetCache() {
       p.appendChild(highlightedSpan);
   
       // 5) Append bubble & auto-scroll, updating if already exists
+      this.ensureManualCorrectionTrigger(bubble, record);
       bubble.appendChild(p);
       const existingAfterBuild = this.container.querySelector(`[data-utterance-id="${record.id}"]`);
       if (existingAfterBuild) {
+        if (existingAfterBuild.__corrections instanceof Map) {
+          bubble.__corrections = new Map(existingAfterBuild.__corrections);
+          bubble.dataset.correctionOpen = existingAfterBuild.dataset.correctionOpen || '0';
+          this.renderCorrectionWidget(bubble);
+        }
+        if (existingAfterBuild.dataset.manualCorrectionId) {
+          bubble.dataset.manualCorrectionId = existingAfterBuild.dataset.manualCorrectionId;
+        }
+        if (existingAfterBuild.dataset.manualCorrectionRequested) {
+          bubble.dataset.manualCorrectionRequested = existingAfterBuild.dataset.manualCorrectionRequested;
+        }
         this.container.replaceChild(bubble, existingAfterBuild);
       } else {
         this.container.appendChild(bubble);
+      }
+      if (record.speaker === 'ai') {
+        this.attachPendingCorrectionsToBubble(bubble);
       }
       this.container.scrollTop = this.container.scrollHeight;
     }
@@ -407,6 +1007,7 @@ DialoguePanel.resetCache = function resetCache() {
         // Just update the transcript content
         this.buildTranscriptContent(bubble, record, null);
       }
+      this.ensureManualCorrectionTrigger(bubble, record);
       
       this.container.scrollTop = this.container.scrollHeight;
     }
@@ -492,6 +1093,16 @@ DialoguePanel.resetCache = function resetCache() {
 
       // Append the highlighted span to the paragraph
       p.appendChild(highlightedSpan);
-      bubble.appendChild(p);
+      const existingCorrectionWidget = bubble.querySelector('.correction-widget');
+      if (existingCorrectionWidget) {
+        bubble.insertBefore(p, existingCorrectionWidget);
+      } else {
+        bubble.appendChild(p);
+      }
     }
   }
+
+DialoguePanel.resetCache = function resetCache() {
+  bufferCache.clear();
+  stopActiveAudio();
+};

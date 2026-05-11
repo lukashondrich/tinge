@@ -1,0 +1,5 @@
+# Oversized files that are temporarily allowed in-repo.
+# Keep this list short and intentional.
+
+# Canonical local corpus snapshot used by default local indexing flows.
+corpus.jsonl

@@ -12,6 +12,7 @@ export class AudioManager {
     this.isRecording = false;
     this.recorder = null;
     this.stream = stream;
+    this.detectedMimeType = null;
   }
 
   /**
@@ -52,9 +53,30 @@ export class AudioManager {
     }
     
     try {
-      this.recorder = new MediaRecorder(this.stream);
+      const preferredMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/mp4'
+      ];
+      const mediaRecorderOptions = {};
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        const supportedMimeType = preferredMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+        if (supportedMimeType) {
+          mediaRecorderOptions.mimeType = supportedMimeType;
+        }
+      }
+
+      this.recorder = Object.keys(mediaRecorderOptions).length > 0
+        ? new MediaRecorder(this.stream, mediaRecorderOptions)
+        : new MediaRecorder(this.stream);
+      this.detectedMimeType = this.recorder.mimeType || null;
       this.recorder.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) {
+          if (!this.detectedMimeType && ev.data.type) {
+            this.detectedMimeType = ev.data.type;
+          }
           this.chunks.push(ev.data);
         }
       };
@@ -84,7 +106,7 @@ export class AudioManager {
       return;
     }
     this.chunks = [];
-    this.recorder.start();
+    this.recorder.start(250);
     this.isRecording = true;
   }
 
@@ -104,8 +126,8 @@ export class AudioManager {
     return new Promise((resolve) => {
       this.recorder.onstop = async () => {
         this.isRecording = false;
-        // fallback to webm if mimeType is missing
-        const mime = this.recorder.mimeType || 'audio/webm';
+        const firstChunkType = this.chunks.find((chunk) => chunk?.type)?.type;
+        const mime = this.recorder.mimeType || this.detectedMimeType || firstChunkType || 'audio/webm';
         const blob = new Blob(this.chunks, { type: mime });
         // eslint-disable-next-line no-console
         console.log('🔉 AudioManager: blob type=', blob.type, 'size=', blob.size);
@@ -117,6 +139,14 @@ export class AudioManager {
         await StorageService.addUtterance(utterance);
         resolve({ ...utterance, audioURL });
       };
+      if (typeof this.recorder.requestData === 'function' && this.recorder.state === 'recording') {
+        try {
+          this.recorder.requestData();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('AudioManager: requestData failed before stop:', err);
+        }
+      }
       this.recorder.stop();
     });
   }

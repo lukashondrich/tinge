@@ -10,6 +10,14 @@ include `query_en` as an English translation/paraphrase.
 - `GET /health`
 - `POST /index`
 - `POST /search`
+  - request accepts:
+    - required `query_original`
+    - optional `query_en`
+    - optional `language`
+    - optional `top_k`
+    - optional `dialogue_context` (last 2-3 turns recommended)
+  - response always includes `results`, `used_queries`, `index_name`
+  - response may include additive `meta.corrective_rag` when corrective mode is enabled
 
 ## Retrieval Pipeline (Phase 2B)
 
@@ -25,6 +33,13 @@ Runtime flags:
 - `RETRIEVAL_WRITE_EMBEDDINGS` (default: `true`)
 - `RETRIEVAL_EMBED_MODEL` (default: `sentence-transformers/all-MiniLM-L6-v2`)
 - `RETRIEVAL_DENSE_TOP_K` (default: `8`)
+- `RETRIEVAL_CORRECTIVE_RAG_ENABLED` (default: `false`)
+- `RETRIEVAL_CORRECTIVE_MAX_ATTEMPTS` (default: `2`)
+- `RETRIEVAL_CORRECTIVE_BUDGET_MS` (default: `3000`)
+- `RETRIEVAL_CORRECTIVE_DIALOGUE_TURNS` (default: `3`)
+- `RETRIEVAL_CORRECTIVE_LLM_ENABLED` (default: `true`)
+- `RETRIEVAL_CORRECTIVE_LLM_MODEL` (default: `gpt-4o-mini`)
+- `RETRIEVAL_CORRECTIVE_LLM_TIMEOUT_MS` (default: `900`)
 
 If pipeline graph initialization or execution fails, service falls back to direct
 BM25 retrieval to keep `/search` available.
@@ -48,6 +63,51 @@ source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 3004
 ```
+
+## Developer Task Contract
+
+From `retrieval-service/`, use the local task surface:
+
+```bash
+make format
+make lint
+make test
+make typecheck
+make check
+```
+
+Dev tooling dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+## Data Asset Policy
+
+Repository policy keeps retrieval data reproducible without letting generated
+large assets sprawl in git history.
+
+- Run policy check:
+
+```bash
+cd retrieval-service
+make data-policy
+```
+
+- Policy guardrails are enforced by:
+  - `scripts/check_data_policy.py`
+  - `data/data_asset_allowlist.txt`
+  - `data/CORPUS_STORAGE_POLICY.md`
+
+Current default limits:
+- `data/corpus.jsonl`: up to 15MB
+- `data/import/*`: up to 0.5MB unless explicitly allowlisted
+- other `data/*`: up to 1MB unless explicitly allowlisted
+
+Recommended workflow for large generated batches:
+- write generated files outside repo (for example `/tmp/tinge-rag-data/`),
+- merge into canonical corpus via explicit path input,
+- keep allowlist entries minimal and intentional.
 
 ## Example
 
@@ -100,12 +160,23 @@ Fetch real EN Wikipedia articles into import batch:
 ```bash
 cd retrieval-service
 python3 scripts/fetch_wikipedia_en.py \
-  --output data/import/wiki_en_articles.jsonl \
+  --output /tmp/tinge-rag-data/wiki_en_articles.jsonl \
   --seed-profile iberia_latam \
   --target-docs 10000 \
   --fallback-single-page \
   --fetch-batch-size 40 \
   --overwrite
+```
+
+For top-level Make targets, generated wiki batch output defaults to:
+- `/tmp/tinge-rag-data/wiki_en_articles.jsonl`
+
+Override explicitly for repo-local output only when intentional:
+
+```bash
+make rag-fetch-wiki-en \
+  WIKI_EN_TARGET_DOCS=10000 \
+  WIKI_EN_OUTPUT=retrieval-service/data/import/wiki_en_articles.jsonl
 ```
 
 Available seed profiles:

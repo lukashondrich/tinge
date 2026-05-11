@@ -4,6 +4,9 @@
  * Tracks token usage per ephemeral key to prevent excessive OpenAI API costs
  * during beta testing phase.
  */
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('token-counter');
 
 class TokenCounter {
   constructor() {
@@ -24,7 +27,7 @@ class TokenCounter {
       audioOutput: 0.00008   // $80 / 1M tokens
     };
     
-    console.log(`TokenCounter initialized: enabled=${this.enabled}, defaultLimit=${this.defaultLimit}`);
+    logger.log(`TokenCounter initialized: enabled=${this.enabled}, defaultLimit=${this.defaultLimit}`);
   }
 
   /**
@@ -57,7 +60,7 @@ class TokenCounter {
       conversationActive: false
     });
 
-    console.log(`Initialized token tracking for key: ${ephemeralKey.substring(0, 10)}... (limit: ${limit})`);
+    logger.log(`Initialized token tracking for key: ${ephemeralKey.substring(0, 10)}... (limit: ${limit})`);
     
     return this.getUsage(ephemeralKey);
   }
@@ -124,7 +127,7 @@ class TokenCounter {
     if (!usage) return false;
 
     // Debug: Log the raw usage data from OpenAI
-    console.log(`[DEBUG] Raw OpenAI usage data for key ${ephemeralKey.substring(0, 10)}...:`, JSON.stringify(usageData, null, 2));
+    logger.debug(`Raw OpenAI usage data for key ${ephemeralKey.substring(0, 10)}...:`, JSON.stringify(usageData, null, 2));
 
     // IMPORTANT: OpenAI Realtime API reports CUMULATIVE usage for the entire session
     // We need to set the actual tokens to the total reported by OpenAI, not add to it
@@ -163,9 +166,9 @@ class TokenCounter {
 
     usage.lastActivity = new Date();
 
-    console.log(`Updated actual usage for key ${ephemeralKey.substring(0, 10)}...: ${usage.actualTokens} tokens (input: ${usage.inputTokens}, output: ${usage.outputTokens}) [CUMULATIVE SESSION TOTAL]`);
-    console.log(`  → Cost breakdown: Text In: $${(usage.textInputTokens * this.pricing.textInput).toFixed(4)}, Audio In: $${(usage.audioInputTokens * this.pricing.audioInput).toFixed(4)}, Text Out: $${(usage.textOutputTokens * this.pricing.textOutput).toFixed(4)}, Audio Out: $${(usage.audioOutputTokens * this.pricing.audioOutput).toFixed(4)}`);
-    console.log(`  → Total estimated cost: $${usage.actualCost.toFixed(4)}`);
+    logger.log(`Updated actual usage for key ${ephemeralKey.substring(0, 10)}...: ${usage.actualTokens} tokens (input: ${usage.inputTokens}, output: ${usage.outputTokens}) [CUMULATIVE SESSION TOTAL]`);
+    logger.log(`  → Cost breakdown: Text In: $${(usage.textInputTokens * this.pricing.textInput).toFixed(4)}, Audio In: $${(usage.audioInputTokens * this.pricing.audioInput).toFixed(4)}, Text Out: $${(usage.textOutputTokens * this.pricing.textOutput).toFixed(4)}, Audio Out: $${(usage.audioOutputTokens * this.pricing.audioOutput).toFixed(4)}`);
+    logger.log(`  → Total estimated cost: $${usage.actualCost.toFixed(4)}`);
     
     return this.getUsage(ephemeralKey);
   }
@@ -241,7 +244,7 @@ class TokenCounter {
     }
 
     if (cleanedCount > 0) {
-      console.log(`Cleaned up ${cleanedCount} expired token tracking entries`);
+      logger.log(`Cleaned up ${cleanedCount} expired token tracking entries`);
     }
   }
 
@@ -289,7 +292,7 @@ class TokenCounter {
     usage.requestCount = 0;
     usage.lastActivity = new Date();
 
-    console.log(`Reset token usage for key: ${ephemeralKey.substring(0, 10)}...`);
+    logger.log(`Reset token usage for key: ${ephemeralKey.substring(0, 10)}...`);
     return true;
   }
 }

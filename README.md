@@ -127,6 +127,8 @@ What this architecture demonstrates:
 - **Backend Tests**: `npm run test:backend` 
 - **Frontend Tests**: `npm run test:frontend`
 - **Coverage**: `npm run test:coverage`
+- **Citation Path Integration Test**:
+  `npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js`
 
 ### Linting
 
@@ -201,6 +203,10 @@ railway up --service tinge_backend --detach
 
 
 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+For the current working Railway setup (retrieval + Elasticsearch included), see
+[docs/railway_runbook.md](./docs/railway_runbook.md).
+For session continuity and the active technical debt roadmap, start with
+[AGENTS.md](./AGENTS.md) and [docs/tech_debt_register.md](./docs/tech_debt_register.md).
 
 ## Environment Variables
 
@@ -209,6 +215,8 @@ For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 ```bash
 # Backend
 OPENAI_API_KEY=your_openai_api_key_here
+REALTIME_MODEL=gpt-realtime-1.5
+REALTIME_VOICE=marin
 PORT=3000
 NODE_ENV=development
 
@@ -230,7 +238,7 @@ WEBHOOK_URL=https://your-webhook-url.com
 
 ### Backend (Port 3000)
 - `GET /health` - Health check
-- `POST /token` - OpenAI token endpoint
+- `GET /token` - OpenAI realtime client-secret endpoint
 - `POST /transcribe` - Audio transcription
 
 ### Embedding Service (Port 3001)  
@@ -250,10 +258,16 @@ npm run dev:embedding      # Embedding service only
 npm test                   # Run all tests
 npm run test:watch         # Watch mode
 npm run test:coverage      # With coverage
+npm --prefix shader-playground run test:realtime:guards
+                           # Reconnect/PTT integration guard tests
+npm --prefix shader-playground run test:run -- tests/integration/citation-path.e2e.test.js
+                           # Citation path integration test
 
 # Linting
 npm run lint              # Lint all services
 npm run lint:fix          # Fix linting issues
+npm run check:readme-scripts      # Verify README script references exist
+npm run check:root-test-contract  # Enforce explicit root test ownership contract
 
 # Docker
 npm run docker:build      # Build containers
@@ -275,5 +289,16 @@ make rag-down             # Stop stack
 2. Make changes with tests
 3. Run `npm run lint` and `npm test`
 4. Create pull request to `develop`
+
+## PR Safety Checklist
+
+Before opening a PR:
+
+1. Confirm your current branch is not `main`.
+2. Rebase or merge latest target branch changes.
+3. Run `npm run lint` and `npm test`.
+4. Update `AGENTS.md` session status/next steps if work changed priorities.
+5. Update `docs/tech_debt_register.md` when debt priorities or severity changed.
+6. Open PR and wait for required checks/review before any merge to `main`.
 
 ## License

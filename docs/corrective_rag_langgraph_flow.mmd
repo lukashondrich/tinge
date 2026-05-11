@@ -1,0 +1,13 @@
+flowchart TD
+  A[Start /knowledge/search] --> B[init_state]
+  B --> C[retrieve_documents attempt=0]
+  C --> D[grade_relevance]
+  D -->|high or medium| H[finalize status=ok]
+  D -->|low or none AND attempt < max_attempts| E[rewrite_query]
+  E --> F[retrieve_retry attempt+1]
+  F --> G[grade_relevance_retry]
+  G -->|high or medium| H
+  G -->|still low/none AND attempt < max_attempts| E
+  G -->|max attempts reached| I[finalize status=fallback]
+  H --> J[Return current contract + meta.corrective_rag]
+  I --> J

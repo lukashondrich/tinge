@@ -1,0 +1,363 @@
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('realtime-event-coordinator');
+
+export class RealtimeEventCoordinator {
+  constructor({
+    bubbleManager,
+    retrievalCoordinator,
+    panel = null,
+    addWord,
+    playAudioFor,
+    usedWords,
+    now = () => Date.now(),
+    warn = (...args) => logger.warn(...args)
+  }) {
+    this.bubbleManager = bubbleManager;
+    this.retrievalCoordinator = retrievalCoordinator;
+    this.panel = panel;
+    this.addWord = addWord;
+    this.playAudioFor = playAudioFor;
+    this.usedWords = usedWords;
+    this.now = now;
+    this.warn = warn;
+    this.utteranceEventProcessor = null;
+    this.pendingResponseTextBuffer = '';
+    this.pendingResponseTextMode = 'idle';
+    this.pendingCorrectionIds = [];
+    this.correctionsById = new Map();
+  }
+
+  setUtteranceEventProcessor(processor) {
+    this.utteranceEventProcessor = processor;
+  }
+
+  enqueuePendingCorrection(correctionId) {
+    if (!correctionId) return;
+    if (!this.pendingCorrectionIds.includes(correctionId)) {
+      this.pendingCorrectionIds.push(correctionId);
+    }
+  }
+
+  flushPendingCorrections() {
+    if (!this.panel || typeof this.panel.upsertCorrection !== 'function') return;
+    if (!this.pendingCorrectionIds.length) return;
+
+    const stillPending = [];
+    this.pendingCorrectionIds.forEach((correctionId) => {
+      const correction = this.correctionsById.get(correctionId);
+      if (!correction) return;
+      const attached = this.panel.upsertCorrection(correction);
+      if (!attached) {
+        stillPending.push(correctionId);
+      }
+    });
+    this.pendingCorrectionIds = stillPending;
+  }
+
+  upsertCorrectionState(correctionId, patch = {}) {
+    const existing = this.correctionsById.get(correctionId) || { id: correctionId };
+    const merged = {
+      ...existing,
+      ...patch,
+      id: correctionId
+    };
+    this.correctionsById.set(correctionId, merged);
+    return merged;
+  }
+
+  handleEvent(event) {
+    if (!event || typeof event.type !== 'string') return;
+
+    if (event.type === 'assistant.interrupted') {
+      const interruptedUtteranceId = event.utteranceId || `interrupted-${this.now()}`;
+      this.pendingResponseTextMode = 'idle';
+      this.pendingResponseTextBuffer = '';
+      if (typeof this.retrievalCoordinator?.resetStreamingTranscript === 'function') {
+        this.retrievalCoordinator.resetStreamingTranscript();
+      }
+      if (typeof this.bubbleManager?.setUtteranceId === 'function') {
+        this.bubbleManager.setUtteranceId('ai', interruptedUtteranceId);
+      }
+      this.bubbleManager.scheduleFinalize('ai', 0, (words) => {
+        words.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      });
+      return;
+    }
+
+    if (event.type === 'input_audio_buffer.speech_started') {
+      this.bubbleManager.beginTurn('user');
+      return;
+    }
+
+    if (event.type === 'output_audio_buffer.started') {
+      this.bubbleManager.beginTurn('ai');
+      this.flushPendingCorrections();
+      return;
+    }
+
+    if (event.type === 'tool.log_correction.detected' && event.correction?.id) {
+      const correction = this.upsertCorrectionState(event.correction.id, event.correction);
+      const attached = this.panel?.upsertCorrection?.(correction);
+      if (!attached) {
+        this.enqueuePendingCorrection(correction.id);
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.started' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        status: 'verifying'
+      });
+      const attached = this.panel?.upsertCorrection?.(correction);
+      if (!attached) {
+        this.enqueuePendingCorrection(correction.id);
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.succeeded' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        ...(event.verification || {}),
+        status: 'verified',
+        error: ''
+      });
+      const applied = this.panel?.updateCorrectionVerification?.(event.correctionId, {
+        status: 'verified',
+        verification: event.verification
+      });
+      if (!applied) {
+        const attached = this.panel?.upsertCorrection?.(correction);
+        if (!attached) {
+          this.enqueuePendingCorrection(correction.id);
+        }
+      }
+      return;
+    }
+
+    if (event.type === 'correction.verification.failed' && event.correctionId) {
+      const correction = this.upsertCorrectionState(event.correctionId, {
+        ...(event.correction || {}),
+        status: 'failed',
+        error: event.error || ''
+      });
+      const applied = this.panel?.updateCorrectionVerification?.(event.correctionId, {
+        status: 'failed',
+        error: event.error || ''
+      });
+      if (!applied) {
+        const attached = this.panel?.upsertCorrection?.(correction);
+        if (!attached) {
+          this.enqueuePendingCorrection(correction.id);
+        }
+      }
+      return;
+    }
+
+    if (event.type === 'response.output_audio_transcript.delta' && typeof event.delta === 'string') {
+      const remappedStreamingTranscript = this.retrievalCoordinator.appendStreamingDelta(event.delta);
+      const completedWords = this.bubbleManager.appendDelta('ai', event.delta, {
+        displayText: remappedStreamingTranscript
+      });
+      completedWords.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      this.flushPendingCorrections();
+      return;
+    }
+
+    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+      const acceptedDelta = this.consumeResponseTextDelta(event.delta);
+      if (!acceptedDelta) return;
+
+      const remappedStreamingTranscript = this.retrievalCoordinator.appendStreamingDelta(acceptedDelta);
+      const completedWords = this.bubbleManager.appendDelta('ai', acceptedDelta, {
+        displayText: remappedStreamingTranscript
+      });
+      completedWords.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      this.flushPendingCorrections();
+      return;
+    }
+
+    if (event.type === 'transcript.word' && typeof event.word === 'string') {
+      const speaker = event.speaker || 'ai';
+      if (speaker === 'user') {
+        this.bubbleManager.appendWord({ speaker, word: event.word, onWordClick: this.playAudioFor });
+        this.addWord(event.word, speaker, { skipBubble: true });
+        return;
+      }
+
+      if (!this.bubbleManager.hasActiveDelta(speaker)) {
+        this.addWord(event.word, speaker);
+      } else {
+        const key = event.word.trim().toLowerCase();
+        if (!this.usedWords.has(key)) {
+          this.addWord(event.word, speaker, { skipBubble: true });
+        }
+      }
+      return;
+    }
+
+    if (event.type === 'utterance.added' && event.record) {
+      if (!this.utteranceEventProcessor) {
+        this.warn('Utterance processor not ready; dropping utterance event');
+        return;
+      }
+      this.utteranceEventProcessor.handleUtteranceAdded(
+        event.record,
+        event.deviceType || 'unknown'
+      );
+      this.flushPendingCorrections();
+      return;
+    }
+
+    if (event.type === 'output_audio_buffer.stopped') {
+      if (this.utteranceEventProcessor) {
+        this.utteranceEventProcessor.handleOutputAudioStopped();
+      }
+      return;
+    }
+
+    if (event.type === 'response.done') {
+      const status = event.response?.status;
+      if (status && status !== 'completed') {
+        this.warn('Realtime response finished with non-completed status:', status, event.response?.status_details || '');
+      }
+      if (this.bubbleManager.hasActiveDelta('ai')) {
+        this.bubbleManager.scheduleFinalize('ai', 300, (words) => {
+          words.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+        });
+      }
+      return;
+    }
+
+    if (
+      (event.type === 'response.output_audio_transcript.done' && typeof event.transcript === 'string')
+      || (event.type === 'response.output_text.done' && typeof event.text === 'string')
+    ) {
+      const rawTranscript = event.type === 'response.output_text.done'
+        ? this.consumeResponseTextDone(event.text)
+        : event.transcript;
+      if (!rawTranscript) {
+        return;
+      }
+      const transcript = this.retrievalCoordinator.handleFinalTranscript(rawTranscript);
+      if (transcript) {
+        this.bubbleManager.appendDelta('ai', '', {
+          displayText: transcript
+        });
+      }
+      // Finalize even when output_audio_buffer.stopped is missing (text-only or missing audio events).
+      this.bubbleManager.scheduleFinalize('ai', 300, (words) => {
+        words.forEach((word) => this.addWord(word, 'ai', { skipBubble: true }));
+      });
+      return;
+    }
+
+    if (event.type === 'tool.search_knowledge.result') {
+      const remappedStreamingTranscript = this.retrievalCoordinator.handleToolSearchResult({
+        results: event?.result?.results || [],
+        telemetry: event?.telemetry || null
+      });
+
+      if (remappedStreamingTranscript) {
+        this.bubbleManager.appendDelta('ai', '', {
+          displayText: remappedStreamingTranscript
+        });
+      }
+      return;
+    }
+
+    if (event.type === 'tool.search_knowledge.started') {
+      this.retrievalCoordinator.handleToolSearchStarted(event?.args || {});
+    }
+  }
+
+  consumeResponseTextDelta(delta) {
+    this.pendingResponseTextBuffer += delta;
+    if (this.pendingResponseTextMode === 'tool_payload') {
+      return '';
+    }
+
+    if (this.pendingResponseTextMode === 'plain_text') {
+      return delta;
+    }
+
+    const trimmed = this.pendingResponseTextBuffer.trimStart();
+    if (!trimmed) return '';
+
+    if (!this.isJsonLikeStart(trimmed)) {
+      this.pendingResponseTextMode = 'plain_text';
+      const flush = this.pendingResponseTextBuffer;
+      this.pendingResponseTextBuffer = '';
+      return flush;
+    }
+
+    if (this.looksLikeToolPayloadPrefix(trimmed)) {
+      this.pendingResponseTextMode = 'tool_payload';
+      return '';
+    }
+
+    // Keep buffering JSON-like start until we can confidently classify.
+    if (trimmed.length < 80) {
+      return '';
+    }
+
+    // JSON-like but not a tool payload signature: treat as plain text.
+    this.pendingResponseTextMode = 'plain_text';
+    const flush = this.pendingResponseTextBuffer;
+    this.pendingResponseTextBuffer = '';
+    return flush;
+  }
+
+  consumeResponseTextDone(text) {
+    const mode = this.pendingResponseTextMode;
+    this.pendingResponseTextMode = 'idle';
+    this.pendingResponseTextBuffer = '';
+
+    if (mode === 'tool_payload' || this.looksLikeToolPayloadString(text)) {
+      return '';
+    }
+
+    return text;
+  }
+
+  isJsonLikeStart(text) {
+    return text.startsWith('{') || text.startsWith('[');
+  }
+
+  looksLikeToolPayloadPrefix(text) {
+    return (
+      text.includes('"tool_uses"')
+      || text.includes('"recipient_name"')
+      || text.includes('"parameters"')
+      || text.includes('"function_call"')
+    );
+  }
+
+  looksLikeToolPayloadString(text) {
+    const trimmed = (text || '').trim();
+    if (!this.isJsonLikeStart(trimmed)) return false;
+
+    if (this.looksLikeToolPayloadPrefix(trimmed)) return true;
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.some((item) => (
+          item && typeof item === 'object'
+          && (item.recipient_name || item.parameters || item.type === 'function_call')
+        ));
+      }
+
+      if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.tool_uses)) return true;
+        if (parsed.type === 'function_call' || parsed.type === 'function_call_output') return true;
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
+  }
+}

@@ -78,6 +78,7 @@ describe('DialoguePanel Audio Functionality', () => {
   let panel;
   let container;
   let DialoguePanel;
+  let CorrectionStore;
 
   beforeAll(async () => {
     // Mock console methods to avoid noise in tests
@@ -88,6 +89,8 @@ describe('DialoguePanel Audio Functionality', () => {
     // Import DialoguePanel after setting up all mocks
     const module = await import('../../ui/dialoguePanel.js');
     DialoguePanel = module.DialoguePanel;
+    const correctionStoreModule = await import('../../core/correctionStore.js');
+    CorrectionStore = correctionStoreModule.CorrectionStore;
   });
 
   beforeEach(() => {
@@ -101,6 +104,13 @@ describe('DialoguePanel Audio Functionality', () => {
     // Reset DOM
     container = document.getElementById('transcriptContainer');
     container.innerHTML = '';
+    try {
+      if (globalThis.window?.localStorage) {
+        globalThis.window.localStorage.clear();
+      }
+    } catch {
+      // localStorage may be unavailable for opaque-origin JSDOM
+    }
     
     // Create fresh DialoguePanel instance
     panel = new DialoguePanel('#transcriptContainer', { debounceMs: 0 });
@@ -443,6 +453,290 @@ describe('DialoguePanel Audio Functionality', () => {
 
       const playButtons = container.querySelectorAll('.play-utterance');
       expect(playButtons.length).toBe(1);
+    });
+
+    test('prefers exact utterance-id match over older unfinalized user bubble', async () => {
+      const oldBubble = document.createElement('div');
+      oldBubble.className = 'bubble user';
+      oldBubble.innerHTML = '<p><span class="highlighted-text">Speaking...</span></p>';
+      container.appendChild(oldBubble);
+
+      const currentBubble = document.createElement('div');
+      currentBubble.className = 'bubble user';
+      currentBubble.dataset.utteranceId = 'u-new';
+      currentBubble.innerHTML = '<p class="transcript"><span class="highlighted-text">temporary</span></p>';
+      container.appendChild(currentBubble);
+
+      const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
+      await panel.add({
+        id: 'u-new',
+        speaker: 'user',
+        text: 'Final user utterance',
+        audioBlob: mockBlob,
+        audioURL: 'blob:mock-url'
+      });
+
+      expect(currentBubble.textContent).toContain('Final user utterance');
+      expect(oldBubble.querySelector('.highlighted-text').textContent).toContain('Speaking...');
+    });
+
+    test('reuses synthetic AI bubble for finalized utterance to avoid duplicate AI bubbles', async () => {
+      const syntheticBubble = document.createElement('div');
+      syntheticBubble.className = 'bubble ai';
+      syntheticBubble.dataset.utteranceId = 'synthetic-ai-1';
+      syntheticBubble.innerHTML = '<p class="transcript"><span class="highlighted-text">temporary stream text</span></p>';
+      container.appendChild(syntheticBubble);
+
+      const mockBlob = new Blob(['mock audio data'], { type: 'audio/webm' });
+      await panel.add({
+        id: 'ai-real-1',
+        speaker: 'ai',
+        text: 'Final AI utterance',
+        audioBlob: mockBlob,
+        audioURL: 'blob:mock-url'
+      });
+
+      const aiBubbles = container.querySelectorAll('.bubble.ai');
+      expect(aiBubbles.length).toBe(1);
+      expect(aiBubbles[0].dataset.utteranceId).toBe('ai-real-1');
+      expect(aiBubbles[0].textContent).toContain('Final AI utterance');
+    });
+  });
+
+  describe('Correction UI', () => {
+    test('renders manual correction trigger on user bubbles', async () => {
+      await panel.add({
+        id: 'user-0',
+        speaker: 'user',
+        text: 'A mi me gusta canto musica.'
+      });
+      await panel.add({
+        id: 'ai-0',
+        speaker: 'ai',
+        text: 'Instead of "A mi me gusta canto musica", you should say "A mi me gusta cantar musica".'
+      });
+
+      expect(container.querySelector('.bubble.user .manual-correction-trigger')).toBeTruthy();
+      expect(container.querySelector('.bubble.ai .manual-correction-trigger')).toBeNull();
+    });
+
+    test('attaches correction indicator to latest AI bubble and keeps details collapsed by default', async () => {
+      await panel.add({
+        id: 'ai-1',
+        speaker: 'ai',
+        text: 'Tengo hambre mucho.'
+      });
+
+      const attached = panel.upsertCorrection({
+        id: 'corr-1',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        status: 'detected'
+      });
+
+      expect(attached).toBe(true);
+      const toggle = container.querySelector('.correction-toggle');
+      expect(toggle).toBeTruthy();
+      expect(toggle.textContent).toContain('Correction');
+
+      const details = container.querySelector('.correction-details');
+      expect(details.hidden).toBe(true);
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      const bubble = container.querySelector('.bubble.ai');
+      expect(bubble.querySelector('.transcript').nextElementSibling.className).toContain('correction-widget');
+
+      toggle.click();
+      expect(container.querySelector('.correction-details').hidden).toBe(false);
+      expect(container.querySelector('.correction-toggle').textContent).toContain('Hide Correction');
+      container.querySelector('.correction-toggle').click();
+      expect(container.querySelector('.correction-details').hidden).toBe(true);
+      expect(container.textContent).toContain('Your phrase: tengo hambre mucho');
+      expect(container.textContent).toContain('Correction: tengo mucha hambre');
+    });
+
+    test('updates correction verification state and persists feedback', async () => {
+      const storageData = new Map();
+      const storage = {
+        getItem: (key) => (storageData.has(key) ? storageData.get(key) : null),
+        setItem: (key, value) => storageData.set(key, value),
+        clear: () => storageData.clear()
+      };
+      panel = new DialoguePanel('#transcriptContainer', {
+        debounceMs: 0,
+        correctionStore: new CorrectionStore({ storage })
+      });
+
+      await panel.add({
+        id: 'ai-2',
+        speaker: 'ai',
+        text: 'Dirias tengo mucha hambre.'
+      });
+
+      panel.upsertCorrection({
+        id: 'corr-2',
+        original: 'tengo hambre mucho',
+        corrected: 'tengo mucha hambre',
+        correction_type: 'grammar',
+        status: 'detected'
+      });
+      panel.updateCorrectionVerification('corr-2', {
+        status: 'verified',
+        verification: {
+          rule: 'Adjective agreement and position.',
+          confidence: 0.82
+        }
+      });
+
+      container.querySelector('.correction-toggle').click();
+      expect(container.textContent).toContain('Verified');
+      expect(container.textContent).toContain('Adjective agreement and position.');
+      expect(container.textContent).toContain('confidence 82%');
+
+      const agreeBtn = Array.from(container.querySelectorAll('.correction-feedback-btn'))
+        .find((btn) => btn.textContent === 'Agree');
+      agreeBtn.click();
+      const updatedAgreeBtn = Array.from(container.querySelectorAll('.correction-feedback-btn'))
+        .find((btn) => btn.textContent === 'Agree');
+      expect(updatedAgreeBtn.classList.contains('is-active')).toBe(true);
+
+      const stored = JSON.parse(storage.getItem('correction_history_student_001'));
+      expect(stored.corrections.find((item) => item.id === 'corr-2').user_feedback).toBe('agree');
+    });
+
+    test('attaches queued correction when verification arrives before AI bubble render', async () => {
+      const queued = panel.upsertCorrection({
+        id: 'corr-queued',
+        original: 'a mi me gusta canto musica',
+        corrected: 'a mi me gusta cantar musica',
+        correction_type: 'grammar',
+        status: 'detected'
+      });
+      expect(queued).toBe(true);
+      expect(container.querySelector('.correction-toggle')).toBeNull();
+
+      const updated = panel.updateCorrectionVerification('corr-queued', {
+        status: 'verified',
+        verification: {
+          rule: 'After gustar use infinitive.',
+          confidence: 0.9
+        }
+      });
+      expect(updated).toBe(true);
+
+      await panel.add({
+        id: 'ai-queued',
+        speaker: 'ai',
+        text: 'Try this correction next.'
+      });
+
+      const toggle = container.querySelector('.correction-toggle');
+      expect(toggle).toBeTruthy();
+      toggle.click();
+      expect(container.textContent).toContain('Verified');
+      expect(container.textContent).toContain('After gustar use infinitive.');
+      expect(container.textContent).toContain('confidence 90%');
+      expect(container.textContent).toContain('Your phrase: a mi me gusta canto musica');
+      expect(container.textContent).toContain('Correction: a mi me gusta cantar musica');
+    });
+
+    test('manual trigger infers correction pair and verifies it', async () => {
+      const manualVerify = vi.fn(async (payload) => ({
+        data: {
+          correction_id: payload.correction_id,
+          mistake: payload.original,
+          correction: payload.corrected,
+          rule: 'Use infinitive after gustar.',
+          category: 'grammar',
+          confidence: 0.9,
+          is_ambiguous: false
+        }
+      }));
+      panel = new DialoguePanel('#transcriptContainer', {
+        debounceMs: 0,
+        manualCorrectionVerifier: manualVerify,
+        makeCorrectionId: () => 'manual-corr-1'
+      });
+
+      await panel.add({
+        id: 'u-manual',
+        speaker: 'user',
+        text: 'A mi me gusta canto musica.'
+      });
+      await panel.add({
+        id: 'ai-manual',
+        speaker: 'ai',
+        text: 'Claro, la forma correcta seria: "A mi me gusta cantar musica."'
+      });
+
+      const trigger = container.querySelector('.bubble.user .manual-correction-trigger');
+      expect(trigger).toBeTruthy();
+      trigger.click();
+      await flushPromises();
+
+      expect(manualVerify).toHaveBeenCalledWith(expect.objectContaining({
+        correction_id: 'manual-corr-1',
+        original: 'A mi me gusta canto musica.',
+        corrected: 'A mi me gusta cantar musica.',
+        correction_type: 'grammar'
+      }));
+
+      const toggle = container.querySelector('.correction-toggle');
+      expect(toggle).toBeTruthy();
+      expect(container.querySelector('.bubble.user .correction-widget')).toBeNull();
+      expect(container.querySelector('.bubble.ai .correction-widget')).toBeTruthy();
+      toggle.click();
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain('Verified');
+      });
+      expect(container.textContent).toContain('Use infinitive after gustar.');
+    });
+
+    test('manual trigger makes one request and then toggles correction panel', async () => {
+      const manualVerify = vi.fn(async (payload) => ({
+        data: {
+          correction_id: payload.correction_id,
+          mistake: payload.original,
+          correction: payload.corrected,
+          rule: 'Use infinitive after gustar.',
+          category: 'grammar',
+          confidence: 0.9,
+          is_ambiguous: false
+        }
+      }));
+      panel = new DialoguePanel('#transcriptContainer', {
+        debounceMs: 0,
+        manualCorrectionVerifier: manualVerify,
+        makeCorrectionId: () => 'manual-corr-toggle'
+      });
+
+      await panel.add({
+        id: 'u-toggle',
+        speaker: 'user',
+        text: 'A mi me gusta canto musica.'
+      });
+      await panel.add({
+        id: 'ai-toggle',
+        speaker: 'ai',
+        text: 'Claro, la forma correcta seria: "A mi me gusta cantar musica."'
+      });
+
+      const trigger = container.querySelector('.bubble.user .manual-correction-trigger');
+      trigger.click();
+      await vi.waitFor(() => {
+        expect(manualVerify).toHaveBeenCalledTimes(1);
+      });
+      await vi.waitFor(() => {
+        expect(trigger.disabled).toBe(false);
+      });
+
+      const toggle = container.querySelector('.correction-toggle');
+      toggle.click();
+      expect(container.querySelector('.correction-details').hidden).toBe(false);
+
+      trigger.click();
+      expect(manualVerify).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.correction-details').hidden).toBe(true);
     });
   });
 

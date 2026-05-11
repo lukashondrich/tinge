@@ -67,12 +67,16 @@ export class SourcePanel {
   }
 
   _sourceKey(item = {}) {
-    return [
-      String(item.url || '').trim().toLowerCase(),
-      String(item.title || '').trim().toLowerCase(),
-      String(item.source || '').trim().toLowerCase(),
-      String(item.language || '').trim().toLowerCase()
-    ].join('|');
+    const url = String(item.url || '').trim().toLowerCase();
+    const title = String(item.title || '').trim().toLowerCase();
+    const source = String(item.source || '').trim().toLowerCase();
+    const language = String(item.language || '').trim().toLowerCase();
+
+    // Prefer URL-based identity: retrieval responses may vary title text for
+    // the same document across turns, but URL should remain stable.
+    if (url) return `url:${url}|lang:${language}`;
+
+    return `meta:${title}|${source}|${language}`;
   }
 
   getSourceKey(item = {}) {
@@ -145,6 +149,15 @@ export class SourcePanel {
 
   getNextDisplayIndex() {
     return this.nextDisplayIndex;
+  }
+
+  hasDisplayIndex(index) {
+    const target = Number(index);
+    if (!Number.isFinite(target) || target <= 0) return false;
+    return Array.from(this.sourcesByKey.values()).some((item) => {
+      const displayIndex = Number(item?.display_index);
+      return Number.isFinite(displayIndex) && displayIndex === target;
+    });
   }
 
   _syncExpandedState() {

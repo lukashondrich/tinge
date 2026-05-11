@@ -2,8 +2,10 @@ const express = require('express');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('./logger');
 
 const app = express();
+const logger = createLogger('embedding-service');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -14,7 +16,7 @@ let embeddings = [];
 try {
   embeddings = JSON.parse(fs.readFileSync(embeddingFile, 'utf8'));
 } catch {
-  console.warn('Embedding file not found, starting with empty set');
+  logger.warn('Embedding file not found, starting with empty set');
 }
 
 // Start a persistent Python process that keeps the model in memory
@@ -25,7 +27,7 @@ const pythonExecutable = fs.existsSync(venvPython)
   ? venvPython
   : (fs.existsSync(legacyVenvPython) ? legacyVenvPython : 'python3');
 
-console.log(`[embedding-service] Using Python executable: ${pythonExecutable}`);
+logger.log(`Using Python executable: ${pythonExecutable}`);
 const python = spawn(pythonExecutable, [pythonScript, '--server']);
 let pyBuffer = '';
 const pending = [];
@@ -47,12 +49,12 @@ python.stdout.on('data', data => {
 });
 
 python.stderr.on('data', data => {
-  console.error('Embedding process error:', data.toString());
+  logger.error('Embedding process error:', data.toString());
 });
 
 python.on('exit', (code, signal) => {
   const reason = signal ? `signal ${signal}` : `code ${code}`;
-  console.error(`[embedding-service] Python process exited (${reason})`);
+  logger.error(`Python process exited (${reason})`);
   while (pending.length > 0) {
     const req = pending.shift();
     if (req) req.reject(new Error(`Embedding backend unavailable (${reason})`));
@@ -80,12 +82,12 @@ app.get('/embed-word', (req, res) => {
       res.json(data);
     })
     .catch(err => {
-      console.error('Failed to embed word:', err);
+      logger.error('Failed to embed word:', err);
       res.status(500).json({ error: 'Embedding failed' });
     });
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Embedding service listening on port ${PORT}`);
+  logger.log(`Embedding service listening on port ${PORT}`);
 });
