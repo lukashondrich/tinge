@@ -432,6 +432,49 @@ describe('WordIngestionService', () => {
     }));
   });
 
+  it('disables embedding requests for the session after endpoint 404', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 404 }));
+    const warn = vi.fn();
+    const sleep = vi.fn(async () => {});
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    service = new WordIngestionService({
+      bubbleManager,
+      onWordClick: () => {},
+      usedWords,
+      optimizer,
+      mesh,
+      gel,
+      recentlyAdded,
+      labels,
+      wordPositions,
+      wordIndices,
+      scale: 2,
+      vocabularyStorage,
+      apiUrl: 'http://api.local',
+      fetchImpl,
+      sleep,
+      warn,
+      embeddingRetryAttempts: 3,
+      embeddingRetryBaseDelayMs: 10
+    });
+
+    await service.processWord('MissingEndpointOne', 'ai', { skipBubble: true });
+    await service.processWord('MissingEndpointTwo', 'ai', { skipBubble: true });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(optimizer.addPoint).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Embedding endpoint returned 404'));
+    expect(service.getEmbeddingHealthStats()).toEqual(expect.objectContaining({
+      disabled: true,
+      disabledRequests: 1,
+      nonRetryableFailures: 1,
+      fallbacks: 2
+    }));
+  });
+
   it('retries transient 429 responses before succeeding', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 429 })
