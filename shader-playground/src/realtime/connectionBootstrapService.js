@@ -139,7 +139,7 @@ export class ConnectionBootstrapService {
     }
   }
 
-  async requestRtcIceServers() {
+  async requestRtcConfig() {
     try {
       const response = await this.fetchFn(`${this.apiUrl}/rtc-config`, {
         method: 'GET',
@@ -159,11 +159,20 @@ export class ConnectionBootstrapService {
         this.mobileDebug('RTC config response did not include ICE servers');
         return null;
       }
-      this.mobileDebug(`RTC config loaded with ${data.iceServers.length} ICE server entries`);
-      return data.iceServers;
+      const iceTransportPolicy = data.iceTransportPolicy || 'all';
+      this.mobileDebug(`RTC config loaded with ${data.iceServers.length} ICE server entries (${iceTransportPolicy} policy)`);
+      return {
+        iceServers: data.iceServers,
+        iceTransportPolicy
+      };
     } catch (error) {
       this.mobileDebug(`RTC config request failed: ${error.message}`);
       return null;
     }
+  }
+
+  async requestRtcIceServers() {
+    const config = await this.requestRtcConfig();
+    return config?.iceServers || null;
   }
 }

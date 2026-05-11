@@ -113,14 +113,14 @@ describe('ConnectionBootstrapService', () => {
     );
   });
 
-  it('requests RTC ICE server config', async () => {
+  it('requests RTC config with ICE servers and transport policy', async () => {
     const iceServers = [
       { urls: ['stun:stun.example.com:19302'] },
       { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'p' }
     ];
     const fetchFn = vi.fn(async () => ({
       ok: true,
-      json: async () => ({ iceServers })
+      json: async () => ({ iceServers, iceTransportPolicy: 'relay' })
     }));
     const mobileDebug = vi.fn();
 
@@ -130,8 +130,28 @@ describe('ConnectionBootstrapService', () => {
       mobileDebug
     });
 
+    await expect(service.requestRtcConfig()).resolves.toEqual({
+      iceServers,
+      iceTransportPolicy: 'relay'
+    });
+    expect(mobileDebug).toHaveBeenCalledWith('RTC config loaded with 2 ICE server entries (relay policy)');
+  });
+
+  it('keeps backwards-compatible RTC ICE server config helper', async () => {
+    const iceServers = [
+      { urls: ['stun:stun.example.com:19302'] }
+    ];
+    const service = new ConnectionBootstrapService({
+      apiUrl: 'http://localhost:3000',
+      fetchFn: vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ iceServers })
+      })),
+      mobileDebug: vi.fn()
+    });
+
     await expect(service.requestRtcIceServers()).resolves.toEqual(iceServers);
-    expect(fetchFn).toHaveBeenCalledWith(
+    expect(service.fetchFn).toHaveBeenCalledWith(
       'http://localhost:3000/rtc-config',
       expect.objectContaining({
         method: 'GET',
@@ -139,7 +159,6 @@ describe('ConnectionBootstrapService', () => {
         credentials: 'omit'
       })
     );
-    expect(mobileDebug).toHaveBeenCalledWith('RTC config loaded with 2 ICE server entries');
   });
 
   it('returns null when RTC ICE config request fails', async () => {

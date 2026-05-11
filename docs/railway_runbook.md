@@ -92,10 +92,11 @@ RETRIEVAL_SERVICE_URL=https://retrieval-service-production.up.railway.app
 RETRIEVAL_FORCE_EN=true
 RETRIEVAL_TIMEOUT_MS=8000
 # Optional, but required for networks where WebRTC ICE fails with STUN only.
-TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+TURN_URLS=turn:turn.provider.net:3478?transport=udp,turns:turn.provider.net:5349?transport=tcp
 TURN_SHARED_SECRET=<YOUR_TURN_REST_SHARED_SECRET>
 TURN_TTL_SECONDS=3600
 TURN_USERNAME_PREFIX=tinge
+RTC_ICE_TRANSPORT_POLICY=all
 ```
 
 Backend checks:

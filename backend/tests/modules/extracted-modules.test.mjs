@@ -463,7 +463,7 @@ describe('backend extracted modules', () => {
   test('buildRtcIceConfig returns default STUN and generated TURN credentials', () => {
     const config = buildRtcIceConfig({
       env: {
-        TURN_URLS: 'turn:turn.example.com:3478?transport=udp, turns:turn.example.com:5349?transport=tcp',
+        TURN_URLS: 'turn:turn.provider.net:3478?transport=udp, turns:turn.provider.net:5349?transport=tcp',
         TURN_SHARED_SECRET: 'shared-secret',
         TURN_TTL_SECONDS: '600',
         TURN_USERNAME_PREFIX: 'user-123'
@@ -474,14 +474,35 @@ describe('backend extracted modules', () => {
 
     assert.equal(config.expiresAt, 1700000600);
     assert.equal(config.ttlSeconds, 600);
+    assert.equal(config.iceTransportPolicy, 'all');
     assert.equal(config.iceServers.length, 2);
     assert.deepEqual(config.iceServers[0], { urls: ['stun:stun.l.google.com:19302'] });
     assert.deepEqual(config.iceServers[1].urls, [
-      'turn:turn.example.com:3478?transport=udp',
-      'turns:turn.example.com:5349?transport=tcp'
+      'turn:turn.provider.net:3478?transport=udp',
+      'turns:turn.provider.net:5349?transport=tcp'
     ]);
     assert.equal(config.iceServers[1].username, '1700000600:user-123');
     assert.equal(config.iceServers[1].credential, 'IHUY7hdp6eLL7QcYwp42XOVK5Kg=');
+  });
+
+  test('buildRtcIceConfig ignores placeholder TURN URLs and supports relay policy', () => {
+    const warnings = [];
+    const config = buildRtcIceConfig({
+      env: {
+        TURN_URLS: 'turn:<real-turn-host>:3478?transport=udp,turns:your-turn-host:5349?transport=tcp',
+        TURN_SHARED_SECRET: 'shared-secret',
+        RTC_ICE_TRANSPORT_POLICY: 'relay'
+      },
+      nowSeconds: 1700000000,
+      logger: { warn: (message) => warnings.push(message) }
+    });
+
+    assert.equal(config.iceTransportPolicy, 'relay');
+    assert.deepEqual(config.iceServers, [
+      { urls: ['stun:stun.l.google.com:19302'] }
+    ]);
+    assert.ok(warnings.some((message) => message.includes('placeholder ICE URL')));
+    assert.ok(warnings.some((message) => message.includes('did not include any usable TURN URL')));
   });
 
   test('createRtcConfigHandler returns ICE config response', () => {
@@ -497,6 +518,7 @@ describe('backend extracted modules', () => {
     handler({}, res);
 
     assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.iceTransportPolicy, 'all');
     assert.deepEqual(res.payload.iceServers, [
       { urls: ['stun:stun.example.com:19302'] }
     ]);

@@ -2,9 +2,15 @@ const OPENAI_REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const DEFAULT_ICE_SERVERS = Object.freeze([
   { urls: 'stun:stun.l.google.com:19302' }
 ]);
+const VALID_ICE_TRANSPORT_POLICIES = new Set(['all', 'relay']);
 
 function isValidIceServer(server) {
   return Boolean(server && server.urls);
+}
+
+function normalizeIceTransportPolicy(policy) {
+  const normalized = String(policy || 'all').trim().toLowerCase();
+  return VALID_ICE_TRANSPORT_POLICIES.has(normalized) ? normalized : 'all';
 }
 
 export class WebRtcTransportService {
@@ -15,6 +21,7 @@ export class WebRtcTransportService {
     fetchFn = (...args) => globalThis.fetch(...args),
     getUserMedia = (...args) => globalThis.navigator.mediaDevices.getUserMedia(...args),
     createPeerConnection = (config) => new globalThis.RTCPeerConnection(config),
+    getRtcConfig = null,
     getIceServers = async () => DEFAULT_ICE_SERVERS,
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
@@ -27,6 +34,7 @@ export class WebRtcTransportService {
     this.fetchFn = fetchFn;
     this.getUserMedia = getUserMedia;
     this.createPeerConnection = createPeerConnection;
+    this.getRtcConfig = getRtcConfig;
     this.getIceServers = getIceServers;
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
@@ -38,15 +46,22 @@ export class WebRtcTransportService {
   async establishPeerConnection(ephemeralKey) {
     this.clearIceDisconnectTimer();
     this.mobileDebug('Creating WebRTC PeerConnection...');
-    const iceServers = await this.resolveIceServers();
+    const { iceServers, iceTransportPolicy } = await this.resolveRtcConfig();
     const peerConnection = this.createPeerConnection({
-      iceServers
+      iceServers,
+      iceTransportPolicy
     });
     peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    this.mobileDebug(`PeerConnection created with ${iceServers.length} ICE server entries and audio transceiver added`);
+    this.mobileDebug(`PeerConnection created with ${iceServers.length} ICE server entries (${iceTransportPolicy} policy) and audio transceiver added`);
 
     peerConnection.oniceconnectionstatechange = () => {
       this.handleIceConnectionStateChange(peerConnection);
+    };
+    peerConnection.onconnectionstatechange = () => {
+      this.mobileDebug(`Peer connection state: ${peerConnection.connectionState}`);
+    };
+    peerConnection.onicecandidateerror = (event) => {
+      this.handleIceCandidateError(event);
     };
 
     const mediaStream = await this.getUserMedia({ audio: true });
@@ -86,16 +101,37 @@ export class WebRtcTransportService {
   }
 
   async resolveIceServers() {
+    const { iceServers } = await this.resolveRtcConfig();
+    return iceServers;
+  }
+
+  async resolveRtcConfig() {
     try {
-      const iceServers = await this.getIceServers();
-      if (Array.isArray(iceServers) && iceServers.some(isValidIceServer)) {
-        return iceServers.filter(isValidIceServer);
+      const config = this.getRtcConfig
+        ? await this.getRtcConfig()
+        : { iceServers: await this.getIceServers() };
+      const remoteConfig = Array.isArray(config) ? { iceServers: config } : config;
+      if (Array.isArray(remoteConfig?.iceServers) && remoteConfig.iceServers.some(isValidIceServer)) {
+        return {
+          iceServers: remoteConfig.iceServers.filter(isValidIceServer),
+          iceTransportPolicy: normalizeIceTransportPolicy(remoteConfig.iceTransportPolicy)
+        };
       }
     } catch (err) {
       this.mobileDebug(`RTC ICE config load failed: ${err.message}`);
     }
     this.mobileDebug('Using default STUN-only ICE config');
-    return DEFAULT_ICE_SERVERS.map((server) => ({ ...server }));
+    return {
+      iceServers: DEFAULT_ICE_SERVERS.map((server) => ({ ...server })),
+      iceTransportPolicy: 'all'
+    };
+  }
+
+  handleIceCandidateError(event) {
+    const url = event?.url || 'unknown-url';
+    const errorCode = event?.errorCode || 'unknown-code';
+    const errorText = event?.errorText || 'unknown ICE candidate error';
+    this.mobileDebug(`ICE candidate error: url=${url} code=${errorCode} text=${errorText}`);
   }
 
   handleIceConnectionStateChange(peerConnection) {
