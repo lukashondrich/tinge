@@ -142,4 +142,64 @@ describe('WebRtcTransportService', () => {
       expect.any(Function)
     );
   });
+
+  it('debounces transient ICE disconnected before reporting reconnect needed', () => {
+    const { peerConnection } = createPeerConnectionMock();
+    let disconnectTimeout;
+    const onIceDisconnected = vi.fn();
+    const clearScheduled = vi.fn();
+    const service = new WebRtcTransportService({
+      onIceDisconnected,
+      schedule: vi.fn((handler) => {
+        disconnectTimeout = handler;
+        return 8;
+      }),
+      clearScheduled
+    });
+
+    peerConnection.iceConnectionState = 'disconnected';
+    service.handleIceConnectionStateChange(peerConnection);
+
+    expect(peerConnection.restartIce).toHaveBeenCalledTimes(1);
+    expect(onIceDisconnected).not.toHaveBeenCalled();
+
+    peerConnection.iceConnectionState = 'connected';
+    service.handleIceConnectionStateChange(peerConnection);
+    disconnectTimeout();
+
+    expect(clearScheduled).toHaveBeenCalledWith(8);
+    expect(onIceDisconnected).not.toHaveBeenCalled();
+  });
+
+  it('reports ICE disconnected after the grace period if still disconnected', () => {
+    const { peerConnection } = createPeerConnectionMock();
+    let disconnectTimeout;
+    const onIceDisconnected = vi.fn();
+    const service = new WebRtcTransportService({
+      onIceDisconnected,
+      schedule: vi.fn((handler) => {
+        disconnectTimeout = handler;
+        return 8;
+      })
+    });
+
+    peerConnection.iceConnectionState = 'disconnected';
+    service.handleIceConnectionStateChange(peerConnection);
+    disconnectTimeout();
+
+    expect(onIceDisconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports ICE failed immediately', () => {
+    const { peerConnection } = createPeerConnectionMock();
+    const onIceFailed = vi.fn();
+    const service = new WebRtcTransportService({
+      onIceFailed
+    });
+
+    peerConnection.iceConnectionState = 'failed';
+    service.handleIceConnectionStateChange(peerConnection);
+
+    expect(onIceFailed).toHaveBeenCalledTimes(1);
+  });
 });

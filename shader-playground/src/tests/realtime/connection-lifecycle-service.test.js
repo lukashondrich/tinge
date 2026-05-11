@@ -21,6 +21,7 @@ describe('ConnectionLifecycleService', () => {
     const sendSessionConfiguration = vi.fn(async () => {});
     const handleConnectError = vi.fn();
     const log = vi.fn();
+    const warn = vi.fn();
     const error = vi.fn();
     const mobileDebug = vi.fn();
 
@@ -28,6 +29,7 @@ describe('ConnectionLifecycleService', () => {
       readyState: 'open',
       onopen: null,
       onclose: null,
+      onerror: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn()
     };
@@ -63,6 +65,7 @@ describe('ConnectionLifecycleService', () => {
       schedule: vi.fn(() => 99),
       clearScheduled: vi.fn(),
       log,
+      warn,
       error,
       mobileDebug,
       ...overrides
@@ -86,6 +89,7 @@ describe('ConnectionLifecycleService', () => {
       sendSessionConfiguration,
       handleConnectError,
       log,
+      warn,
       error,
       mobileDebug
     };
@@ -171,12 +175,27 @@ describe('ConnectionLifecycleService', () => {
     await ctx.dataChannel.onopen();
     expect(ctx.mobileDebug).toHaveBeenCalledWith('Realtime data channel open');
 
-    ctx.dataChannel.onclose();
+    ctx.dataChannel.onclose({ code: 1006, reason: 'network', wasClean: false });
     expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
       CONNECTION_STATES.RECONNECTING,
       'data_channel_close'
     );
     expect(ctx.setPTTStatus).toHaveBeenCalledWith('Reconnect', '#888');
+    expect(ctx.warn).toHaveBeenCalledWith(
+      'Realtime data channel closed; reconnect required',
+      expect.objectContaining({
+        readyState: 'open',
+        code: 1006,
+        reason: 'network',
+        wasClean: false
+      })
+    );
+
+    ctx.dataChannel.onerror({ error: new Error('dc error') });
+    expect(ctx.warn).toHaveBeenCalledWith(
+      'Realtime data channel error',
+      expect.any(Error)
+    );
   });
 
   it('fails connect when session.updated does not arrive before timeout', async () => {

@@ -10,7 +10,8 @@ export class WebRtcTransportService {
     createPeerConnection = (config) => new globalThis.RTCPeerConnection(config),
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
-    iceGatheringTimeoutMs = 5000
+    iceGatheringTimeoutMs = 5000,
+    iceDisconnectedGraceMs = 8000
   }) {
     this.mobileDebug = mobileDebug;
     this.onIceDisconnected = onIceDisconnected;
@@ -21,9 +22,12 @@ export class WebRtcTransportService {
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
     this.iceGatheringTimeoutMs = iceGatheringTimeoutMs;
+    this.iceDisconnectedGraceMs = iceDisconnectedGraceMs;
+    this.iceDisconnectTimer = null;
   }
 
   async establishPeerConnection(ephemeralKey) {
+    this.clearIceDisconnectTimer();
     this.mobileDebug('Creating WebRTC PeerConnection...');
     const peerConnection = this.createPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -32,14 +36,7 @@ export class WebRtcTransportService {
     this.mobileDebug('PeerConnection created and audio transceiver added');
 
     peerConnection.oniceconnectionstatechange = () => {
-      const state = peerConnection.iceConnectionState;
-      if (state === 'disconnected') {
-        peerConnection.restartIce();
-        this.onIceDisconnected();
-      }
-      if (state === 'failed') {
-        this.onIceFailed();
-      }
+      this.handleIceConnectionStateChange(peerConnection);
     };
 
     const mediaStream = await this.getUserMedia({ audio: true });
@@ -76,6 +73,48 @@ export class WebRtcTransportService {
     this.mobileDebug('Remote SDP description set successfully');
 
     return { peerConnection, dataChannel, audioTrack };
+  }
+
+  handleIceConnectionStateChange(peerConnection) {
+    const state = peerConnection.iceConnectionState;
+    this.mobileDebug(`ICE connection state: ${state}`);
+
+    if (state === 'disconnected') {
+      try {
+        peerConnection.restartIce?.();
+      } catch (err) {
+        this.mobileDebug(`ICE restart failed: ${err.message}`);
+      }
+      this.scheduleIceDisconnectCheck(peerConnection);
+      return;
+    }
+
+    if (state === 'connected' || state === 'completed' || state === 'closed') {
+      this.clearIceDisconnectTimer();
+      return;
+    }
+
+    if (state === 'failed') {
+      this.clearIceDisconnectTimer();
+      this.onIceFailed();
+    }
+  }
+
+  scheduleIceDisconnectCheck(peerConnection) {
+    if (this.iceDisconnectTimer) return;
+
+    this.iceDisconnectTimer = this.schedule(() => {
+      this.iceDisconnectTimer = null;
+      if (peerConnection.iceConnectionState === 'disconnected') {
+        this.onIceDisconnected();
+      }
+    }, this.iceDisconnectedGraceMs);
+  }
+
+  clearIceDisconnectTimer() {
+    if (!this.iceDisconnectTimer) return;
+    this.clearScheduled(this.iceDisconnectTimer);
+    this.iceDisconnectTimer = null;
   }
 
   async waitForIceGatheringComplete(peerConnection) {
