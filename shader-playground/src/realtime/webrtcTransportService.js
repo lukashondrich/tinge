@@ -41,6 +41,7 @@ export class WebRtcTransportService {
     this.iceGatheringTimeoutMs = iceGatheringTimeoutMs;
     this.iceDisconnectedGraceMs = iceDisconnectedGraceMs;
     this.iceDisconnectTimer = null;
+    this.activePeerConnection = null;
   }
 
   async establishPeerConnection(ephemeralKey) {
@@ -51,53 +52,81 @@ export class WebRtcTransportService {
       iceServers,
       iceTransportPolicy
     });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    this.mobileDebug(`PeerConnection created with ${iceServers.length} ICE server entries (${iceTransportPolicy} policy) and audio transceiver added`);
+    this.activePeerConnection = peerConnection;
+    let audioTrack = null;
 
-    peerConnection.oniceconnectionstatechange = () => {
-      this.handleIceConnectionStateChange(peerConnection);
-    };
-    peerConnection.onconnectionstatechange = () => {
-      this.mobileDebug(`Peer connection state: ${peerConnection.connectionState}`);
-    };
-    peerConnection.onicecandidateerror = (event) => {
-      this.handleIceCandidateError(event);
-    };
+    try {
+      peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+      this.mobileDebug(`PeerConnection created with ${iceServers.length} ICE server entries (${iceTransportPolicy} policy) and audio transceiver added`);
 
-    const mediaStream = await this.getUserMedia({ audio: true });
-    const audioTrack = mediaStream.getTracks()[0];
-    audioTrack.enabled = false;
-    peerConnection.addTrack(audioTrack);
-    const dataChannel = peerConnection.createDataChannel('oai-events');
+      peerConnection.oniceconnectionstatechange = () => {
+        if (peerConnection !== this.activePeerConnection) return;
+        this.handleIceConnectionStateChange(peerConnection);
+      };
+      peerConnection.onconnectionstatechange = () => {
+        if (peerConnection !== this.activePeerConnection) return;
+        this.mobileDebug(`Peer connection state: ${peerConnection.connectionState}`);
+      };
+      peerConnection.onicecandidateerror = (event) => {
+        this.handleIceCandidateError(event);
+      };
 
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    await this.waitForIceGatheringComplete(peerConnection);
+      const mediaStream = await this.getUserMedia({ audio: true });
+      audioTrack = mediaStream.getTracks()[0];
+      audioTrack.enabled = false;
+      peerConnection.addTrack(audioTrack);
+      const dataChannel = peerConnection.createDataChannel('oai-events');
 
-    const sdpResponse = await this.fetchFn(
-      OPENAI_REALTIME_CALLS_URL,
-      {
-        method: 'POST',
-        body: peerConnection.localDescription.sdp,
-        headers: {
-          Authorization: `Bearer ${ephemeralKey}`,
-          'Content-Type': 'application/sdp'
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      await this.waitForIceGatheringComplete(peerConnection);
+
+      const sdpResponse = await this.fetchFn(
+        OPENAI_REALTIME_CALLS_URL,
+        {
+          method: 'POST',
+          body: peerConnection.localDescription.sdp,
+          headers: {
+            Authorization: `Bearer ${ephemeralKey}`,
+            'Content-Type': 'application/sdp'
+          }
         }
+      );
+
+      if (!sdpResponse.ok) {
+        const errorText = await sdpResponse.text();
+        this.mobileDebug(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
+        this.mobileDebug(`Error details: ${errorText.substring(0, 100)}...`);
+        throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
       }
-    );
 
-    if (!sdpResponse.ok) {
-      const errorText = await sdpResponse.text();
-      this.mobileDebug(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
-      this.mobileDebug(`Error details: ${errorText.substring(0, 100)}...`);
-      throw new Error(`SDP exchange failed: ${sdpResponse.status} ${sdpResponse.statusText}`);
+      const sdpText = await sdpResponse.text();
+      await peerConnection.setRemoteDescription({ type: 'answer', sdp: sdpText });
+      this.mobileDebug('Remote SDP description set successfully');
+
+      return { peerConnection, dataChannel, audioTrack };
+    } catch (err) {
+      this.abandonPeerConnection(peerConnection, audioTrack);
+      throw err;
     }
+  }
 
-    const sdpText = await sdpResponse.text();
-    await peerConnection.setRemoteDescription({ type: 'answer', sdp: sdpText });
-    this.mobileDebug('Remote SDP description set successfully');
-
-    return { peerConnection, dataChannel, audioTrack };
+  abandonPeerConnection(peerConnection, audioTrack) {
+    if (audioTrack) {
+      try {
+        audioTrack.stop();
+      } catch (err) {
+        // ignore track stop errors
+      }
+    }
+    try {
+      peerConnection.close();
+    } catch (err) {
+      // ignore close errors on abandoned peer connections
+    }
+    if (this.activePeerConnection === peerConnection) {
+      this.activePeerConnection = null;
+    }
   }
 
   async resolveIceServers() {
@@ -164,6 +193,7 @@ export class WebRtcTransportService {
 
     this.iceDisconnectTimer = this.schedule(() => {
       this.iceDisconnectTimer = null;
+      if (peerConnection !== this.activePeerConnection) return;
       if (peerConnection.iceConnectionState === 'disconnected') {
         this.onIceDisconnected();
       }

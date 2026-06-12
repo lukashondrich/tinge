@@ -39,6 +39,7 @@ describe('ConnectionLifecycleService', () => {
       dataChannel,
       audioTrack: { id: 'track1' }
     }));
+    const teardownTransport = vi.fn();
 
     const service = new ConnectionLifecycleService({
       deviceType: 'desktop',
@@ -56,6 +57,7 @@ describe('ConnectionLifecycleService', () => {
       setCurrentEphemeralKey,
       establishTransport,
       setTransport,
+      teardownTransport,
       setupPeerTrackHandling,
       tryHydrateExistingRemoteAudioTrack,
       setupDataChannelEvents,
@@ -83,6 +85,7 @@ describe('ConnectionLifecycleService', () => {
       setCurrentEphemeralKey,
       establishTransport,
       setTransport,
+      teardownTransport,
       setupPeerTrackHandling,
       tryHydrateExistingRemoteAudioTrack,
       setupDataChannelEvents,
@@ -234,6 +237,66 @@ describe('ConnectionLifecycleService', () => {
       CONNECTION_STATES.FAILED,
       'connect_error'
     );
+  });
+
+  it('tears down the previous transport before establishing a new one', async () => {
+    const callOrder = [];
+    const ctx = createService({
+      teardownTransport: vi.fn(() => callOrder.push('teardown')),
+      establishTransport: vi.fn(async () => {
+        callOrder.push('establish');
+        return {
+          peerConnection: { id: 'pc2' },
+          dataChannel: {
+            readyState: 'open',
+            onopen: null,
+            onclose: null,
+            onerror: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn()
+          },
+          audioTrack: { id: 'track2' }
+        };
+      })
+    });
+
+    await ctx.service.establishPeerConnection('ek_3');
+
+    expect(callOrder).toEqual(['teardown', 'establish']);
+  });
+
+  it('tears down the transport when connect fails', async () => {
+    const teardownTransport = vi.fn();
+    const ctx = createService({
+      teardownTransport,
+      requestEphemeralKey: vi.fn(async () => {
+        throw new Error('token fetch failed');
+      })
+    });
+
+    await expect(ctx.service.connect()).rejects.toThrow('token fetch failed');
+    expect(teardownTransport).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores close and error events from a stale data channel', async () => {
+    let currentChannel;
+    const ctx = createService({
+      getDataChannel: () => currentChannel
+    });
+    currentChannel = ctx.dataChannel;
+
+    await ctx.service.establishPeerConnection('ek_4');
+    const staleChannel = ctx.dataChannel;
+    currentChannel = { id: 'newer-channel' };
+
+    staleChannel.onclose({ code: 1006 });
+    staleChannel.onerror({ error: new Error('stale dc error') });
+
+    expect(ctx.transitionConnectionState).not.toHaveBeenCalledWith(
+      CONNECTION_STATES.RECONNECTING,
+      'data_channel_close'
+    );
+    expect(ctx.warn).not.toHaveBeenCalled();
   });
 
   it('waitForDataChannelOpen resolves true when channel opens before timeout', async () => {

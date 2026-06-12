@@ -223,6 +223,7 @@ export class RealtimeSession {
         this.dataChannel = dataChannel;
         this.audioTrack = audioTrack;
       },
+      teardownTransport: () => this.teardownTransport(),
       setupPeerTrackHandling: () => this.setupPeerTrackHandling(),
       tryHydrateExistingRemoteAudioTrack: () => this.tryHydrateExistingRemoteAudioTrack(),
       setupDataChannelEvents: () => this.setupDataChannelEvents(),
@@ -451,11 +452,13 @@ export class RealtimeSession {
     return this.isConnected;
   }
 
-  cleanup() {
-    this.connectionLifecycleService.reset();
+  teardownTransport() {
     this.dataChannelEventRouter.unbind();
 
     if (this.dataChannel) {
+      this.dataChannel.onopen = null;
+      this.dataChannel.onclose = null;
+      this.dataChannel.onerror = null;
       try {
         this.dataChannel.close();
       } catch (err) {
@@ -465,6 +468,10 @@ export class RealtimeSession {
     }
 
     if (this.peerConnection) {
+      this.peerConnection.oniceconnectionstatechange = null;
+      this.peerConnection.onconnectionstatechange = null;
+      this.peerConnection.onicecandidateerror = null;
+      this.peerConnection.ontrack = null;
       try {
         this.peerConnection.getSenders().forEach((sender) => {
           if (sender.track) sender.track.stop();
@@ -484,6 +491,11 @@ export class RealtimeSession {
       }
       this.audioTrack = null;
     }
+  }
+
+  cleanup() {
+    this.connectionLifecycleService.reset();
+    this.teardownTransport();
 
     this.isMicActive = false;
     this.currentEphemeralKey = null;
