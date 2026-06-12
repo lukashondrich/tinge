@@ -257,12 +257,77 @@ describe('WebRtcTransportService', () => {
         return 8;
       })
     });
+    service.activePeerConnection = peerConnection;
 
     peerConnection.iceConnectionState = 'disconnected';
     service.handleIceConnectionStateChange(peerConnection);
     disconnectTimeout();
 
     expect(onIceDisconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report ICE disconnected for a stale peer connection', () => {
+    const { peerConnection } = createPeerConnectionMock();
+    let disconnectTimeout;
+    const onIceDisconnected = vi.fn();
+    const service = new WebRtcTransportService({
+      onIceDisconnected,
+      schedule: vi.fn((handler) => {
+        disconnectTimeout = handler;
+        return 8;
+      })
+    });
+    service.activePeerConnection = peerConnection;
+
+    peerConnection.iceConnectionState = 'disconnected';
+    service.handleIceConnectionStateChange(peerConnection);
+    service.activePeerConnection = { id: 'newer-pc' };
+    disconnectTimeout();
+
+    expect(onIceDisconnected).not.toHaveBeenCalled();
+  });
+
+  it('ignores ICE state changes from a replaced peer connection', async () => {
+    const { peerConnection } = createPeerConnectionMock();
+    const onIceFailed = vi.fn();
+    const audioTrack = { enabled: true, stop: vi.fn() };
+    const service = new WebRtcTransportService({
+      onIceFailed,
+      fetchFn: vi.fn(async () => ({ ok: true, text: async () => 'answer-sdp' })),
+      getUserMedia: vi.fn(async () => ({ getTracks: () => [audioTrack] })),
+      createPeerConnection: vi.fn(() => peerConnection)
+    });
+
+    await service.establishPeerConnection('ek');
+    service.activePeerConnection = { id: 'newer-pc' };
+
+    peerConnection.iceConnectionState = 'failed';
+    peerConnection.oniceconnectionstatechange();
+
+    expect(onIceFailed).not.toHaveBeenCalled();
+  });
+
+  it('closes the peer connection and stops the track when establish fails', async () => {
+    const { peerConnection } = createPeerConnectionMock();
+    peerConnection.close = vi.fn();
+    const audioTrack = { enabled: true, stop: vi.fn() };
+    const service = new WebRtcTransportService({
+      fetchFn: vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        statusText: 'Server Error',
+        text: async () => 'failure detail'
+      })),
+      getUserMedia: vi.fn(async () => ({ getTracks: () => [audioTrack] })),
+      createPeerConnection: vi.fn(() => peerConnection)
+    });
+
+    await expect(service.establishPeerConnection('ek')).rejects.toThrow(
+      'SDP exchange failed: 500 Server Error'
+    );
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peerConnection.close).toHaveBeenCalledTimes(1);
+    expect(service.activePeerConnection).toBe(null);
   });
 
   it('reports ICE failed immediately', () => {

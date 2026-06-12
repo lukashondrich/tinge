@@ -17,6 +17,7 @@ export class ConnectionLifecycleService {
     setCurrentEphemeralKey,
     establishTransport,
     setTransport,
+    teardownTransport = () => {},
     setupPeerTrackHandling,
     tryHydrateExistingRemoteAudioTrack,
     setupDataChannelEvents,
@@ -47,6 +48,7 @@ export class ConnectionLifecycleService {
     this.setCurrentEphemeralKey = setCurrentEphemeralKey;
     this.establishTransport = establishTransport;
     this.setTransport = setTransport;
+    this.teardownTransport = teardownTransport;
     this.setupPeerTrackHandling = setupPeerTrackHandling;
     this.tryHydrateExistingRemoteAudioTrack = tryHydrateExistingRemoteAudioTrack;
     this.setupDataChannelEvents = setupDataChannelEvents;
@@ -115,6 +117,7 @@ export class ConnectionLifecycleService {
       this.error(`OpenAI connection error: ${err.message}`);
       this.error('Error details:', err);
       this.clearSessionConfiguredWait();
+      this.teardownTransport();
       if (this.getConnectionState() !== CONNECTION_STATES.RECONNECTING) {
         this.transitionConnectionState(CONNECTION_STATES.FAILED, 'connect_error');
       }
@@ -124,11 +127,13 @@ export class ConnectionLifecycleService {
   }
 
   async establishPeerConnection(ephemeralKey) {
+    this.teardownTransport();
     const { peerConnection, dataChannel, audioTrack } =
       await this.establishTransport(ephemeralKey);
     this.setTransport({ peerConnection, dataChannel, audioTrack });
 
     dataChannel.onclose = (event = {}) => {
+      if (this.getDataChannel() !== dataChannel) return;
       this.warn('Realtime data channel closed; reconnect required', {
         readyState: dataChannel.readyState,
         code: event.code,
@@ -141,6 +146,7 @@ export class ConnectionLifecycleService {
     };
 
     dataChannel.onerror = (event) => {
+      if (this.getDataChannel() !== dataChannel) return;
       this.warn('Realtime data channel error', event?.error || event);
     };
 
