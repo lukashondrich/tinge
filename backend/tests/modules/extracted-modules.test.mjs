@@ -505,7 +505,7 @@ describe('backend extracted modules', () => {
     assert.ok(warnings.some((message) => message.includes('did not include any usable TURN URL')));
   });
 
-  test('createRtcConfigHandler returns ICE config response', () => {
+  test('createRtcConfigHandler returns ICE config response', async () => {
     const handler = createRtcConfigHandler({
       env: {
         RTC_STUN_URLS: 'stun:stun.example.com:19302'
@@ -515,12 +515,86 @@ describe('backend extracted modules', () => {
     });
     const res = createMockRes();
 
-    handler({}, res);
+    await handler({}, res);
 
     assert.equal(res.statusCode, 200);
     assert.equal(res.payload.iceTransportPolicy, 'all');
     assert.deepEqual(res.payload.iceServers, [
       { urls: ['stun:stun.example.com:19302'] }
     ]);
+  });
+
+  test('createRtcConfigHandler returns Cloudflare-minted ICE servers when configured', async () => {
+    let requestedUrl;
+    let requestedInit;
+    const cloudflareIceServers = [
+      { urls: ['stun:stun.cloudflare.com:3478'] },
+      {
+        urls: ['turns:turn.cloudflare.com:443?transport=tcp'],
+        username: 'cf-user',
+        credential: 'cf-cred'
+      }
+    ];
+    const handler = createRtcConfigHandler({
+      env: {
+        CLOUDFLARE_TURN_KEY_ID: 'key-123',
+        CLOUDFLARE_TURN_API_TOKEN: 'token-abc',
+        CLOUDFLARE_TURN_TTL_SECONDS: '600',
+        RTC_ICE_TRANSPORT_POLICY: 'relay'
+      },
+      nowSeconds: () => 1700000000,
+      logger: { warn: () => {} },
+      fetchImpl: async (url, init) => {
+        requestedUrl = url;
+        requestedInit = init;
+        return {
+          ok: true,
+          json: async () => ({ iceServers: cloudflareIceServers })
+        };
+      }
+    });
+    const res = createMockRes();
+
+    await handler({}, res);
+
+    assert.equal(
+      requestedUrl,
+      'https://rtc.live.cloudflare.com/v1/turn/keys/key-123/credentials/generate-ice-servers'
+    );
+    assert.equal(requestedInit.method, 'POST');
+    assert.equal(requestedInit.headers.Authorization, 'Bearer token-abc');
+    assert.deepEqual(JSON.parse(requestedInit.body), { ttl: 600 });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.payload.iceTransportPolicy, 'relay');
+    assert.equal(res.payload.ttlSeconds, 600);
+    assert.equal(res.payload.expiresAt, 1700000600);
+    assert.deepEqual(res.payload.iceServers, cloudflareIceServers);
+  });
+
+  test('createRtcConfigHandler falls back to env config when Cloudflare request fails', async () => {
+    const warnings = [];
+    const handler = createRtcConfigHandler({
+      env: {
+        CLOUDFLARE_TURN_KEY_ID: 'key-123',
+        CLOUDFLARE_TURN_API_TOKEN: 'token-abc',
+        RTC_STUN_URLS: 'stun:stun.example.com:19302'
+      },
+      nowSeconds: () => 1700000000,
+      logger: { warn: (message) => warnings.push(message) },
+      fetchImpl: async () => ({
+        ok: false,
+        status: 401,
+        text: async () => 'unauthorized'
+      })
+    });
+    const res = createMockRes();
+
+    await handler({}, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.payload.iceServers, [
+      { urls: ['stun:stun.example.com:19302'] }
+    ]);
+    assert.ok(warnings.some((message) => message.includes('Cloudflare TURN credential request failed: 401')));
   });
 });
