@@ -75,6 +75,7 @@ app.use(createTokenUsageRouter({
 }));
 
 app.get('/rtc-config', createRtcConfigHandler({
+  fetchImpl: fetch,
   logger
 }));
 
