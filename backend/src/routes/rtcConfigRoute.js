@@ -69,6 +69,25 @@ function normalizeIceTransportPolicy(value, logger) {
   return 'all';
 }
 
+function isTruthyFlag(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
+// On UDP-hostile networks the browser's UDP relay allocations hang and can
+// crowd out the working TLS-relay candidate before the non-trickle offer is
+// sent, so ICE never connects. Dropping the UDP transports leaves only
+// TCP/TLS relay (incl. turns:443), which gathers fast and connects. Also
+// trims the URL count below the "5+ servers slows discovery" threshold.
+function filterToTcpRelay(iceServers) {
+  return iceServers
+    .map((entry) => {
+      const urls = (Array.isArray(entry.urls) ? entry.urls : [entry.urls])
+        .filter((u) => typeof u === 'string' && !u.includes('transport=udp'));
+      return urls.length ? { ...entry, urls } : null;
+    })
+    .filter(Boolean);
+}
+
 function buildTurnCredentials({
   sharedSecret,
   ttlSeconds,
@@ -238,8 +257,11 @@ export function createRtcConfigHandler({
       nowSeconds: now
     });
     if (cloudflare) {
+      const iceServers = isTruthyFlag(env.RTC_TURN_TCP_ONLY)
+        ? filterToTcpRelay(cloudflare.iceServers)
+        : cloudflare.iceServers;
       return res.json({
-        iceServers: cloudflare.iceServers,
+        iceServers,
         iceTransportPolicy: normalizeIceTransportPolicy(env.RTC_ICE_TRANSPORT_POLICY, logger),
         expiresAt: cloudflare.expiresAt,
         ttlSeconds: cloudflare.ttlSeconds
