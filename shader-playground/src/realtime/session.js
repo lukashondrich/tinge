@@ -161,13 +161,11 @@ export class RealtimeSession {
       getRtcConfig: () => this.connectionBootstrapService.requestRtcConfig(),
       onIceDisconnected: () => {
         logger.warn('ICE connection stayed disconnected; reconnect required');
-        this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'ice_disconnected');
-        this.setPTTStatus('Reconnect', '#888');
+        this.connectionLifecycleService.handleConnectionDropped('ice_disconnected');
       },
       onIceFailed: () => {
-        logger.error('ICE connection failed - marking disconnected');
-        this.transitionConnectionState(CONNECTION_STATES.FAILED, 'ice_failed');
-        this.setPTTStatus('Reconnect', '#888');
+        logger.error('ICE connection failed; reconnect required');
+        this.connectionLifecycleService.handleConnectionDropped('ice_failed');
       }
     });
     this.pttOrchestrator = new PttOrchestrator({
