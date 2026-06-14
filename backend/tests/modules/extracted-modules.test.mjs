@@ -571,6 +571,53 @@ describe('backend extracted modules', () => {
     assert.deepEqual(res.payload.iceServers, cloudflareIceServers);
   });
 
+  test('createRtcConfigHandler filters Cloudflare TURN to TCP/TLS when RTC_TURN_TCP_ONLY is set', async () => {
+    const handler = createRtcConfigHandler({
+      env: {
+        CLOUDFLARE_TURN_KEY_ID: 'key-123',
+        CLOUDFLARE_TURN_API_TOKEN: 'token-abc',
+        RTC_ICE_TRANSPORT_POLICY: 'relay',
+        RTC_TURN_TCP_ONLY: 'true'
+      },
+      nowSeconds: () => 1700000000,
+      logger: { warn: () => {} },
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          iceServers: [
+            { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.cloudflare.com:53'] },
+            {
+              urls: [
+                'turn:turn.cloudflare.com:3478?transport=udp',
+                'turn:turn.cloudflare.com:53?transport=udp',
+                'turn:turn.cloudflare.com:3478?transport=tcp',
+                'turn:turn.cloudflare.com:80?transport=tcp',
+                'turns:turn.cloudflare.com:5349?transport=tcp',
+                'turns:turn.cloudflare.com:443?transport=tcp'
+              ],
+              username: 'cf-user',
+              credential: 'cf-cred'
+            }
+          ]
+        })
+      })
+    });
+    const res = createMockRes();
+
+    await handler({}, res);
+
+    assert.equal(res.statusCode, 200);
+    const turn = res.payload.iceServers.find((s) => s.username);
+    assert.ok(turn, 'TURN entry should be present');
+    assert.deepEqual(turn.urls, [
+      'turn:turn.cloudflare.com:3478?transport=tcp',
+      'turn:turn.cloudflare.com:80?transport=tcp',
+      'turns:turn.cloudflare.com:5349?transport=tcp',
+      'turns:turn.cloudflare.com:443?transport=tcp'
+    ]);
+    assert.ok(turn.urls.every((u) => !u.includes('transport=udp')), 'no UDP urls remain');
+  });
+
   test('createRtcConfigHandler falls back to env config when Cloudflare request fails', async () => {
     const warnings = [];
     const handler = createRtcConfigHandler({
