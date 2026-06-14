@@ -183,7 +183,7 @@ describe('ConnectionLifecycleService', () => {
       CONNECTION_STATES.RECONNECTING,
       'data_channel_close'
     );
-    expect(ctx.setPTTStatus).toHaveBeenCalledWith('Reconnect', '#888');
+    expect(ctx.setPTTStatus).toHaveBeenCalledWith('Reconnecting…', '#888');
     expect(ctx.warn).toHaveBeenCalledWith(
       'Realtime data channel closed; reconnect required',
       expect.objectContaining({
@@ -297,6 +297,92 @@ describe('ConnectionLifecycleService', () => {
       'data_channel_close'
     );
     expect(ctx.warn).not.toHaveBeenCalled();
+  });
+
+  it('schedules an auto-reconnect with initial backoff when the connection drops', () => {
+    const scheduled = [];
+    const ctx = createService({
+      schedule: vi.fn((fn, delay) => {
+        scheduled.push({ fn, delay });
+        return scheduled.length;
+      })
+    });
+
+    ctx.service.handleConnectionDropped('data_channel_close');
+
+    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
+      CONNECTION_STATES.RECONNECTING,
+      'data_channel_close'
+    );
+    expect(ctx.setPTTStatus).toHaveBeenCalledWith('Reconnecting…', '#888');
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0].delay).toBe(1000);
+  });
+
+  it('retries on failure and gives up after the max attempts', async () => {
+    let pending = null;
+    const ctx = createService({
+      // mimic real setTimeout: store the callback, fire it after assignment
+      schedule: vi.fn((fn) => {
+        pending = fn;
+        return 1;
+      }),
+      clearScheduled: vi.fn()
+    });
+    ctx.service.connect = vi.fn(async () => {
+      throw new Error('still offline');
+    });
+
+    ctx.service.handleConnectionDropped('ice_disconnected');
+    for (let i = 0; i < 8 && pending; i += 1) {
+      const fire = pending;
+      pending = null;
+      fire();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(ctx.service.connect).toHaveBeenCalledTimes(6);
+    expect(ctx.transitionConnectionState).toHaveBeenCalledWith(
+      CONNECTION_STATES.FAILED,
+      'reconnect_exhausted'
+    );
+    expect(ctx.setPTTStatus).toHaveBeenLastCalledWith('Reconnect', '#888');
+  });
+
+  it('does not auto-reconnect if a manual connect already restored the session', async () => {
+    let currentState = CONNECTION_STATES.RECONNECTING;
+    const ctx = createService({
+      getIsConnected: () => currentState === CONNECTION_STATES.CONNECTED,
+      getConnectionState: () => currentState,
+      schedule: vi.fn((fn) => {
+        fn();
+        return 1;
+      })
+    });
+    ctx.service.connect = vi.fn(async () => {});
+    currentState = CONNECTION_STATES.CONNECTED;
+
+    await ctx.service.attemptReconnect();
+
+    expect(ctx.service.connect).not.toHaveBeenCalled();
+  });
+
+  it('resets reconnect state once the session reconfigures', () => {
+    const clearScheduled = vi.fn();
+    const ctx = createService({
+      schedule: vi.fn(() => 77),
+      clearScheduled
+    });
+
+    ctx.service.handleConnectionDropped('data_channel_close');
+    expect(ctx.service.reconnectAttempts).toBe(1);
+
+    ctx.transitionConnectionState(CONNECTION_STATES.CONNECTING, 'reconnect');
+    ctx.transitionConnectionState(CONNECTION_STATES.CONFIGURING, 'reconnect');
+    ctx.service.handleSessionConfigured();
+
+    expect(clearScheduled).toHaveBeenCalledWith(77);
+    expect(ctx.service.reconnectAttempts).toBe(0);
   });
 
   it('waitForDataChannelOpen resolves true when channel opens before timeout', async () => {

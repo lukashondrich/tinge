@@ -174,7 +174,7 @@ describe('Reconnect + PTT path (integration)', () => {
     const firstChannel = ctx.getCurrentDataChannel();
     firstChannel.onclose();
     expect(ctx.getConnectionSnapshot().state).toBe(CONNECTION_STATES.RECONNECTING);
-    expect(ctx.statusHistory.at(-1)).toEqual({ text: 'Reconnect', color: '#888' });
+    expect(ctx.statusHistory.at(-1)).toEqual({ text: 'Reconnecting…', color: '#888' });
 
     const pressResult = await ctx.pttOrchestrator.handlePTTPress();
     expect(pressResult).toEqual({ allowed: true });

@@ -26,6 +26,8 @@ export class ConnectionLifecycleService {
     getDataChannel,
     dataChannelOpenTimeoutMs = 10000,
     sessionConfigTimeoutMs = 10000,
+    maxReconnectAttempts = 6,
+    reconnectBackoffMs = [1000, 2000, 4000, 8000, 10000],
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
     mobileDebug = () => {},
@@ -57,6 +59,8 @@ export class ConnectionLifecycleService {
     this.getDataChannel = getDataChannel;
     this.dataChannelOpenTimeoutMs = dataChannelOpenTimeoutMs;
     this.sessionConfigTimeoutMs = sessionConfigTimeoutMs;
+    this.maxReconnectAttempts = maxReconnectAttempts;
+    this.reconnectBackoffMs = reconnectBackoffMs;
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
     this.mobileDebug = mobileDebug;
@@ -67,6 +71,8 @@ export class ConnectionLifecycleService {
     this.sessionConfigTimeout = null;
     this.resolveSessionConfigured = null;
     this.rejectSessionConfigured = null;
+    this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
   }
 
   async connect() {
@@ -121,7 +127,12 @@ export class ConnectionLifecycleService {
       if (this.getConnectionState() !== CONNECTION_STATES.RECONNECTING) {
         this.transitionConnectionState(CONNECTION_STATES.FAILED, 'connect_error');
       }
-      this.handleConnectError(err);
+      // During an auto-reconnect cycle the reconnect engine owns the button
+      // status ("Reconnecting…" / eventual "Reconnect"); skip the error UI so
+      // it doesn't flash a misleading "Try Again" mid-cycle.
+      if (this.reconnectAttempts === 0) {
+        this.handleConnectError(err);
+      }
       throw err;
     }
   }
@@ -141,8 +152,7 @@ export class ConnectionLifecycleService {
         wasClean: event.wasClean
       });
       this.rejectPendingSessionConfigured(new Error('Data channel closed during session configuration'));
-      this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, 'data_channel_close');
-      this.setPTTStatus('Reconnect', '#888');
+      this.handleConnectionDropped('data_channel_close');
     };
 
     dataChannel.onerror = (event) => {
@@ -182,6 +192,7 @@ export class ConnectionLifecycleService {
     }
 
     this.clearSessionConfigTimeout();
+    this.clearReconnect();
     this.transitionConnectionState(CONNECTION_STATES.CONNECTED, 'session_updated');
     this.setPTTReadyStatus();
     if (this.resolveSessionConfigured) {
@@ -216,7 +227,63 @@ export class ConnectionLifecycleService {
 
   reset() {
     this.rejectPendingSessionConfigured(new Error('Connection lifecycle reset'));
+    this.clearReconnect();
     this.pendingConnectPromise = null;
+  }
+
+  // Entry point for both data-channel close and ICE-disconnect drops. ICE
+  // restart can't recover an OpenAI Realtime call (there's no signaling channel
+  // to renegotiate), so a dropped transport is healed by a full reconnect.
+  handleConnectionDropped(reason) {
+    this.transitionConnectionState(CONNECTION_STATES.RECONNECTING, reason);
+    this.scheduleReconnect();
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimer) return;
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.warn(`Auto-reconnect gave up after ${this.reconnectAttempts} attempts`);
+      this.transitionConnectionState(CONNECTION_STATES.FAILED, 'reconnect_exhausted');
+      this.setPTTStatus('Reconnect', '#888');
+      return;
+    }
+
+    const backoff = this.reconnectBackoffMs;
+    const delay = backoff[Math.min(this.reconnectAttempts, backoff.length - 1)];
+    this.reconnectAttempts += 1;
+    this.setPTTStatus('Reconnecting…', '#888');
+    this.mobileDebug(`Auto-reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
+    this.reconnectTimer = this.schedule(() => {
+      this.reconnectTimer = null;
+      this.attemptReconnect();
+    }, delay);
+  }
+
+  async attemptReconnect() {
+    // A user PTT press may have already restored the connection.
+    if (this.getIsConnected() || this.getIsConnecting() || this.getIsConfiguring()) {
+      return;
+    }
+    const state = this.getConnectionState();
+    if (state !== CONNECTION_STATES.RECONNECTING && state !== CONNECTION_STATES.FAILED) {
+      return;
+    }
+
+    try {
+      await this.connect();
+    } catch (err) {
+      // runConnect already logged and transitioned to FAILED; queue the next try.
+      this.scheduleReconnect();
+    }
+  }
+
+  clearReconnect() {
+    if (this.reconnectTimer) {
+      this.clearScheduled(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
   }
 
   async waitForDataChannelOpen(timeoutMs = 5000) {
