@@ -159,6 +159,9 @@ export class RealtimeSession {
     this.webrtcTransportService = new WebRtcTransportService({
       mobileDebug: (...args) => this.mobileDebug(...args),
       getRtcConfig: () => this.connectionBootstrapService.requestRtcConfig(),
+      // Relayed TURN-over-TLS paths on restrictive networks take longer to
+      // gather and connect than direct paths, so allow extra time.
+      iceGatheringTimeoutMs: 15000,
       onIceDisconnected: () => {
         logger.warn('ICE connection stayed disconnected; reconnect required');
         this.connectionLifecycleService.handleConnectionDropped('ice_disconnected');
@@ -201,6 +204,9 @@ export class RealtimeSession {
     });
     this.connectionLifecycleService = new ConnectionLifecycleService({
       deviceType: this.deviceType,
+      // Relayed connections on restrictive networks need longer than a direct
+      // path to finish ICE checks and open the data channel.
+      dataChannelOpenTimeoutMs: 25000,
       getIsConnecting: () => this.isConnecting,
       getIsConfiguring: () => this.isConfiguring,
       getIsConnected: () => this.isConnected,
