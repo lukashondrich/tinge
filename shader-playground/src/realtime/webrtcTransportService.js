@@ -26,7 +26,8 @@ export class WebRtcTransportService {
     schedule = (...args) => globalThis.setTimeout(...args),
     clearScheduled = (...args) => globalThis.clearTimeout(...args),
     iceGatheringTimeoutMs = 5000,
-    iceDisconnectedGraceMs = 8000
+    iceDisconnectedGraceMs = 8000,
+    connectionDiagnosticsDelayMs = 8000
   }) {
     this.mobileDebug = mobileDebug;
     this.onIceDisconnected = onIceDisconnected;
@@ -40,6 +41,7 @@ export class WebRtcTransportService {
     this.clearScheduled = clearScheduled;
     this.iceGatheringTimeoutMs = iceGatheringTimeoutMs;
     this.iceDisconnectedGraceMs = iceDisconnectedGraceMs;
+    this.connectionDiagnosticsDelayMs = connectionDiagnosticsDelayMs;
     this.iceDisconnectTimer = null;
     this.activePeerConnection = null;
   }
@@ -71,6 +73,16 @@ export class WebRtcTransportService {
         this.handleIceCandidateError(event);
       };
 
+      // Tally gathered candidate types so the logs show whether a relay
+      // candidate was actually obtained on the user's network.
+      const candidateTally = { host: 0, srflx: 0, relay: 0 };
+      peerConnection.onicecandidate = (event) => {
+        const candidate = event?.candidate?.candidate;
+        if (!candidate) return;
+        const match = candidate.match(/ typ (\w+)/);
+        if (match) candidateTally[match[1]] = (candidateTally[match[1]] || 0) + 1;
+      };
+
       const mediaStream = await this.getUserMedia({ audio: true });
       audioTrack = mediaStream.getTracks()[0];
       audioTrack.enabled = false;
@@ -80,6 +92,7 @@ export class WebRtcTransportService {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       await this.waitForIceGatheringComplete(peerConnection);
+      this.mobileDebug(`ICE candidates gathered: ${JSON.stringify(candidateTally)}`);
 
       const sdpResponse = await this.fetchFn(
         OPENAI_REALTIME_CALLS_URL,
@@ -104,11 +117,40 @@ export class WebRtcTransportService {
       await peerConnection.setRemoteDescription({ type: 'answer', sdp: sdpText });
       this.mobileDebug('Remote SDP description set successfully');
 
+      this.scheduleConnectionDiagnostics(peerConnection);
+
       return { peerConnection, dataChannel, audioTrack };
     } catch (err) {
       this.abandonPeerConnection(peerConnection, audioTrack);
       throw err;
     }
+  }
+
+  // One-shot stats dump during the ICE checking phase so the logs reveal
+  // whether candidate pairs are progressing (slow path) or failing (blocked
+  // path) when a connection won't complete.
+  scheduleConnectionDiagnostics(peerConnection) {
+    if (typeof peerConnection.getStats !== 'function') return;
+    this.schedule(async () => {
+      if (peerConnection !== this.activePeerConnection) return;
+      try {
+        const stats = await peerConnection.getStats();
+        const pairStates = [];
+        let selectedState = null;
+        stats.forEach((report) => {
+          if (report.type === 'candidate-pair') {
+            pairStates.push(report.state);
+            if (report.selected || report.nominated) selectedState = report.state;
+          }
+        });
+        this.mobileDebug(
+          `ICE diagnostics @${this.connectionDiagnosticsDelayMs}ms: iceState=${peerConnection.iceConnectionState} `
+          + `pairs=${JSON.stringify(pairStates)} selected=${selectedState}`
+        );
+      } catch (err) {
+        this.mobileDebug(`ICE diagnostics error: ${err.message}`);
+      }
+    }, this.connectionDiagnosticsDelayMs);
   }
 
   abandonPeerConnection(peerConnection, audioTrack) {
