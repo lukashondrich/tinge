@@ -17,6 +17,7 @@
     "test:e2e:voice-loop": "playwright test tests/e2e/audio-playback.spec.js",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
+    "validate:realtime": "node scripts/validate-realtime.mjs",
     "test:audio": "vitest run --config src/tests/audio/vitest.config.js",
     "test:audio:watch": "vitest --config src/tests/audio/vitest.config.js",
     "test:audio:coverage": "vitest run --config src/tests/audio/vitest.config.js --coverage",
