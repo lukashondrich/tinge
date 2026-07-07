@@ -228,7 +228,12 @@ function cloneTools() {
   return JSON.parse(JSON.stringify(SESSION_TOOLS));
 }
 
-export function buildSessionUpdate({ enableSemanticVad = false, instructions = '' } = {}) {
+const WEBSOCKET_PCM_FORMAT = Object.freeze({ type: 'audio/pcm', rate: 24000 });
+
+export function buildSessionUpdate({ enableSemanticVad = false, instructions = '', transport = 'webrtc' } = {}) {
+  // WebRTC negotiates audio formats in SDP; the WebSocket transport exchanges
+  // raw buffers, so the PCM format must be pinned explicitly.
+  const useWebsocketAudio = transport === 'websocket';
   return {
     type: 'session.update',
     session: {
@@ -236,9 +241,11 @@ export function buildSessionUpdate({ enableSemanticVad = false, instructions = '
       ...(instructions ? { instructions } : {}),
       audio: {
         input: {
+          ...(useWebsocketAudio ? { format: { ...WEBSOCKET_PCM_FORMAT } } : {}),
           transcription: { model: 'gpt-4o-mini-transcribe' },
           turn_detection: enableSemanticVad ? { ...SESSION_SEMANTIC_VAD_CONFIG } : null
-        }
+        },
+        ...(useWebsocketAudio ? { output: { format: { ...WEBSOCKET_PCM_FORMAT } } } : {})
       },
       tools: cloneTools()
     }

@@ -21,6 +21,23 @@ describe('sessionConfigurationBuilder', () => {
     ]);
   });
 
+  it('omits explicit PCM formats on the webrtc transport', () => {
+    const payload = buildSessionUpdate({ transport: 'webrtc' });
+
+    expect(payload.session.audio.input.format).toBeUndefined();
+    expect(payload.session.audio.output).toBeUndefined();
+  });
+
+  it('pins 24kHz PCM input/output formats on the websocket transport', () => {
+    const payload = buildSessionUpdate({ transport: 'websocket' });
+
+    expect(payload.session.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(payload.session.audio.output.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(payload.session.audio.input.transcription).toEqual({
+      model: 'gpt-4o-mini-transcribe'
+    });
+  });
+
   it('includes semantic_vad settings when enabled', () => {
     const payload = buildSessionUpdate({ enableSemanticVad: true });
 

@@ -12,7 +12,19 @@
  * failures. Those still require a real device on the affected network.
  *
  * Usage:
- *   node scripts/validate-realtime.mjs [--target=local|prod] [--scenario=connect|reconnect|all]
+ *   node scripts/validate-realtime.mjs [--target=local|prod]
+ *                                      [--scenario=connect|reconnect|audio|all|full]
+ *                                      [--transport=webrtc|websocket|both] [--hostile]
+ *
+ * 'all' (default) = connect + reconnect: deterministic transport mechanics.
+ * 'full' also runs the audio scenario (PTT → model audio response), which
+ * depends on model behavior and may occasionally flake — run it when touching
+ * the audio pipeline, not as the routine regression gate.
+ *
+ * --hostile launches Chrome with WebRTC's non-proxied UDP disabled — a rough
+ * stand-in for the UDP-hostile user network. It cannot mimic that network's
+ * blocked TURN relay path, but it verifies the websocket transport works when
+ * direct UDP media is unavailable.
  *   npm run validate:realtime
  *
  * Exit code 0 = all scenarios passed, 1 = a scenario failed or setup broke.
@@ -41,6 +53,14 @@ const args = Object.fromEntries(
 );
 const TARGET = args.target || 'local';
 const SCENARIO = args.scenario || 'all';
+const TRANSPORT_ALIASES = { webrtc: 'webrtc', rtc: 'webrtc', websocket: 'websocket', ws: 'websocket' };
+const TRANSPORTS = args.transport === 'both' || !args.transport
+  ? ['webrtc', 'websocket']
+  : [TRANSPORT_ALIASES[args.transport]];
+if (TRANSPORTS.some((t) => !t)) {
+  console.error(`Unknown --transport=${args.transport}; use webrtc|websocket|both`);
+  process.exit(1);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -103,7 +123,8 @@ async function withPage(fn) {
     args: [
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',
-      '--autoplay-policy=no-user-gesture-required'
+      '--autoplay-policy=no-user-gesture-required',
+      ...(args.hostile ? ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'] : [])
     ]
   });
   const context = await browser.newContext({ permissions: ['microphone'] });
@@ -117,6 +138,19 @@ async function withPage(fn) {
       return pc;
     };
     window.RTCPeerConnection.prototype = OrigPC.prototype;
+
+    // Track realtime WebSockets so scenarios can force-drop the transport.
+    window.__wss = [];
+    const OrigWS = window.WebSocket;
+    window.WebSocket = function (url, protocols) {
+      const ws = protocols === undefined ? new OrigWS(url) : new OrigWS(url, protocols);
+      if (String(url).includes('api.openai.com')) window.__wss.push(ws);
+      return ws;
+    };
+    window.WebSocket.prototype = OrigWS.prototype;
+    for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) {
+      window.WebSocket[key] = OrigWS[key];
+    }
   });
   const page = await context.newPage();
   const logs = [];
@@ -151,29 +185,85 @@ async function loadAndConnect(page, logs, url) {
   return countEstablished(logs) >= 1;
 }
 
-async function scenarioConnect(url) {
+// webrtc runs load the BARE url on purpose: webrtc is the app default, so
+// those runs also cover the no-query-param transport resolution every real
+// user hits. Only the websocket runs need the explicit param.
+function transportUrl(url, transport) {
+  if (transport === 'webrtc') return url;
+  return `${url}${url.includes('?') ? '&' : '?'}transport=${transport}`;
+}
+
+async function scenarioConnect(url, transport) {
   return withPage(async (page, logs) => {
-    const ok = await loadAndConnect(page, logs, url);
-    const dcs = await page.evaluate(() => window.__dcs.length);
-    return { name: 'connect', pass: ok, detail: `established=${ok} dataChannels=${dcs}` };
+    const ok = await loadAndConnect(page, logs, transportUrl(url, transport));
+    const carriers = transport === 'websocket'
+      ? await page.evaluate(() => window.__wss.length)
+      : await page.evaluate(() => window.__dcs.length);
+    return {
+      name: `connect[${transport}]`,
+      pass: ok && carriers >= 1,
+      detail: `established=${ok} ${transport === 'websocket' ? 'sockets' : 'dataChannels'}=${carriers}`
+    };
   });
 }
 
-async function scenarioReconnect(url) {
+async function scenarioReconnect(url, transport) {
   return withPage(async (page, logs) => {
-    const connected = await loadAndConnect(page, logs, url);
-    if (!connected) return { name: 'reconnect', pass: false, detail: 'initial connect failed' };
-    // Force-close the live data channel and confirm auto-reconnect with no input.
-    await page.evaluate(() => window.__dcs[window.__dcs.length - 1].close());
+    const name = `reconnect[${transport}]`;
+    const connected = await loadAndConnect(page, logs, transportUrl(url, transport));
+    if (!connected) return { name, pass: false, detail: 'initial connect failed' };
+    // Force-drop the live transport and confirm auto-reconnect with no input.
+    if (transport === 'websocket') {
+      await page.evaluate(() => window.__wss[window.__wss.length - 1].close());
+    } else {
+      await page.evaluate(() => window.__dcs[window.__dcs.length - 1].close());
+    }
     const deadline = Date.now() + 25000;
     while (countEstablished(logs) < 2 && Date.now() < deadline) await sleep(250);
     const reconnected = countEstablished(logs) >= 2;
     const sawAuto = logs.some((l) => l.includes('Auto-reconnect attempt'));
     return {
-      name: 'reconnect',
+      name,
       pass: reconnected && sawAuto,
       detail: `autoReconnectFired=${sawAuto} reEstablished=${reconnected}`
     };
+  });
+}
+
+// End-to-end voice loop: PTT press (fake mic tone) → release → model audio
+// streams back. Over websocket this exercises the manual PCM16 capture path
+// and proves the API accepted our encoded audio; over webrtc the model audio
+// rides the media track, so transcript deltas on the data channel are the proxy.
+async function scenarioAudio(url, transport) {
+  return withPage(async (page, logs) => {
+    const name = `audio[${transport}]`;
+    const connected = await loadAndConnect(page, logs, transportUrl(url, transport));
+    if (!connected) return { name, pass: false, detail: 'initial connect failed' };
+
+    await page.evaluate((t) => {
+      window.__modelAudioEvents = 0;
+      const marker = t === 'websocket'
+        ? '"response.output_audio.delta"'
+        : '"response.output_audio_transcript';
+      const carrier = t === 'websocket'
+        ? window.__wss[window.__wss.length - 1]
+        : window.__dcs[window.__dcs.length - 1];
+      carrier.addEventListener('message', (e) => {
+        if (typeof e.data === 'string' && e.data.includes(marker)) window.__modelAudioEvents += 1;
+      });
+    }, transport);
+
+    await page.dispatchEvent('#ptt-button', 'mousedown');
+    await sleep(2500);
+    await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup')));
+
+    const deadline = Date.now() + 30000;
+    let events = 0;
+    while (events === 0 && Date.now() < deadline) {
+      await sleep(500);
+      events = await page.evaluate(() => window.__modelAudioEvents);
+    }
+    return { name, pass: events > 0, detail: `modelAudioEvents=${events}` };
   });
 }
 
@@ -188,8 +278,14 @@ async function main() {
   }
 
   const results = [];
-  if (SCENARIO === 'connect' || SCENARIO === 'all') results.push(await scenarioConnect(url));
-  if (SCENARIO === 'reconnect' || SCENARIO === 'all') results.push(await scenarioReconnect(url));
+  for (const transport of TRANSPORTS) {
+    const wants = (s) => SCENARIO === s || SCENARIO === 'all' || SCENARIO === 'full';
+    if (wants('connect')) results.push(await scenarioConnect(url, transport));
+    if (wants('reconnect')) results.push(await scenarioReconnect(url, transport));
+    // audio depends on the model responding to the fake-mic tone, so it is
+    // excluded from the default gate ('all') to keep pass/fail deterministic.
+    if (SCENARIO === 'audio' || SCENARIO === 'full') results.push(await scenarioAudio(url, transport));
+  }
 
   console.log('\n===== VALIDATION REPORT =====');
   let allPass = true;

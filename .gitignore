@@ -30,3 +30,4 @@ retrieval-service/data/import/wiki_en_articles.jsonl
 
 # OS files
 .DS_Store
+playwright-report/
