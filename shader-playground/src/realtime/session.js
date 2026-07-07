@@ -8,6 +8,8 @@ import { FunctionCallService } from './functionCallService.js';
 import { PttOrchestrator } from './pttOrchestrator.js';
 import { ConnectionBootstrapService } from './connectionBootstrapService.js';
 import { WebRtcTransportService } from './webrtcTransportService.js';
+import { WebSocketTransportService } from './websocketTransportService.js';
+import { REALTIME_TRANSPORTS, normalizeRealtimeTransport } from './transportPreference.js';
 import { UserTranscriptionService } from './userTranscriptionService.js';
 import { DataChannelEventRouter } from './dataChannelEventRouter.js';
 import { SessionConnectionState, CONNECTION_STATES } from './sessionConnectionState.js';
@@ -27,15 +29,20 @@ const RECONNECT_CONTEXT_CLOCK_SKEW_MS = 5000;
 const logger = createLogger('realtime-session');
 
 /**
- * RealtimeSession encapsulates the WebRTC connection and push-to-talk loop.
+ * RealtimeSession encapsulates the realtime connection and push-to-talk loop.
  * Existing UI hooks (PTT button, transcript panel, etc.) can interact through
  * the methods and callbacks exposed here.
+ *
+ * The transport is either WebRTC (default) or WebSocket (fallback for
+ * networks where WebRTC media cannot connect); both feed the same
+ * data-channel-shaped interface, so everything downstream is shared.
  */
 export class RealtimeSession {
-  constructor({ apiUrl, mobileDebug, deviceType }) {
+  constructor({ apiUrl, mobileDebug, deviceType, transport }) {
     this.apiUrl = apiUrl;
     this.mobileDebug = mobileDebug || (() => {});
     this.deviceType = deviceType;
+    this.transportMode = normalizeRealtimeTransport(transport) || REALTIME_TRANSPORTS.WEBRTC;
 
     this.peerConnection = null;
     this.dataChannel = null;
@@ -171,6 +178,12 @@ export class RealtimeSession {
         this.connectionLifecycleService.handleConnectionDropped('ice_failed');
       }
     });
+    this.websocketTransportService = new WebSocketTransportService({
+      mobileDebug: (...args) => this.mobileDebug(...args),
+      getModel: () => this.connectionBootstrapService.getRealtimeModel(),
+      warn: (...args) => logger.warn(...args),
+      error: (...args) => logger.error(...args)
+    });
     this.pttOrchestrator = new PttOrchestrator({
       getPTTButton: () => this.pttButton,
       getIsMicActive: () => this.isMicActive,
@@ -221,7 +234,7 @@ export class RealtimeSession {
       setCurrentEphemeralKey: (ephemeralKey) => {
         this.currentEphemeralKey = ephemeralKey;
       },
-      establishTransport: (ephemeralKey) => this.webrtcTransportService.establishPeerConnection(ephemeralKey),
+      establishTransport: (ephemeralKey) => this.establishTransportForMode(ephemeralKey),
       setTransport: ({ peerConnection, dataChannel, audioTrack }) => {
         this.peerConnection = peerConnection;
         this.dataChannel = dataChannel;
@@ -405,6 +418,17 @@ export class RealtimeSession {
     return this.connectionLifecycleService.establishPeerConnection(ephemeralKey);
   }
 
+  isUsingWebSocketTransport() {
+    return this.transportMode === REALTIME_TRANSPORTS.WEBSOCKET;
+  }
+
+  async establishTransportForMode(ephemeralKey) {
+    if (this.isUsingWebSocketTransport()) {
+      return this.websocketTransportService.establishConnection(ephemeralKey);
+    }
+    return this.webrtcTransportService.establishPeerConnection(ephemeralKey);
+  }
+
   async sendSessionConfiguration() {
     if (!this.dataChannel || typeof this.dataChannel.send !== 'function') {
       throw new Error('Cannot send session configuration: data channel is unavailable');
@@ -413,7 +437,8 @@ export class RealtimeSession {
     const instructions = await this.buildSessionInstructions();
     const sessionUpdate = buildSessionUpdate({
       enableSemanticVad: ENABLE_SEMANTIC_VAD,
-      instructions
+      instructions,
+      transport: this.transportMode
     });
 
     try {
@@ -429,6 +454,15 @@ export class RealtimeSession {
   }
 
   async tryHydrateExistingRemoteAudioTrack() {
+    if (this.isUsingWebSocketTransport()) {
+      // No remote track over WebSocket: model audio plays through a local
+      // queue exposed as a MediaStream, which feeds the same handling path.
+      const playbackStream = this.websocketTransportService.getRemoteStream();
+      if (playbackStream) {
+        return this.remoteAudioStreamService.handleIncomingRemoteStream(playbackStream);
+      }
+      return false;
+    }
     return this.remoteAudioStreamService.tryHydrateExistingRemoteAudioTrack(this.peerConnection);
   }
 
@@ -495,6 +529,12 @@ export class RealtimeSession {
       }
       this.audioTrack = null;
     }
+
+    // Releases the WebSocket transport's capture/playback audio contexts;
+    // no-op when the transport was never established.
+    this.websocketTransportService.teardown().catch((err) => {
+      logger.warn('Error tearing down WebSocket transport:', err);
+    });
   }
 
   cleanup() {

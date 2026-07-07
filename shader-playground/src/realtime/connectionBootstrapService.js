@@ -19,6 +19,13 @@ export class ConnectionBootstrapService {
     this.schedule = schedule;
     this.clearScheduled = clearScheduled;
     this.getUserMedia = getUserMedia;
+    this.realtimeModel = null;
+  }
+
+  // Model of the last minted ephemeral session, if the token response exposed
+  // it. The WebSocket transport appends it to the wss:// URL.
+  getRealtimeModel() {
+    return this.realtimeModel;
   }
 
   async initializeMobileMicrophone() {
@@ -118,6 +125,9 @@ export class ConnectionBootstrapService {
       if (!ephemeralKey) {
         throw new Error('Token response missing ephemeral key');
       }
+      // GA client_secrets responses nest the model under session; older
+      // /realtime/sessions-shaped responses expose it at the top level.
+      this.realtimeModel = data.session?.model || data.model || this.realtimeModel;
       if (this.onTokenUsage && data.tokenUsage) {
         this.onTokenUsage(data.tokenUsage);
       }

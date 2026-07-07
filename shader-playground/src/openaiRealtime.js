@@ -3,13 +3,19 @@
 
 import { RealtimeSession } from './realtime/session.js';
 import { resolveRealtimeDeviceProfile } from './realtime/deviceProfile.js';
+import { resolveRealtimeTransport } from './realtime/transportPreference.js';
 
 const DEVICE_PROFILE = resolveRealtimeDeviceProfile();
+const REALTIME_TRANSPORT = resolveRealtimeTransport();
+
+// eslint-disable-next-line no-console
+console.log(`Realtime transport: ${REALTIME_TRANSPORT}`);
 
 const session = new RealtimeSession({
   apiUrl: __API_URL__,
   mobileDebug: DEVICE_PROFILE.mobileDebug,
-  deviceType: DEVICE_PROFILE.deviceType
+  deviceType: DEVICE_PROFILE.deviceType,
+  transport: REALTIME_TRANSPORT
 });
 
 let pttButton = null;
